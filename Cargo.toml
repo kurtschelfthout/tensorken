@@ -1,0 +1,12 @@
+[package]
+name = "tensorken"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bytemuck = "1.13.1"
+futures-intrusive = "0.5.0"
+pollster = "0.3.0"
+wgpu = "0.16.0"
