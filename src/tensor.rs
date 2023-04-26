@@ -7,7 +7,7 @@ use bytemuck::Pod;
 
 use crate::{
     num::Num, raw_tensor::RawTensor, raw_tensor_cpu::CpuRawTensor, raw_tensor_wgpu::WgpuRawTensor,
-    shape_strider::Shape,
+    shape_strider::Shape, tensor_mut::TensorMut,
 };
 
 /// The "high-level" tensor type - the face of the library.
@@ -27,9 +27,19 @@ impl<T: Copy + Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
         Tensor(TRawTensor::new(shape, data))
     }
 
+    /// Create a new tensor with the given shape, and fill it with the given value.
+    pub fn full(shape: &[usize], value: T) -> Self {
+        Tensor(TRawTensor::new(&vec![1; shape.ndims()], &[value])).expand(shape)
+    }
+
+    /// Create a new tensor with the given shape, and fill it with zeros.
+    pub fn zeros(shape: &[usize]) -> Self {
+        Tensor::full(shape, T::ZERO)
+    }
+
     /// Create a new tensor with the same shape as self, but all elements equal to given value.
     pub fn constant_like(&self, value: T) -> Self {
-        Tensor(TRawTensor::new(&vec![1; self.0.shape().ndims()], &[value])).expand(self.0.shape())
+        Tensor::full(self.0.shape(), value)
     }
 
     /// Create a new tensor with the same shape as self, but all elements equal to zero.
@@ -112,6 +122,10 @@ impl<T: Copy + Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
 
     pub fn shape(&self) -> &[usize] {
         self.0.shape()
+    }
+
+    pub fn to_tensor_mut(&self) -> TensorMut<T> {
+        TensorMut::new(self)
     }
 }
 

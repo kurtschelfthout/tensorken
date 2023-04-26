@@ -211,6 +211,10 @@ impl<T> Debug for WgpuRawTensor<'_, T> {
 }
 
 impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
+    /// Creates a new `WgpuRawTensor` from a shape and CPU data.
+    /// The data is copied to the GPU.
+    /// # Panics
+    /// Panics if the shape and data size mismatch.
     pub fn new(shape: &[usize], cpu_data: &[T], device: &'a WgpuDevice) -> Self {
         assert!(
             shape.size() == cpu_data.len(),
