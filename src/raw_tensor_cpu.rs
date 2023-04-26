@@ -1,5 +1,5 @@
 use std::fmt::Debug;
-use std::ops::Add;
+use std::ops::{Add, Index};
 use std::rc::Rc;
 
 use crate::num::Num;
@@ -239,6 +239,14 @@ impl<T: Num> RawTensor for CpuRawTensor<T> {
 
     fn ravel(&self) -> Vec<Self::Elem> {
         self.ravel()
+    }
+}
+
+impl<T> Index<&[usize]> for CpuRawTensor<T> {
+    type Output = T;
+
+    fn index(&self, index: &[usize]) -> &Self::Output {
+        &self.buffer.data[self.strider.buffer_index(index)]
     }
 }
 

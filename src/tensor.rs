@@ -1,6 +1,6 @@
 use std::{
     fmt::Debug,
-    ops::{Add, Div, Mul, Neg, Sub},
+    ops::{Add, Div, Index, Mul, Neg, Sub},
 };
 
 use bytemuck::Pod;
@@ -25,6 +25,10 @@ impl<T: Copy + Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
     /// The order of the elements is in increasing order of the last axis, then the second last, etc.
     pub fn new(shape: &[usize], data: &[T]) -> Self {
         Tensor(TRawTensor::new(shape, data))
+    }
+
+    pub fn scalar(value: T) -> Self {
+        Tensor(TRawTensor::new(&[1], &[value]))
     }
 
     /// Create a new tensor with the given shape, and fill it with the given value.
@@ -263,6 +267,14 @@ impl<TRawTensor: RawTensor> Tensor<TRawTensor> {
         // after reshape:  [..., m, o]
         let s = summed.shape();
         summed.reshape(&s[..s.ndims() - 1])
+    }
+}
+
+impl<TI, RT: RawTensor + Index<TI>> Index<TI> for Tensor<RT> {
+    type Output = RT::Output;
+
+    fn index(&self, index: TI) -> &Self::Output {
+        &self.0[index]
     }
 }
 

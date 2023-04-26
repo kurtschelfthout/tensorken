@@ -1,3 +1,5 @@
+use std::ops::{Index, IndexMut};
+
 use crate::{
     num::Num,
     raw_tensor::RawTensor,
@@ -62,7 +64,7 @@ impl<T: Num> TensorMut<T> {
     }
 }
 
-impl<T: Num> std::ops::Index<&[usize]> for TensorMut<T> {
+impl<T: Num> Index<&[usize]> for TensorMut<T> {
     type Output = T;
 
     fn index(&self, index: &[usize]) -> &Self::Output {
@@ -70,7 +72,7 @@ impl<T: Num> std::ops::Index<&[usize]> for TensorMut<T> {
     }
 }
 
-impl<T: Num> std::ops::IndexMut<&[usize]> for TensorMut<T> {
+impl<T: Num> IndexMut<&[usize]> for TensorMut<T> {
     fn index_mut(&mut self, index: &[usize]) -> &mut Self::Output {
         self.index_mut(index)
     }
