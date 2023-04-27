@@ -4,13 +4,17 @@ extern crate tensorken;
 
 use std::{
     collections::{HashMap, HashSet},
+    f32::consts::E,
     io::Read,
     path::{Path, PathBuf},
 };
 
 use prettytable::{Cell, Row, Table};
 use rand::{distributions::WeightedIndex, prelude::Distribution, rngs::StdRng, SeedableRng};
-use tensorken::{raw_tensor_cpu::CpuRawTensor, tensor::Tensor};
+use tensorken::{
+    raw_tensor_cpu::CpuRawTensor,
+    tensor::{IndexValue, Tensor},
+};
 
 // This example shows the first half of the first of Karpathy's from zero-to-hero tutorials on makemomre.
 // It builds a bigram, character-level language model from a set of names.
@@ -83,6 +87,7 @@ fn dict_bigram(names: &[String]) {
 type Cpu = CpuRawTensor<f32>;
 // type Gpu<'a> = WgpuRawTensor<'a, f32>;
 
+// Candidate for addition to Tensorken.
 fn pretty_print_bigram(tensor: &Tensor<Cpu>, itos: &HashMap<usize, char>, prec: usize) {
     let mut table = Table::new();
     for row in 0..tensor.shape()[0] {
@@ -92,7 +97,7 @@ fn pretty_print_bigram(tensor: &Tensor<Cpu>, itos: &HashMap<usize, char>, prec: 
                 "{}{}\n{:.prec$}",
                 itos[&row],
                 itos[&col],
-                tensor[&[row, col]]
+                tensor.at(&[row, col])
             )));
         }
         table.add_row(table_row);
@@ -100,17 +105,17 @@ fn pretty_print_bigram(tensor: &Tensor<Cpu>, itos: &HashMap<usize, char>, prec: 
     table.printstd();
 }
 
+// Candidate for addition to Tensorken.
 fn multinouilli_sample(tensor: &Tensor<Cpu>, row: usize, rng: &mut StdRng) -> usize {
-    // this sucks because I'm missing stride/pad/shrink to slice rows out of the tensor.
-    // also, purely on a rand usage basis, I should only make the WeightedIndex once per row.
-    let mut weights = Vec::new();
-    for col in 0..tensor.shape()[1] {
-        weights.push(tensor[&[row, col]]);
-    }
-    let dist = WeightedIndex::new(&weights).unwrap();
+    // Purely on a rand usage basis, I should only make the WeightedIndex once per row.
+    // Also, all this copying out should not be necessary. Maybe contiguous tensors could
+    // have a method that returns a slice of the underlying data? Or an iterator, more generally?
+    let weights = tensor.at(row).ravel();
+    let dist = WeightedIndex::new(weights).unwrap();
     dist.sample(rng)
 }
 
+#[allow(clippy::cast_precision_loss)]
 fn tensor_bigram(names: &[String]) {
     // Get all the unique characters in names.
     let mut chars = names
@@ -151,9 +156,9 @@ fn tensor_bigram(names: &[String]) {
 
     let bigrams = bigrams_mut.to_tensor::<Cpu>();
 
-    // Ah, the plot. I could import a plotting library, but I'll just pretty print the tensor.
-    // No heatmaps for us...I spent a bit of time looking for an terminal-based heatmap :) but came up empty.
-    // Anyway, at least can read all the numbers here!
+    // I could import a plotting library, but I'll just pretty print the tensor.
+    // No heatmaps for us...I spent a bit of time looking for a terminal-based heatmap :) but came up empty.
+    // At least can read all the numbers, which is not the case for the heatmap!
     pretty_print_bigram(&bigrams, &itos, 0);
 
     // "smoothing": add 1 so no count is 0. That way, our model will never predict 0 probability.
@@ -178,4 +183,21 @@ fn tensor_bigram(names: &[String]) {
         }
         println!("{}", out.iter().collect::<String>());
     }
+
+    // now measure the loss
+    let mut log_likelihood = 0.0;
+    let mut n = 0;
+    for name in names {
+        let chars: Vec<_> = format!(".{name}.").chars().collect();
+        for bigram in chars.windows(2) {
+            let i = stoi[&bigram[0]];
+            let j = stoi[&bigram[1]];
+            let prob = bigrams.at(&[i, j]);
+            let log_prob = prob.log(E);
+            log_likelihood += log_prob;
+            n += 1;
+        }
+    }
+    let n = n as f32;
+    println!("negative log likelihood: {}", -log_likelihood / n);
 }

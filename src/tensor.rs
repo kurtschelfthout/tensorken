@@ -1,6 +1,6 @@
 use std::{
     fmt::Debug,
-    ops::{Add, Div, Index, Mul, Neg, Sub},
+    ops::{Add, Div, Mul, Neg, Sub},
 };
 
 use bytemuck::Pod;
@@ -156,6 +156,14 @@ impl<T: Copy + Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
     pub fn to_tensor_mut(&self) -> TensorMut<T> {
         TensorMut::new(self)
     }
+
+    /// If the tensor has only one element, return it.
+    /// # Panics
+    /// If the tensor does not have exactly one element.
+    pub fn to_scalar(&self) -> T {
+        assert!(self.0.shape().size() == 1);
+        self.0.ravel()[0]
+    }
 }
 
 macro_rules! impl_difftensor_tensor {
@@ -295,14 +303,6 @@ impl<TRawTensor: RawTensor> Tensor<TRawTensor> {
     }
 }
 
-impl<TI, RT: RawTensor + Index<TI>> Index<TI> for Tensor<RT> {
-    type Output = RT::Output;
-
-    fn index(&self, index: TI) -> &Self::Output {
-        &self.0[index]
-    }
-}
-
 impl<T: Copy + Num> Tensor<CpuRawTensor<T>> {
     pub fn new_cpu(shape: &[usize], data: &[T]) -> Self {
         Tensor(CpuRawTensor::new(shape, data))
@@ -312,5 +312,40 @@ impl<T: Copy + Num> Tensor<CpuRawTensor<T>> {
 impl<'d, T: Copy + Num + Pod> Tensor<WgpuRawTensor<'d, T>> {
     pub fn new_wgpu(shape: &[usize], data: &[T]) -> Self {
         Tensor(<WgpuRawTensor<T> as RawTensor>::new(shape, data))
+    }
+}
+
+/// A variation of `Index` and `IndexMut`, that returns the output
+/// by value. Sadly, we can't use the standard Index trait, because
+/// it requires that the output be a reference. But we want to be able
+/// to return new tensors, which we can't give a lifetime long enough so
+/// they can be returned from the index method.
+/// This means we also can't use the actual [] syntax :( I made the name
+/// as short as I could think of.
+pub trait IndexValue<Idx> {
+    type Output;
+
+    fn at(&self, index: Idx) -> Self::Output;
+}
+
+impl<RT: RawTensor> IndexValue<usize> for Tensor<RT> {
+    type Output = Self;
+
+    /// Slices the tensor at the given index, in the first dimension.
+    /// E.g. if the tensor's shape is [2, 3, 4], then at(1) will return a tensor of shape [3, 4].
+    fn at(&self, index: usize) -> Self::Output {
+        let mut limits = self.shape().iter().map(|&n| (0, n)).collect::<Vec<_>>();
+        limits[0] = (index, index + 1);
+        self.crop(&limits)
+    }
+}
+
+impl<RT: RawTensor, const N: usize> IndexValue<&[usize; N]> for Tensor<RT> {
+    type Output = RT::Elem;
+
+    /// Returns the value at the given index. There must be as many indices as there are dimensions.
+    fn at(&self, index: &[usize; N]) -> Self::Output {
+        let limits = index.iter().map(|&i| (i, i + 1)).collect::<Vec<_>>();
+        self.crop(&limits).to_scalar()
     }
 }

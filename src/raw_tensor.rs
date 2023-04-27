@@ -88,7 +88,7 @@ where
     #[must_use]
     fn pad(&self, padding: &[(usize, usize)]) -> Self;
 
-    /// Crop the tensor according to the given limits.
+    /// Crop the tensor according to the given limits - taking a contiguous slice in each axis.
     /// Needs as many limits as there are dimensions in the tensor.
     #[must_use]
     fn crop(&self, limits: &[(usize, usize)]) -> Self;

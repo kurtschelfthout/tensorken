@@ -1,5 +1,5 @@
 use std::fmt::Debug;
-use std::ops::{Add, Index};
+use std::ops::Add;
 use std::rc::Rc;
 
 use crate::num::Num;
@@ -265,14 +265,6 @@ impl<T: Num> RawTensor for CpuRawTensor<T> {
     }
 }
 
-impl<T> Index<&[usize]> for CpuRawTensor<T> {
-    type Output = T;
-
-    fn index(&self, index: &[usize]) -> &Self::Output {
-        &self.buffer.data[self.strider.buffer_index(index)]
-    }
-}
-
 #[cfg(test)]
 mod tests {
 
@@ -418,14 +410,14 @@ mod tests {
         assert_eq!(t.ravel(), vec![0.0, 1.0, 4.0, 9.0, 16.0, 25.0]);
         let t = t1.div(&t2);
         assert_eq!(t.shape(), &[2, 3]);
-        assert!(t[&[0, 0]].is_nan());
+        assert!(t.buffer.data[t.strider.buffer_index(&[0, 0])].is_nan());
         assert_eq!(t.ravel()[1..6], vec![1.0; 5]);
         let t = t1.eq(&t2);
         assert_eq!(t.shape(), &[2, 3]);
         assert_eq!(t.ravel(), vec![1.0; 6]);
         let t = t1.eq(&t2.sub(&t1));
         assert_eq!(t.shape(), &[2, 3]);
-        assert_eq!(t[&[0, 0]], 1.0);
+        assert_eq!(t.buffer.data[t.strider.buffer_index(&[0, 0])], 1.0);
         assert_eq!(t.ravel()[1..6], vec![0.0; 5]);
     }
 
