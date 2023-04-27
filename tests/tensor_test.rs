@@ -1,6 +1,8 @@
 use tensorken::{
-    raw_tensor::RawTensor, raw_tensor_cpu::CpuRawTensor, raw_tensor_wgpu::WgpuRawTensor,
-    tensor::Tensor,
+    raw_tensor::RawTensor,
+    raw_tensor_cpu::CpuRawTensor,
+    raw_tensor_wgpu::WgpuRawTensor,
+    tensor::{IndexValue, Tensor},
 };
 
 fn assert_tensor_eq<T1: RawTensor<Elem = f32>, T2: RawTensor<Elem = f32>>(
@@ -260,4 +262,18 @@ fn do_eye_test<T: RawTensor<Elem = f32>>(dim: usize) {
         raveled.iter().filter(|&&x| x == 0.0).count(),
         dim * dim - dim
     );
+}
+
+#[test]
+fn test_at() {
+    let t1 = Tensor::<CpuRawTensor<f32>>::eye(4);
+    do_test_at(&t1);
+    let t1 = Tensor::<WgpuRawTensor<f32>>::eye(4);
+    do_test_at(&t1);
+}
+
+fn do_test_at<T: RawTensor<Elem = f32>>(t: &Tensor<T>) {
+    let s = t.at(1);
+    assert_eq!(s.shape(), &[4]);
+    assert_eq!(s.ravel(), vec![0.0, 1.0, 0.0, 0.0]);
 }

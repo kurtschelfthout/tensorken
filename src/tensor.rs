@@ -322,6 +322,8 @@ impl<'d, T: Copy + Num + Pod> Tensor<WgpuRawTensor<'d, T>> {
 /// they can be returned from the index method.
 /// This means we also can't use the actual [] syntax :( I made the name
 /// as short as I could think of.
+/// TODO: use a macro to generate the implementations for
+/// ranges etc, + variadic versions for more dimensions.
 pub trait IndexValue<Idx> {
     type Output;
 
@@ -336,7 +338,7 @@ impl<RT: RawTensor> IndexValue<usize> for Tensor<RT> {
     fn at(&self, index: usize) -> Self::Output {
         let mut limits = self.shape().iter().map(|&n| (0, n)).collect::<Vec<_>>();
         limits[0] = (index, index + 1);
-        self.crop(&limits)
+        self.crop(&limits).reshape(&self.shape()[1..])
     }
 }
 
