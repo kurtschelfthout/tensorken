@@ -184,7 +184,9 @@ fn tensor_bigram(names: &[String]) {
         println!("{}", out.iter().collect::<String>());
     }
 
-    // now measure the loss
+    // now measure the loss.
+    // Don't run this on the GPU - it is extremely slow, because
+    // of all the memory transfers involved in at calls.
     let mut log_likelihood = 0.0;
     let mut n = 0;
     for name in names {

@@ -214,7 +214,7 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
 
         let strider = ShapeStrider::contiguous(shape);
 
-        let size = shape.size() * std::mem::size_of::<T>();
+        let size = Self::byte_size(shape.size());
         let buffer = device.device.create_buffer(&wgpu::BufferDescriptor {
             size: size as wgpu::BufferAddress,
             usage: wgpu::BufferUsages::STORAGE
@@ -233,6 +233,10 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
             device,
             phantom: std::marker::PhantomData,
         }
+    }
+
+    fn byte_size(size: usize) -> u64 {
+        u64::try_from(size * std::mem::size_of::<T>()).unwrap()
     }
 
     /// Return a new tensor with the same buffer as this one, but
@@ -263,7 +267,8 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
         self.strider.strides()
     }
 
-    fn make_output_buffer(&self, size: u64) -> wgpu::Buffer {
+    fn make_output_buffer(&self, size: usize) -> wgpu::Buffer {
+        let size = Self::byte_size(size);
         self.device().create_buffer(&wgpu::BufferDescriptor {
             label: Some("Operation output"),
             size,
@@ -403,8 +408,7 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
     /// Return a new tensor with the same shape as self, after applying f to each element.
     /// Allocates a new buffer, resulting tensor is contiguous.
     fn map(&self, operation: &str) -> Self {
-        let output_buffer =
-            self.make_output_buffer((self.strider.size() * std::mem::size_of::<T>()) as u64);
+        let output_buffer = self.make_output_buffer(self.strider.size());
         let output_strider = ShapeStrider::contiguous(self.shape());
         let compute_pipeline = self.pipelines().get(operation).unwrap();
         let strides_and_shapes =
@@ -427,8 +431,7 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
     /// Allocates a new buffer, resulting tensor is contiguous.
     fn zip(&self, other: &Self, operation: &str) -> Self {
         // note - the output buffer here is the total size of its shape - no matter what the inputs are.
-        let output_buffer =
-            self.make_output_buffer((self.strider.size() * std::mem::size_of::<T>()) as u64);
+        let output_buffer = self.make_output_buffer(self.strider.size());
         let output_strider = ShapeStrider::contiguous(self.shape());
         let compute_pipeline = self.pipelines().get(operation).unwrap();
         let strides_and_shapes =
@@ -447,8 +450,7 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
 
     fn reduce(&self, axes: &[usize], operation: &str) -> Self {
         let (strider, reducer) = self.strider.reduce(axes);
-        let output_buffer =
-            self.make_output_buffer((strider.size() * std::mem::size_of::<T>()) as u64);
+        let output_buffer = self.make_output_buffer(strider.size());
 
         let compute_pipeline = self.pipelines().get(operation).unwrap();
         // WARNING - abuse of get_strides_and_shapes_buffer here. The names of the arguments
@@ -475,8 +477,7 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
         let output_strider = self.strider.pad(padding);
 
         // unary ops can keep the same _buffer_ size, i.e. we don't expand the buffer
-        let output_buffer =
-            self.make_output_buffer((output_strider.size() * std::mem::size_of::<T>()) as u64);
+        let output_buffer = self.make_output_buffer(output_strider.size());
 
         let compute_pipeline = self.pipelines().get("pad").unwrap();
         let strides_and_shapes =
@@ -503,8 +504,8 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
             return t.ravel();
         }
 
-        let size = u64::try_from(self.shape().size() * std::mem::size_of::<T>()).unwrap();
-        let offset = u64::try_from(self.strider.offset()).unwrap();
+        let size = Self::byte_size(self.shape().size());
+        let offset = Self::byte_size(self.strider.offset());
         let staging_buffer = self.device().create_buffer(&wgpu::BufferDescriptor {
             label: None,
             size,
@@ -864,6 +865,16 @@ mod tests {
     fn test_crop() {
         let orig_shape = &[2, 3, 4];
         let t = WgpuRawTensor::new(orig_shape, &make_vec(24), get_wgpu_device());
+
+        // crop single dimension
+        let s = t.crop(&[(0, 1), (0, 3), (0, 4)]);
+        assert_eq!(s.ravel(), make_vec(12));
+
+        let s = t.crop(&[(1, 2), (0, 3), (0, 4)]);
+        assert_eq!(
+            s.ravel(),
+            make_vec(12).iter().map(|x| x + 12.0).collect::<Vec<_>>()
+        );
 
         // crop nothing
         let s = t.crop(&[(0, 2), (0, 3), (0, 4)]);

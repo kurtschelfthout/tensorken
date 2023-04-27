@@ -484,6 +484,16 @@ mod tests {
         let orig_shape = &[2, 3, 4];
         let t = CpuRawTensor::new(orig_shape, make_vec(24));
 
+        // crop single dimension
+        let s = t.crop(&[(0, 1), (0, 3), (0, 4)]);
+        assert_eq!(s.ravel(), make_vec(12));
+
+        let s = t.crop(&[(1, 2), (0, 3), (0, 4)]);
+        assert_eq!(
+            s.ravel(),
+            make_vec(12).iter().map(|x| x + 12.0).collect::<Vec<_>>()
+        );
+
         // crop nothing
         let s = t.crop(&[(0, 2), (0, 3), (0, 4)]);
         assert_eq!(s.shape(), orig_shape);
