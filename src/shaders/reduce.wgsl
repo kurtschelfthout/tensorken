@@ -5,25 +5,26 @@ var<storage, read> input_0: array<f32>;
 @group(0) @binding(1)
 var<storage, read_write> output_0: array<f32>;
 
-// ndims, input_strides, input_contiguous_strides, reducer_strides, input_shape
+// ndims, input_offset, input_strides, input_contiguous_strides, reducer_strides, input_shape
 @group(0) @binding(2)
 var<storage, read> strides_and_shape: array<u32>;
 
+const preamble: u32 = 2u;
 
 fn input_strides(i: u32) -> u32 {
-    return strides_and_shape[i+1u];
+    return strides_and_shape[i + preamble];
 }
 
 fn input_contiguous_strides(i: u32) -> u32 {
-    return strides_and_shape[i + 1u + strides_and_shape[0] ];
+    return strides_and_shape[i + preamble + strides_and_shape[0] ];
 }
 
 fn reducer_strides(i: u32) -> u32 {
-    return strides_and_shape[i + 1u + strides_and_shape[0] * 2u];
+    return strides_and_shape[i + preamble + strides_and_shape[0] * 2u];
 }
 
 fn shape(i: u32) -> u32 {
-    return strides_and_shape[i + 1u + strides_and_shape[0] * 3u];
+    return strides_and_shape[i + preamble + strides_and_shape[0] * 3u];
 }
 
 // Same parlor trick as in unary_ops.wgsl.
@@ -72,7 +73,7 @@ fn call(@builtin(global_invocation_id) global_id: vec3<u32>) {
     output_0[gidx] = replace_me_with_actual_default();
     for (var input_e: u32 = 0u; input_e < input_size(); input_e += 1u) {
         var output_i: u32 = 0u;
-        var input_i: u32 = 0u;
+        var input_i: u32 = strides_and_shape[1];
         for (var i: u32 = 0u; i < strides_and_shape[0]; i += 1u) {
             let len = shape(i);
             let stride = input_contiguous_strides(i);

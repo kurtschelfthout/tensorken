@@ -1,10 +1,11 @@
+
 @group(0) @binding(0)
 var<storage, read> input_0: array<f32>;
 
 @group(0) @binding(1)
 var<storage, read_write> output_0: array<f32>;
 
-// ndims, input_offset, input_strides, output_strides, output_shape
+// ndims, input_offset, input_strides, output_strides, shape, padding_before, padding_after
 @group(0) @binding(2)
 var<storage, read> strides_and_shape: array<u32>;
 
@@ -18,38 +19,36 @@ fn output_strides(i: u32) -> u32 {
     return strides_and_shape[i + preamble + strides_and_shape[0] ];
 }
 
-fn output_shape(i: u32) -> u32 {
+fn shape(i: u32) -> u32 {
     return strides_and_shape[i + preamble + strides_and_shape[0] * 2u];
 }
 
-// A parlor trick:
-// All compute shaders with unary operations have essentially the same form,
-// with just the operation changing. To avoid duplication, but still have syntactically
-// valid WGSL, we define a function here with a sufficiently unique name.
-// On the rust side, we have to do two things, in order:
-// 1. Remove the function definition
-// 2. Replace the function name with the actual operation name
-// (if we don't do step 1, we'll also replace the name in the definition, which on my GPU causes a crash...)
-
-fn replace_me_with_actual_operation(in: f32) -> f32 { discard; }
-
-fn id(in: f32) -> f32 {
-    return in;
+fn padding_before(i: u32) -> u32 {
+    return strides_and_shape[i + preamble + strides_and_shape[0] * 3u];
 }
 
-// Find the index of the given output index in input_0.
-fn input_index_of(output_i: u32) -> u32 {
+fn padding_after(i: u32) -> u32 {
+    return strides_and_shape[i + preamble + strides_and_shape[0] * 4u];
+}
+
+// Find the value for the given output index - figure out whether to pad,
+// i.e. result is 0.0, or not, i.e. result is the value from the input.
+fn value_for(output_i: u32) -> f32 {
     var input_i: u32 = strides_and_shape[1];
     
     for (var i: u32 = 0u; i < strides_and_shape[0]; i = i + 1u) {
-        let len = output_shape(i);
+        let len = shape(i) + padding_after(i) + padding_before(i);
         let stride = output_strides(i);
-        let coord: u32 = output_i / stride % len;
+        let output_coord: u32 = output_i / stride % len;
+        if output_coord < padding_before(i) || output_coord >= padding_before(i) + shape(i) {
+            return 0.0;
+        }
+        let input_coord = output_coord - padding_before(i);
 
-        input_i += coord * input_strides(i);
+        input_i += input_coord * input_strides(i);
     }
 
-    return input_i;
+    return input_0[input_i];
 }
 
 @compute @workgroup_size(64)
@@ -61,6 +60,6 @@ fn call(@builtin(global_invocation_id) global_id: vec3<u32>) {
     if(global_id.x >= arrayLength(&output_0)) {
         return;
     }
-    let index = input_index_of(gidx);
-    output_0[gidx] = replace_me_with_actual_operation(input_0[index]);
+
+    output_0[gidx] = value_for(gidx);
 }

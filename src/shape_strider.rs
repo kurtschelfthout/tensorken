@@ -44,6 +44,7 @@ impl Shape for ShapeStrider {
 pub(crate) struct ShapeStrider {
     shape: Vec<usize>,
     strides: Vec<usize>,
+    offset: usize,
 }
 
 impl ShapeStrider {
@@ -52,6 +53,7 @@ impl ShapeStrider {
         Self {
             shape: vec![],
             strides: vec![],
+            offset: 0,
         }
     }
 
@@ -66,7 +68,11 @@ impl ShapeStrider {
         for i in (0..shape.len() - 1).rev() {
             strides[i] = strides[i + 1] * shape[i + 1];
         }
-        Self { shape, strides }
+        Self {
+            shape,
+            strides,
+            offset: 0,
+        }
     }
 
     pub(crate) fn strides(&self) -> &[usize] {
@@ -95,7 +101,7 @@ impl ShapeStrider {
     }
 
     pub(crate) fn buffer_index(&self, index: &[usize]) -> usize {
-        let mut result = 0;
+        let mut result = self.offset;
         for (i, &stride) in self.strides.iter().enumerate() {
             result += index[i] * stride;
         }
@@ -112,7 +118,11 @@ impl ShapeStrider {
                 strides.push(stride);
             }
         }
-        Self { shape, strides }
+        Self {
+            shape,
+            strides,
+            offset: self.offset,
+        }
     }
 
     /// Return a new, contiguous strider with the given axes reduced to length 1,
@@ -120,18 +130,22 @@ impl ShapeStrider {
     /// strides set to 0. This second strider can be used to iterate over the
     /// to-be-reduced axes while accumulating.
     pub(crate) fn reduce(&self, axes: &[usize]) -> (Self, Self) {
-        let shape: Vec<_> = self
-            .shape
-            .iter()
-            .enumerate()
-            .map(|(i, &x)| if axes.contains(&i) { 1 } else { x })
-            .collect();
+        let mut shape = self.shape.clone();
+        for &axis in axes {
+            shape[axis] = 1;
+        }
         let result = Self::contiguous(&shape);
 
-        let mut reducer = result.clone();
+        let mut strides = result.strides.clone();
         for &axis in axes {
-            reducer.strides[axis] = 0;
+            strides[axis] = 0;
         }
+        let reducer = Self {
+            shape: shape.clone(),
+            strides,
+            offset: self.offset,
+        };
+
         (result, reducer)
     }
 
@@ -210,6 +224,7 @@ impl ShapeStrider {
         Ok(Self {
             shape: new_shape.to_vec(),
             strides: new_strides,
+            offset: self.offset,
         })
     }
 
@@ -233,7 +248,11 @@ impl ShapeStrider {
             shape.push(self.shape[i]);
             strides.push(self.strides[i]);
         }
-        Self { shape, strides }
+        Self {
+            shape,
+            strides,
+            offset: self.offset,
+        }
     }
 
     pub(crate) fn validate_can_expand(&self, shape: &[usize]) -> Result<(), String> {
@@ -275,6 +294,7 @@ impl ShapeStrider {
         Ok(Self {
             shape: new_shape,
             strides: new_strides,
+            offset: self.offset,
         })
     }
 
@@ -284,6 +304,70 @@ impl ShapeStrider {
 
     fn is_valid_index(&self, index: &[usize]) -> bool {
         !self.shape.is_empty() && index.iter().zip(self.shape.iter()).all(|(i, s)| i < s)
+    }
+
+    pub(crate) fn pad(&self, padding: &[(usize, usize)]) -> Self {
+        let mut new_shape = self.shape.clone();
+        for (i, &(before, after)) in padding.iter().enumerate() {
+            new_shape[i] = self.shape[i] + before + after;
+        }
+        Self::contiguous(&new_shape)
+    }
+
+    pub(crate) fn validate_can_pad(&self, padding: &[(usize, usize)]) -> Result<(), String> {
+        if padding.len() != self.shape.ndims() {
+            return Err(format!(
+                "Cannot pad tensor of shape {:?} with padding {:?} - padding must have same number of dimensions as tensor.",
+                self.shape, padding
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn validate_can_crop(&self, limits: &[(usize, usize)]) -> Result<(), String> {
+        if limits.len() != self.shape.ndims() {
+            return Err(format!(
+                "Cannot crop tensor of shape {:?} with limits {:?} - limits must have same number of dimensions as tensor.",
+                self.shape, limits
+            ));
+        }
+        for (i, &(start, end)) in limits.iter().enumerate() {
+            if start >= end {
+                return Err(format!(
+                    "Cannot crop tensor of shape {:?} with limits {:?} - start must be less than end for each dimension.",
+                    self.shape, limits
+                ));
+            }
+            if end > self.shape[i] {
+                return Err(format!(
+                    "Cannot crop tensor of shape {:?} with limits {:?} - end must be less than or equal to shape of tensor for each dimension.",
+                    self.shape, limits
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn crop(&self, limits: &[(usize, usize)]) -> ShapeStrider {
+        let offset = self.offset
+            + limits
+                .iter()
+                .zip(self.strides.iter())
+                .map(|(&(start, _), &stride)| start * stride)
+                .sum::<usize>();
+        let mut new_shape = self.shape.clone();
+        for (i, &(start, end)) in limits.iter().enumerate() {
+            new_shape[i] = end - start;
+        }
+        Self {
+            shape: new_shape,
+            strides: self.strides.clone(),
+            offset,
+        }
+    }
+
+    pub(crate) fn offset(&self) -> usize {
+        self.offset
     }
 }
 

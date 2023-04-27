@@ -1,4 +1,7 @@
-use tensorken::{raw_tensor::RawTensor, tensor::Tensor};
+use tensorken::{
+    raw_tensor::RawTensor, raw_tensor_cpu::CpuRawTensor, raw_tensor_wgpu::WgpuRawTensor,
+    tensor::Tensor,
+};
 
 fn assert_tensor_eq<T1: RawTensor<Elem = f32>, T2: RawTensor<Elem = f32>>(
     a: &Tensor<T1>,
@@ -229,5 +232,32 @@ fn do_2x3x5_dot_2x5x2<T: RawTensor<Elem = f32>>(t1: &Tensor<T>, t2: &Tensor<T>) 
         vec![
             60.0, 70.0, 160.0, 195.0, 260.0, 320.0, 1210.0, 1295.0, 1560.0, 1670.0, 1910.0, 2045.0
         ]
+    );
+}
+
+#[test]
+fn test_eye() {
+    for i in 1..8 {
+        do_eye_test::<CpuRawTensor<f32>>(i);
+        do_eye_test::<WgpuRawTensor<f32>>(i);
+    }
+}
+
+fn do_eye_test<T: RawTensor<Elem = f32>>(dim: usize) {
+    let t1 = Tensor::<T>::eye(dim);
+    assert_eq!(t1.shape(), &[dim, dim]);
+    let raveled = t1.ravel();
+    assert_eq!(raveled.iter().filter(|&&x| x == 1.0).count(), dim);
+    assert_eq!(
+        raveled
+            .chunks(dim)
+            .map(|x| x.iter().sum::<f32>())
+            .filter(|&x| x == 1.0)
+            .count(),
+        dim
+    );
+    assert_eq!(
+        raveled.iter().filter(|&&x| x == 0.0).count(),
+        dim * dim - dim
     );
 }

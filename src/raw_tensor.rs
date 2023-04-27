@@ -81,8 +81,17 @@ where
 
     // Not yet implemented:
     // fn stride(&self, strides: &[usize]) -> Self;
-    // fn pad
-    // fn shrink
+
+    /// Pad the tensor with zeros according to the given padding.
+    /// Like numpy's `pad`, but simpler - needs as many elements in `padding` as there
+    /// are dimensions in the tensor.
+    #[must_use]
+    fn pad(&self, padding: &[(usize, usize)]) -> Self;
+
+    /// Crop the tensor according to the given limits.
+    /// Needs as many limits as there are dimensions in the tensor.
+    #[must_use]
+    fn crop(&self, limits: &[(usize, usize)]) -> Self;
 
     // creation
     // --------

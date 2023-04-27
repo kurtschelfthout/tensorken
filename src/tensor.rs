@@ -41,6 +41,18 @@ impl<T: Copy + Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
         Tensor::full(shape, T::ZERO)
     }
 
+    /// Create a new 2-dimensional tensor with the ones the diagonal and zeros elsewhere.
+    pub fn eye(dim: usize) -> Self {
+        // kind of an pad/crop/expand/reshape stress test
+        Self::scalar(T::ONE)
+            .pad(&[(0, dim)])
+            .reshape(&[1, dim + 1])
+            .expand(&[dim, dim + 1])
+            .reshape(&[dim * (dim + 1)])
+            .crop(&[(0, dim * dim)])
+            .reshape(&[dim, dim])
+    }
+
     /// Create a new tensor with the same shape as self, but all elements equal to given value.
     pub fn constant_like(&self, value: T) -> Self {
         Tensor::full(self.0.shape(), value)
@@ -122,6 +134,19 @@ impl<T: Copy + Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
     /// Like numpy's `broadcast_to` but simpler - does not add dimensions of size 1.
     pub fn expand(&self, shape: &[usize]) -> Self {
         Tensor(self.0.expand(shape))
+    }
+
+    /// Pad the tensor with zeros according to the given padding.
+    /// Like numpy's `pad`, but simpler - needs as many elements in `padding` as there
+    /// are dimensions in the tensor.
+    pub fn pad(&self, padding: &[(usize, usize)]) -> Self {
+        Tensor(self.0.pad(padding))
+    }
+
+    /// Crop the tensor according to the given limits.
+    /// Needs as many limits as there are dimensions in the tensor.
+    pub fn crop(&self, limits: &[(usize, usize)]) -> Self {
+        Tensor(self.0.crop(limits))
     }
 
     pub fn shape(&self) -> &[usize] {

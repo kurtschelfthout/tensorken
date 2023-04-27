@@ -11,32 +11,33 @@ var<storage, read_write> output_0: array<f32>;
 // So to encode our necessary strides and shape in one struct,
 // we concatenate them all in one array, and the first element
 // is the number of dimensions.
-// ndims, strides_0, strides_1, output_strides, shape
+// ndims, offset_0, offset_1, strides_0, strides_1, output_strides, shape
 // These are all elementwise ops, so shape must be identical for all
 @group(0) @binding(3)
 var<storage, read> strides_and_shape: array<u32>;
 
+const preamble = 3u;
 
 fn input_0_strides(i: u32) -> u32 {
-    return strides_and_shape[i+1u];
+    return strides_and_shape[i + preamble];
 }
 
 fn input_1_strides(i: u32) -> u32 {
-    return strides_and_shape[i + 1u + strides_and_shape[0] ];
+    return strides_and_shape[i + preamble + strides_and_shape[0] ];
 }
 
 fn output_strides(i: u32) -> u32 {
-    return strides_and_shape[i + 1u + strides_and_shape[0] * 2u];
+    return strides_and_shape[i + preamble + strides_and_shape[0] * 2u];
 }
 
 fn shape(i: u32) -> u32 {
-    return strides_and_shape[i + 1u + strides_and_shape[0] * 3u];
+    return strides_and_shape[i + preamble + strides_and_shape[0] * 3u];
 }
 
 // Find the indexes of the element in input 0 and input 1.
 fn input_index_of(index: u32) -> vec2<u32> {
-    var index_0: u32 = 0u;
-    var index_1: u32 = 0u;
+    var index_0: u32 = strides_and_shape[1];
+    var index_1: u32 = strides_and_shape[2];
     
     for (var i: u32 = 0u; i < strides_and_shape[0]; i = i + 1u) {
         let len = shape(i);

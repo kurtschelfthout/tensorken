@@ -120,11 +120,6 @@ impl<T: Copy> CpuRawTensor<T> {
     }
 
     #[allow(dead_code)]
-    fn get(&self, index: &[usize]) -> T {
-        self.buffer.data[self.strider.buffer_index(index)]
-    }
-
-    #[allow(dead_code)]
     fn strides(&self) -> &[usize] {
         self.strider.strides()
     }
@@ -136,8 +131,7 @@ impl<T: Copy> CpuRawTensor<T> {
 
 pub struct CpuRawTensorIterator<'a, T> {
     tensor: &'a CpuRawTensor<T>,
-    index_iter: TensorIndexIterator<'a>, // index: Vec<usize>,
-                                         // exhausted: bool,
+    index_iter: TensorIndexIterator<'a>,
 }
 
 impl<'a, T: Copy> Iterator for CpuRawTensorIterator<'a, T> {
@@ -226,6 +220,35 @@ impl<T: Num> RawTensor for CpuRawTensor<T> {
         self.strider.validate_can_expand(shape).unwrap();
 
         let strider = self.strider.expand(shape).unwrap();
+        self.with_strider(strider)
+    }
+
+    fn pad(&self, padding: &[(usize, usize)]) -> Self {
+        self.strider.validate_can_pad(padding).unwrap();
+
+        let strider = self.strider.pad(padding);
+        let mut buffer = vec![T::ZERO; strider.size()];
+        for mut index in self.strider.iter_tensor_index() {
+            // first get the value in the unpadded tensor
+            let value = self.buffer.data[self.strider.buffer_index(&index)];
+            // change the index to take padding into account
+            for (i, (l, _)) in index.iter_mut().zip(padding) {
+                *i += l;
+            }
+            // write the value to the padded tensor's buffer
+            let buffer_index = strider.buffer_index(&index);
+            buffer[buffer_index] = value;
+        }
+        Self {
+            strider,
+            buffer: Rc::new(Buffer { data: buffer }),
+        }
+    }
+
+    fn crop(&self, limits: &[(usize, usize)]) -> Self {
+        self.strider.validate_can_crop(limits).unwrap();
+
+        let strider = self.strider.crop(limits);
         self.with_strider(strider)
     }
 
@@ -395,14 +418,14 @@ mod tests {
         assert_eq!(t.ravel(), vec![0.0, 1.0, 4.0, 9.0, 16.0, 25.0]);
         let t = t1.div(&t2);
         assert_eq!(t.shape(), &[2, 3]);
-        assert!(t.get(&[0, 0]).is_nan());
+        assert!(t[&[0, 0]].is_nan());
         assert_eq!(t.ravel()[1..6], vec![1.0; 5]);
         let t = t1.eq(&t2);
         assert_eq!(t.shape(), &[2, 3]);
         assert_eq!(t.ravel(), vec![1.0; 6]);
         let t = t1.eq(&t2.sub(&t1));
         assert_eq!(t.shape(), &[2, 3]);
-        assert_eq!(t.get(&[0, 0]), 1.0);
+        assert_eq!(t[&[0, 0]], 1.0);
         assert_eq!(t.ravel()[1..6], vec![0.0; 5]);
     }
 
@@ -462,5 +485,60 @@ mod tests {
         let s = t.max(&[0, 1]);
         assert_eq!(s.shape(), &[1, 1]);
         assert_eq!(s.buffer.data, vec![5.0]);
+    }
+
+    #[test]
+    fn test_crop() {
+        let orig_shape = &[2, 3, 4];
+        let t = CpuRawTensor::new(orig_shape, make_vec(24));
+
+        // crop nothing
+        let s = t.crop(&[(0, 2), (0, 3), (0, 4)]);
+        assert_eq!(s.shape(), orig_shape);
+        assert_eq!(s.strides(), t.strides());
+        assert_eq!(s.ravel(), t.ravel());
+
+        let s = t.crop(&[(0, 2), (0, 3), (1, 3)]);
+        assert_eq!(s.shape(), &[2, 3, 2]);
+        assert_eq!(s.strides(), t.strides());
+        assert_eq!(
+            s.ravel(),
+            vec![1.0, 2.0, 5., 6., 9., 10., 13., 14., 17., 18., 21., 22.]
+        );
+
+        // keep cropping
+        let s = s.crop(&[(0, 1), (1, 2), (0, 2)]);
+        assert_eq!(s.shape(), &[1, 1, 2]);
+        assert_eq!(s.strides(), t.strides());
+        assert_eq!(s.ravel(), vec![5.0, 6.0]);
+
+        // crop to single element
+        let s = s.crop(&[(0, 1), (0, 1), (1, 2)]);
+        assert_eq!(s.shape(), &[1, 1, 1]);
+        assert_eq!(s.strides(), t.strides());
+        assert_eq!(s.ravel(), vec![6.0]);
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn test_pad() {
+        let orig_shape = &[2, 3, 4];
+        let t = CpuRawTensor::new(orig_shape, make_vec(24));
+
+        // pad nothing
+        let s = t.pad(&[(0, 0), (0, 0), (0, 0)]);
+        assert_eq!(s.shape(), orig_shape);
+        assert_eq!(s.strides(), t.strides());
+        assert_eq!(s.ravel(), t.ravel());
+
+        // pad everything
+        let padding = &[(1, 2), (3, 4), (5, 6)];
+        let s = t.pad(padding);
+        assert_eq!(s.shape(), &[5, 10, 15]);
+        assert_eq!(s.strides(), &[150, 15, 1]);
+        let s_raveled = s.ravel();
+        assert_eq!(s_raveled.iter().filter(|&&x| x != 0.0).count(), 23);
+        assert_eq!(s_raveled[s.strider.buffer_index(&[1, 3, 6])], 1.0);
+        assert_eq!(s_raveled[s.strider.buffer_index(&[1, 3, 7])], 2.0);
     }
 }
