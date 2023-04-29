@@ -290,51 +290,30 @@ impl<TRawTensor: RawTensor> Tensor<TRawTensor> {
     pub fn matmul(&self, other: &Self) -> Self {
         // self's shape from [..., m, n] to [..., m, 1, n]
         // using just reshape.
-        let shape = self.shape();
-        let self_shape = [
-            &shape[..shape.ndims() - 1],
-            &[1],
-            &[shape[shape.ndims() - 1]],
-        ]
-        .concat();
+        let s = self.shape();
+        let self_shape = [&s[..s.ndims() - 1], &[1, s[s.ndims() - 1]]].concat();
         let l = self.reshape(&self_shape);
 
         // other's shape from [..., n, o] to [..., 1, o, n]
         // using reshape + transpose.
-        let shape = other.shape();
-        let other_shape = [
-            &shape[..shape.ndims() - 2],
-            &[1],
-            &shape[shape.ndims() - 2..],
-        ]
-        .concat();
+        let s = other.shape();
+        let other_shape = [&s[..s.ndims() - 2], &[1], &s[s.ndims() - 2..]].concat();
         let r = other
             .reshape(&other_shape)
             .transpose(other_shape.ndims() - 1, other_shape.ndims() - 2);
 
         // after multiply: [..., m, o, n]
+        let prod = &l * &r;
         // after sum:      [..., m, o, 1]
-        let summed = (l * r).sum(&[other_shape.ndims() - 1]);
+        let sum = prod.sum(&[prod.shape().ndims() - 1]);
         // after reshape:  [..., m, o]
-        let s = summed.shape();
-        summed.reshape(&s[..s.ndims() - 1])
+        let s = sum.shape();
+        sum.reshape(&s[..s.ndims() - 1])
     }
 }
 
 pub type Cpu32 = Tensor<CpuRawTensor<f32>>;
 pub type Wgpu32<'d> = Tensor<WgpuRawTensor<'d, f32>>;
-
-// impl<T: Copy + Num> Tensor<CpuRawTensor<T>> {
-//     pub fn new_cpu(shape: &[usize], data: &[T]) -> Self {
-//         Tensor(CpuRawTensor::new(shape, data))
-//     }
-// }
-
-// impl<'d, T: Copy + Num + Pod> Tensor<WgpuRawTensor<'d, T>> {
-//     pub fn new_wgpu(shape: &[usize], data: &[T]) -> Self {
-//         Tensor(<WgpuRawTensor<T> as RawTensor>::new(shape, data))
-//     }
-// }
 
 fn create_table<T: Num + Display>(tensor: &Tensor<CpuRawTensor<T>>, table: &mut Table) {
     let shape = tensor.shape();

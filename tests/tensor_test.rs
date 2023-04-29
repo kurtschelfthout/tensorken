@@ -227,6 +227,30 @@ fn do_2x3x5_dot_2x5x2<T: RawTensor<Elem = f32>>(t1: &Tensor<T>, t2: &Tensor<T>) 
 }
 
 #[test]
+fn test_3x2x2x3_dot_2x3x2() {
+    // checked vs numpy
+    let t1 = &Cpu32::linspace(1.0, 36.0, 36).reshape(&[3, 2, 2, 3]);
+    let t2 = &Cpu32::linspace(39.0, 72.0, 12).reshape(&[2, 3, 2]);
+    do_3x2x2x3_dot_2x3x2(t1, t2);
+
+    let t1 = &Wgpu32::linspace(1.0, 36.0, 36).reshape(&[3, 2, 2, 3]);
+    let t2 = &Wgpu32::linspace(39.0, 72.0, 12).reshape(&[2, 3, 2]);
+    do_3x2x2x3_dot_2x3x2(t1, t2);
+}
+
+fn do_3x2x2x3_dot_2x3x2<T: RawTensor<Elem = f32>>(t1: &Tensor<T>, t2: &Tensor<T>) {
+    let r = t1.matmul(t2);
+    assert_eq!(r.shape(), &[3, 2, 2, 2]);
+    assert_eq!(
+        r.ravel(),
+        vec![
+            282., 300., 687., 732., 1524., 1596., 2091., 2190., 1902., 2028., 2307., 2460., 3792.,
+            3972., 4359., 4566., 3522., 3756., 3927., 4188., 6060., 6348., 6627., 6942.
+        ]
+    );
+}
+
+#[test]
 fn test_eye() {
     for i in 1..8 {
         do_eye_test::<CpuRawTensor<f32>>(i);
