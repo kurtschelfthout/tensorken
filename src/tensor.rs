@@ -1,9 +1,10 @@
 use std::{
-    fmt::Debug,
+    fmt::{Debug, Display, Formatter},
     ops::{Add, Div, Mul, Neg, Sub},
 };
 
 use bytemuck::Pod;
+use prettytable::{format, Cell, Table};
 
 use crate::{
     num::Num, raw_tensor::RawTensor, raw_tensor_cpu::CpuRawTensor, raw_tensor_wgpu::WgpuRawTensor,
@@ -20,7 +21,7 @@ use crate::{
 #[must_use]
 pub struct Tensor<TRawTensor>(TRawTensor);
 
-impl<T: Copy + Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
+impl<T: Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
     /// Create a new tensor with the given shape and elements.
     /// The order of the elements is in increasing order of the last axis, then the second last, etc.
     pub fn new(shape: &[usize], data: &[T]) -> Self {
@@ -163,6 +164,10 @@ impl<T: Copy + Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
     pub fn to_scalar(&self) -> T {
         assert!(self.0.shape().size() == 1);
         self.0.ravel()[0]
+    }
+
+    pub fn to_cpu(&self) -> Tensor<CpuRawTensor<T>> {
+        Tensor(self.0.to_cpu())
     }
 }
 
@@ -315,6 +320,58 @@ impl<'d, T: Copy + Num + Pod> Tensor<WgpuRawTensor<'d, T>> {
     }
 }
 
+fn create_table<T: Num + Display>(tensor: &Tensor<CpuRawTensor<T>>, table: &mut Table) {
+    let shape = tensor.shape();
+    if shape.len() == 2 {
+        let format = format::FormatBuilder::new()
+            .column_separator(' ')
+            .left_border('[')
+            .right_border(']')
+            .separators(
+                &[format::LinePosition::Top, format::LinePosition::Bottom],
+                format::LineSeparator::new(' ', ' ', ' ', ' '),
+            )
+            .padding(1, 0)
+            .build();
+        table.set_format(format);
+
+        for r in 0..shape[0] {
+            let row = table.add_empty_row();
+            for c in 0..shape[1] {
+                row.add_cell(Cell::new(&format!("{}", tensor.at(&[r, c]))));
+            }
+        }
+    } else {
+        table.set_format(*format::consts::FORMAT_BORDERS_ONLY);
+        for r in 0..shape[0] {
+            let row = table.add_empty_row();
+            for c in 0..shape[1] {
+                let mut table = Table::new();
+                let tensor = tensor.at(r).at(c);
+                create_table(&tensor, &mut table);
+                row.add_cell(Cell::new(&format!("{table}")));
+            }
+        }
+    }
+}
+
+impl<RT: RawTensor> Display for Tensor<RT>
+where
+    RT::Elem: Display,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let cpu = if self.shape().len() % 2 == 0 {
+            self.to_cpu()
+        } else {
+            self.reshape(&[&[1], self.shape()].concat()).to_cpu()
+        };
+
+        let mut table = Table::new();
+        create_table(&cpu, &mut table);
+        write!(f, "{table}")
+    }
+}
+
 /// A variation of `Index` and `IndexMut`, that returns the output
 /// by value. Sadly, we can't use the standard Index trait, because
 /// it requires that the output be a reference. But we want to be able
@@ -338,7 +395,12 @@ impl<RT: RawTensor> IndexValue<usize> for Tensor<RT> {
     fn at(&self, index: usize) -> Self::Output {
         let mut limits = self.shape().iter().map(|&n| (0, n)).collect::<Vec<_>>();
         limits[0] = (index, index + 1);
-        self.crop(&limits).reshape(&self.shape()[1..])
+        let cropped = self.crop(&limits);
+        if cropped.shape().len() > 1 {
+            cropped.reshape(&self.shape()[1..])
+        } else {
+            cropped
+        }
     }
 }
 

@@ -35,7 +35,7 @@ impl<T: Copy> CpuRawTensor<T> {
     /// Return a new tensor with the given shape and data.
     /// Panics if the shape and data are not compatible.
     /// Assumes the data is laid out contiguously, in row-major order.
-    fn new(shape: &[usize], data: Vec<T>) -> Self {
+    pub(crate) fn new_into(shape: &[usize], data: Vec<T>) -> Self {
         assert!(shape.size() == data.len(), "Shape size {} and data len {} must match - either too few or too many elements in data.", shape.size(), data.len());
 
         let strider = ShapeStrider::contiguous(shape);
@@ -58,7 +58,7 @@ impl<T: Copy> CpuRawTensor<T> {
     /// using the given Vec as data.
     /// Assumes the data is laid out contiguously, in row-major order.
     fn with_contiguous_data(&self, data: Vec<T>) -> Self {
-        Self::new(self.strider.shape(), data)
+        Self::new_into(self.strider.shape(), data)
     }
 
     /// Return a new tensor with the same shape as this one, but
@@ -253,7 +253,7 @@ impl<T: Num> RawTensor for CpuRawTensor<T> {
     }
 
     fn new(shape: &[usize], data: &[Self::Elem]) -> Self {
-        Self::new(shape, data.to_vec())
+        Self::new_into(shape, data.to_vec())
     }
 
     fn shape(&self) -> &[usize] {
@@ -262,6 +262,10 @@ impl<T: Num> RawTensor for CpuRawTensor<T> {
 
     fn ravel(&self) -> Vec<Self::Elem> {
         self.ravel()
+    }
+
+    fn to_cpu(&self) -> CpuRawTensor<Self::Elem> {
+        self.clone()
     }
 }
 
@@ -277,12 +281,12 @@ mod tests {
     }
     #[test]
     fn test_ravel() {
-        let t = CpuRawTensor::new(&[2, 3, 4], make_vec(24));
+        let t = CpuRawTensor::new_into(&[2, 3, 4], make_vec(24));
         assert_eq!(t.ravel(), make_vec(24));
     }
 
     fn test_reshape_24(orig_shape: &[usize], new_shape: &[usize], expected_strides: &[usize]) {
-        let t = CpuRawTensor::new(orig_shape, make_vec(24));
+        let t = CpuRawTensor::new_into(orig_shape, make_vec(24));
         let t = t.reshape(new_shape);
         assert_eq!(t.shape(), new_shape);
         assert_eq!(t.strides(), expected_strides);
@@ -297,7 +301,7 @@ mod tests {
     }
 
     fn test_permute_24(orig_shape: &[usize], permutation: &[usize], expected_shape: &[usize]) {
-        let t = CpuRawTensor::new(orig_shape, make_vec(24));
+        let t = CpuRawTensor::new_into(orig_shape, make_vec(24));
         let tp = t.permute(permutation);
         assert_eq!(tp.shape(), expected_shape);
         assert_ne!(tp.strides(), t.strides());
@@ -322,7 +326,7 @@ mod tests {
     #[test]
     fn test_reshape_permute_reshape() {
         // test from tinygrad abstractions.py
-        let t = CpuRawTensor::new(&[10, 10], make_vec(100));
+        let t = CpuRawTensor::new_into(&[10, 10], make_vec(100));
 
         let tp = t.permute(&[1, 0]);
         assert_eq!(tp.shape(), &[10, 10]);
@@ -347,7 +351,7 @@ mod tests {
 
     #[test]
     fn test_expand_scalar() {
-        let t = CpuRawTensor::new(&[1], vec![42.0]);
+        let t = CpuRawTensor::new_into(&[1], vec![42.0]);
         let t = t.expand(&[5, 4]);
 
         assert_eq!(t.shape(), &[5, 4]);
@@ -357,7 +361,7 @@ mod tests {
 
     #[test]
     fn test_expand_3x1() {
-        let t = CpuRawTensor::new(&[3, 1], make_vec(3));
+        let t = CpuRawTensor::new_into(&[3, 1], make_vec(3));
         let t = t.expand(&[15, 3, 5]);
 
         assert_eq!(t.shape(), &[15, 3, 5]);
@@ -366,7 +370,7 @@ mod tests {
 
     #[test]
     fn test_expand_2x3x4() {
-        let t = CpuRawTensor::new(&[2, 3, 4], make_vec(24));
+        let t = CpuRawTensor::new_into(&[2, 3, 4], make_vec(24));
         let t = t.expand(&[5, 2, 3, 4]);
 
         assert_eq!(t.shape(), &[5, 2, 3, 4]);
@@ -383,7 +387,7 @@ mod tests {
 
     #[test]
     fn test_unary_ops() {
-        let t = CpuRawTensor::new(&[2, 3], make_vec(6));
+        let t = CpuRawTensor::new_into(&[2, 3], make_vec(6));
         let t = t.exp();
         assert_eq!(t.shape(), &[2, 3]);
         let t = t.log();
@@ -397,8 +401,8 @@ mod tests {
     #[test]
     #[allow(clippy::float_cmp)]
     fn test_binary_ops() {
-        let t1 = CpuRawTensor::new(&[2, 3], make_vec(6));
-        let t2 = CpuRawTensor::new(&[2, 3], make_vec(6));
+        let t1 = CpuRawTensor::new_into(&[2, 3], make_vec(6));
+        let t2 = CpuRawTensor::new_into(&[2, 3], make_vec(6));
         let t = t1.add(&t2);
         assert_eq!(t.shape(), &[2, 3]);
         assert_eq!(t.ravel(), vec![0.0, 2.0, 4.0, 6.0, 8.0, 10.0]);
@@ -423,8 +427,8 @@ mod tests {
 
     #[test]
     fn test_binary_ops_different_strides() {
-        let t1 = CpuRawTensor::new(&[1], vec![20.0]).expand(&[2, 3]);
-        let t2 = CpuRawTensor::new(&[2, 3], make_vec(6));
+        let t1 = CpuRawTensor::new_into(&[1], vec![20.0]).expand(&[2, 3]);
+        let t2 = CpuRawTensor::new_into(&[2, 3], make_vec(6));
         let t = t1.add(&t2);
         assert_eq!(t.shape(), &[2, 3]);
         assert_eq!(t.ravel(), vec![20.0, 21.0, 22.0, 23.0, 24.0, 25.0]);
@@ -444,12 +448,12 @@ mod tests {
 
     #[test]
     fn test_reduce_ops_empty() {
-        let t: CpuRawTensor<f32> = CpuRawTensor::new(&[], vec![]);
+        let t: CpuRawTensor<f32> = CpuRawTensor::new_into(&[], vec![]);
         let s = t.sum(&[]);
         assert_eq!(s.shape(), &[]);
         assert_eq!(s.buffer.data, vec![]);
 
-        let t: CpuRawTensor<f32> = CpuRawTensor::new(&[], vec![]);
+        let t: CpuRawTensor<f32> = CpuRawTensor::new_into(&[], vec![]);
         let s = t.max(&[]);
         assert_eq!(s.shape(), &[]);
         assert_eq!(s.buffer.data, vec![]);
@@ -457,7 +461,7 @@ mod tests {
 
     #[test]
     fn test_reduce_ops() {
-        let t = CpuRawTensor::new(&[2, 3], make_vec(6));
+        let t = CpuRawTensor::new_into(&[2, 3], make_vec(6));
         let s = t.sum(&[0]);
         assert_eq!(s.shape(), &[1, 3]);
         assert_eq!(s.buffer.data, vec![3.0, 5.0, 7.0]);
@@ -482,7 +486,7 @@ mod tests {
     #[test]
     fn test_crop() {
         let orig_shape = &[2, 3, 4];
-        let t = CpuRawTensor::new(orig_shape, make_vec(24));
+        let t = CpuRawTensor::new_into(orig_shape, make_vec(24));
 
         // crop single dimension
         let s = t.crop(&[(0, 1), (0, 3), (0, 4)]);
@@ -525,7 +529,7 @@ mod tests {
     #[allow(clippy::float_cmp)]
     fn test_pad() {
         let orig_shape = &[2, 3, 4];
-        let t = CpuRawTensor::new(orig_shape, make_vec(24));
+        let t = CpuRawTensor::new_into(orig_shape, make_vec(24));
 
         // pad nothing
         let s = t.pad(&[(0, 0), (0, 0), (0, 0)]);

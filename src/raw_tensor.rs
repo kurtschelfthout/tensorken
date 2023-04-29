@@ -1,4 +1,4 @@
-use crate::num::Num;
+use crate::{num::Num, raw_tensor_cpu::CpuRawTensor};
 
 /// Counterpart for tinygrad's "low-level" operations in ops.py.
 /// Represents the operations that a tensor implementation, be it on CPU or GPU, must implement.
@@ -109,4 +109,7 @@ where
     /// Return the elements of the tensor as a Vec, i.e. on the CPU.
     /// The order of the elements is in increasing order of the last axis, then the second last, etc.
     fn ravel(&self) -> Vec<Self::Elem>;
+
+    /// Return the tensor on the CPU.
+    fn to_cpu(&self) -> CpuRawTensor<Self::Elem>;
 }

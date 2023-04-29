@@ -276,4 +276,7 @@ fn do_test_at<T: RawTensor<Elem = f32>>(t: &Tensor<T>) {
     let s = t.at(1);
     assert_eq!(s.shape(), &[4]);
     assert_eq!(s.ravel(), vec![0.0, 1.0, 0.0, 0.0]);
+
+    let s = s.at(1);
+    assert_eq!(s.shape(), &[1]);
 }

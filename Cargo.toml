@@ -10,7 +10,7 @@ bytemuck = "1.13.1"
 futures-intrusive = "0.5.0"
 pollster = "0.3.0"
 wgpu = "0.16.0"
+prettytable-rs = "0.10.0"
 
 [dev-dependencies]
-prettytable-rs = "0.10.0"
 rand = "0.8.5"

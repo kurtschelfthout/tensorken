@@ -87,7 +87,6 @@ fn dict_bigram(names: &[String]) {
 type Cpu = CpuRawTensor<f32>;
 // type Gpu<'a> = WgpuRawTensor<'a, f32>;
 
-// Candidate for addition to Tensorken.
 fn pretty_print_bigram(tensor: &Tensor<Cpu>, itos: &HashMap<usize, char>, prec: usize) {
     let mut table = Table::new();
     for row in 0..tensor.shape()[0] {

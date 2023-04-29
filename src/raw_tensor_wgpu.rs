@@ -12,6 +12,7 @@ use wgpu::util::DeviceExt;
 use crate::{
     num::Num,
     raw_tensor::RawTensor,
+    raw_tensor_cpu::CpuRawTensor,
     shape_strider::{Shape, ShapeStrider},
 };
 
@@ -650,6 +651,10 @@ impl<T: Num + NoUninit + Pod> RawTensor for WgpuRawTensor<'_, T> {
 
     fn ravel(&self) -> Vec<Self::Elem> {
         self.ravel()
+    }
+
+    fn to_cpu(&self) -> crate::raw_tensor_cpu::CpuRawTensor<Self::Elem> {
+        CpuRawTensor::new_into(self.shape(), self.ravel())
     }
 }
 
