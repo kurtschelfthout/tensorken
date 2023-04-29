@@ -3,7 +3,6 @@ use std::{
     ops::{Add, Div, Mul, Neg, Sub},
 };
 
-use bytemuck::Pod;
 use prettytable::{format, Cell, Table};
 
 use crate::{
@@ -52,6 +51,20 @@ impl<T: Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
             .reshape(&[dim * (dim + 1)])
             .crop(&[(0, dim * dim)])
             .reshape(&[dim, dim])
+    }
+
+    pub fn linspace(start: T, end: T, num: usize) -> Self {
+        let mut data = Vec::with_capacity(num);
+        let step = if num > 1 {
+            let nf: T = T::from_usize(num);
+            (end - start) / (nf - T::ONE)
+        } else {
+            T::ZERO
+        };
+        for i in 0..num {
+            data.push(start + step * T::from_usize(i));
+        }
+        Self::new(&[num], &data)
     }
 
     /// Create a new tensor with the same shape as self, but all elements equal to given value.
@@ -308,17 +321,20 @@ impl<TRawTensor: RawTensor> Tensor<TRawTensor> {
     }
 }
 
-impl<T: Copy + Num> Tensor<CpuRawTensor<T>> {
-    pub fn new_cpu(shape: &[usize], data: &[T]) -> Self {
-        Tensor(CpuRawTensor::new(shape, data))
-    }
-}
+pub type Cpu32 = Tensor<CpuRawTensor<f32>>;
+pub type Wgpu32<'d> = Tensor<WgpuRawTensor<'d, f32>>;
 
-impl<'d, T: Copy + Num + Pod> Tensor<WgpuRawTensor<'d, T>> {
-    pub fn new_wgpu(shape: &[usize], data: &[T]) -> Self {
-        Tensor(<WgpuRawTensor<T> as RawTensor>::new(shape, data))
-    }
-}
+// impl<T: Copy + Num> Tensor<CpuRawTensor<T>> {
+//     pub fn new_cpu(shape: &[usize], data: &[T]) -> Self {
+//         Tensor(CpuRawTensor::new(shape, data))
+//     }
+// }
+
+// impl<'d, T: Copy + Num + Pod> Tensor<WgpuRawTensor<'d, T>> {
+//     pub fn new_wgpu(shape: &[usize], data: &[T]) -> Self {
+//         Tensor(<WgpuRawTensor<T> as RawTensor>::new(shape, data))
+//     }
+// }
 
 fn create_table<T: Num + Display>(tensor: &Tensor<CpuRawTensor<T>>, table: &mut Table) {
     let shape = tensor.shape();

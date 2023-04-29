@@ -10,6 +10,13 @@ pub trait RawTensor
 where
     Self: Sized,
 {
+    // Note: Elem is an associated type, not a generic parameter, for rather subtle reasons.
+    // We often want to implement traits for e.g. Tensor<impl RawTensor> without having to mention
+    // the element type, as the element type is not restricted by the implementation. See e.g. Add, Neg on Tensor:
+    // impl<RT: RawTensor> Add for Tensor<RT> { ... }
+    // If RawTensor would have a generic type, we'd have to mention it in the impl:
+    // impl<T, RT: RawTensor<T>> Add for Tensor<RT> { ... }
+    // but then rust complains that T is not restricted by the implementation.
     type Elem: Num;
 
     // unary ops

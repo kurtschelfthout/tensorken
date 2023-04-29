@@ -1,7 +1,4 @@
-use std::{
-    f32::consts::E,
-    ops::{Add, Div, Mul, Sub},
-};
+use std::ops::{Add, Div, Mul, Sub};
 
 /// A trait with basic requirements of numbers stored in tensors.
 /// Currently only f32 is supported.
@@ -21,6 +18,9 @@ pub trait Num:
     /// The minimum value.
     const MIN: Self;
 
+    /// Convert from usize.
+    /// This is really only so Tensor can implement linspace.
+    fn from_usize(n: usize) -> Self;
     /// Apply exponential function.
     fn exp(self) -> Self;
     /// Apply the natural logarithm.
@@ -39,10 +39,15 @@ impl Num for f32 {
     }
 
     fn log(self) -> Self {
-        self.log(E)
+        self.log(std::f32::consts::E)
     }
 
     fn powf(self, exp: Self) -> Self {
         self.powf(exp)
+    }
+
+    #[allow(clippy::cast_precision_loss)]
+    fn from_usize(n: usize) -> Self {
+        n as f32
     }
 }

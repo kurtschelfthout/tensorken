@@ -2,7 +2,7 @@ use tensorken::{
     raw_tensor::RawTensor,
     raw_tensor_cpu::CpuRawTensor,
     raw_tensor_wgpu::WgpuRawTensor,
-    tensor::{IndexValue, Tensor},
+    tensor::{Cpu32, IndexValue, Tensor, Wgpu32},
 };
 
 fn assert_tensor_eq<T1: RawTensor<Elem = f32>, T2: RawTensor<Elem = f32>>(
@@ -47,9 +47,9 @@ fn fun<'t, T: RawTensor>(t1: &'t Tensor<T>, t2: &'t Tensor<T>) -> Tensor<T> {
 
 #[test]
 fn test_tensorlike() {
-    let (shape, data) = (&[2, 3], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
-    let t_wgpu = &Tensor::new_wgpu(shape, data);
-    let t_cpu = &Tensor::new_cpu(shape, data);
+    let shape = &[2, 3];
+    let t_wgpu = &Wgpu32::linspace(1.0, 6.0, 6).reshape(shape);
+    let t_cpu = &Cpu32::linspace(1.0, 6.0, 6).reshape(shape);
 
     let r_cpu = fun(t_cpu, t_cpu);
     let r_gpu = fun(t_wgpu, t_wgpu);
@@ -59,14 +59,12 @@ fn test_tensorlike() {
 #[test]
 fn test_elementwise_ops() {
     let shape = &[2, 3];
-    let t1d = &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-    let t2d = &[6.0, 7.0, 8.0, 9.0, 10.0, 12.0];
-    let t1 = &Tensor::new_cpu(shape, t1d);
-    let t2 = &Tensor::new_cpu(shape, t2d);
+    let t1 = &Cpu32::linspace(1., 6., 6).reshape(shape);
+    let t2 = &Cpu32::linspace(6., 11., 6).reshape(shape);
     elementwise_ops(t1, t2);
 
-    let t1 = &Tensor::new_wgpu(shape, t1d);
-    let t2 = &Tensor::new_wgpu(shape, t2d);
+    let t1 = &Wgpu32::linspace(1., 6., 6).reshape(shape);
+    let t2 = &Wgpu32::linspace(6., 11., 6).reshape(shape);
     elementwise_ops(t1, t2);
 }
 
@@ -84,16 +82,16 @@ fn elementwise_ops<T: RawTensor<Elem = f32>>(t1: &Tensor<T>, t2: &Tensor<T>) {
         &[0.0, 0.69314724, 1.0986124, 1.3862945, 1.6094381, 1.7917596],
     );
     let r3 = t1 + t2;
-    assert_eq!(r3.ravel(), vec![7.0, 9.0, 11.0, 13.0, 15.0, 18.0]);
+    assert_eq!(r3.ravel(), vec![7.0, 9.0, 11.0, 13.0, 15.0, 17.0]);
     let r4 = t1 - t2;
-    assert_eq!(r4.ravel(), vec![-5.0, -5.0, -5.0, -5.0, -5.0, -6.0]);
+    assert_eq!(r4.ravel(), vec![-5.0, -5.0, -5.0, -5.0, -5.0, -5.0]);
     let r5 = t1 / t2;
     assert_eq!(
         r5.ravel(),
-        vec![0.16666667, 0.2857143, 0.375, 0.44444445, 0.5, 0.5]
+        vec![0.16666667, 0.2857143, 0.375, 0.44444445, 0.5, 0.54545456]
     );
     let r6 = t1 * t2;
-    assert_eq!(r6.ravel(), vec![6.0, 14.0, 24.0, 36.0, 50.0, 72.0]);
+    assert_eq!(r6.ravel(), vec![6.0, 14.0, 24.0, 36.0, 50.0, 66.0]);
 
     let r7 = t1.eq(t2);
     assert_eq!(r7.ravel(), vec![0.0; 6]);
@@ -102,19 +100,16 @@ fn elementwise_ops<T: RawTensor<Elem = f32>>(t1: &Tensor<T>, t2: &Tensor<T>) {
 #[test]
 fn test_broadcasted_ops() {
     let t1s = &[1, 1, 2, 3];
-    let t1d = &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
     let t2s = &t1s[3..];
-    let t2d = &[6.0, 7.0, 8.0];
-    let t3d = &[1.0, 2.0, 3.0];
 
-    let t1 = &Tensor::new_cpu(t1s, t1d);
-    let t2 = &Tensor::new_cpu(t2s, t2d);
-    let t3 = &Tensor::new_cpu(t2s, t3d);
+    let t1 = &Cpu32::linspace(1., 6., 6).reshape(t1s);
+    let t2 = &Cpu32::linspace(6., 8., 3).reshape(t2s);
+    let t3 = &Cpu32::linspace(1., 3., 3).reshape(t2s);
     broadcasted_ops(t1, t2, t3);
 
-    let t1 = &Tensor::new_wgpu(t1s, t1d);
-    let t2 = &Tensor::new_wgpu(t2s, t2d);
-    let t3 = &Tensor::new_wgpu(t2s, t3d);
+    let t1 = &Wgpu32::linspace(1., 6., 6).reshape(t1s);
+    let t2 = &Wgpu32::linspace(6., 8., 3).reshape(t2s);
+    let t3 = &Wgpu32::linspace(1., 3., 3).reshape(t2s);
     broadcasted_ops(t1, t2, t3);
 }
 
@@ -150,11 +145,10 @@ fn broadcasted_ops<T: RawTensor<Elem = f32>>(t1: &Tensor<T>, t2: &Tensor<T>, t3:
 #[test]
 fn test_reduce_ops() {
     let shape = &[2, 3];
-    let t1d = &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-    let t1 = &Tensor::new_cpu(shape, t1d);
+    let t1 = &Cpu32::linspace(1., 6., 6).reshape(shape);
     reduce_ops(t1);
 
-    let t1 = &Tensor::new_wgpu(shape, t1d);
+    let t1 = &Wgpu32::linspace(1., 6., 6).reshape(shape);
     reduce_ops(t1);
 }
 
@@ -172,11 +166,10 @@ fn reduce_ops<T: RawTensor<Elem = f32>>(t1: &Tensor<T>) {
 #[test]
 fn test_movement_ops() {
     let shape = &[2, 3];
-    let t1d = &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-    let t1 = &Tensor::new_cpu(shape, t1d);
+    let t1 = &Cpu32::linspace(1., 6., 6).reshape(shape);
     movement_ops(t1);
 
-    let t1 = &Tensor::new_wgpu(shape, t1d);
+    let t1 = &Wgpu32::linspace(1., 6., 6).reshape(shape);
     movement_ops(t1);
 }
 
@@ -195,15 +188,13 @@ fn movement_ops<T: RawTensor<Elem = f32>>(t1: &Tensor<T>) {
 
 #[test]
 fn test_2x3_dot_3x2() {
-    let t1d = &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-    let t2d = &[6.0, 5.0, 4.0, 3.0, 2.0, 1.0];
-    let t1 = &Tensor::new_cpu(&[2, 3], t1d);
-    let t2 = &Tensor::new_cpu(&[3, 2], t2d);
+    let t1 = &Cpu32::linspace(1., 6., 6).reshape(&[2, 3]);
+    let t2 = &Cpu32::linspace(6., 1., 6).reshape(&[3, 2]);
 
     do_2x3_dot_3x2(t1, t2);
 
-    let t1 = &Tensor::new_wgpu(&[2, 3], t1d);
-    let t2 = &Tensor::new_wgpu(&[3, 2], t2d);
+    let t1 = &Wgpu32::linspace(1., 6., 6).reshape(&[2, 3]);
+    let t2 = &Wgpu32::linspace(6., 1., 6).reshape(&[3, 2]);
     do_2x3_dot_3x2(t1, t2)
 }
 
@@ -215,14 +206,12 @@ fn do_2x3_dot_3x2<T: RawTensor<Elem = f32>>(t1: &Tensor<T>, t2: &Tensor<T>) {
 
 #[test]
 fn test_2x3x5_dot_2x5x2() {
-    let t1d = (0..30).map(|x| x as f32).collect::<Vec<_>>();
-    let t2d = (0..20).map(|x| x as f32).collect::<Vec<_>>();
-    let t1 = &Tensor::new_cpu(&[2, 3, 5], &t1d);
-    let t2 = &Tensor::new_cpu(&[2, 5, 2], &t2d);
+    let t1 = &Cpu32::linspace(0., 29., 30).reshape(&[2, 3, 5]);
+    let t2 = &Cpu32::linspace(0., 19., 20).reshape(&[2, 5, 2]);
     do_2x3x5_dot_2x5x2(t1, t2);
 
-    let t1 = &Tensor::new_wgpu(&[2, 3, 5], &t1d);
-    let t2 = &Tensor::new_wgpu(&[2, 5, 2], &t2d);
+    let t1 = &Wgpu32::linspace(0., 29., 30).reshape(&[2, 3, 5]);
+    let t2 = &Wgpu32::linspace(0., 19., 20).reshape(&[2, 5, 2]);
     do_2x3x5_dot_2x5x2(t1, t2);
 }
 
