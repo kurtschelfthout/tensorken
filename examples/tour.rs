@@ -1,3 +1,4 @@
+use tensorken::diffable_ops::Diffable;
 use tensorken::raw_tensor_cpu::CpuRawTensor;
 use tensorken::tensor::{Cpu32, IndexValue, Tensor};
 
