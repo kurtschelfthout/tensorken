@@ -1,4 +1,4 @@
-use tensorken::{shape::Shape, tensor::Cpu32};
+use tensorken::{diffable_ops::Diffable, shape::Shape, tensor::Cpu32};
 
 /// A macro to print the result of an expression and the expression itself.
 macro_rules! do_example {

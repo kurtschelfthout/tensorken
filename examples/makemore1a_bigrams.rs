@@ -12,6 +12,7 @@ use std::{
 use prettytable::{Cell, Row, Table};
 use rand::{distributions::WeightedIndex, prelude::Distribution, rngs::StdRng, SeedableRng};
 use tensorken::{
+    diffable_ops::Diffable,
     raw_tensor_cpu::CpuRawTensor,
     tensor::{IndexValue, Tensor},
 };
