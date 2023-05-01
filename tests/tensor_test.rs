@@ -1,9 +1,10 @@
 use rand::{rngs::StdRng, SeedableRng};
 use tensorken::{
+    diffable_ops::Diffable,
     raw_tensor::RawTensor,
     raw_tensor_cpu::CpuRawTensor,
     raw_tensor_wgpu::WgpuRawTensor,
-    tensor::{Cpu32, IndexValue, Tensor, Wgpu32},
+    tensor::{Cpu32, IndexValue, Tensor, TensorLike, TensorLikeRef, Wgpu32},
 };
 
 fn assert_tensor_eq<T1: RawTensor<Elem = f32>, T2: RawTensor<Elem = f32>>(
@@ -35,8 +36,12 @@ fn assert_vec_eq(a: &[f32], b: &[f32]) {
 
 // a few functions that are "compile time" tests - to check that the
 // TernsorLike traits are having the right effect.
-fn fun<'t, RT: RawTensor>(t1: &'t Tensor<RT>, t2: &'t Tensor<RT>) -> Tensor<RT> {
-    let r1 = t1.exp();
+fn fun<'t, T>(t1: &'t T, t2: &'t T) -> T
+where
+    T: TensorLike<'t>,
+    &'t T: TensorLikeRef<T>,
+{
+    let r1 = t1.exp(); // DiffTensor ops
     let r2 = t2.log();
     let r3 = t1 + r1; // &T + T
     let r4 = r2 - t2; // T - &T

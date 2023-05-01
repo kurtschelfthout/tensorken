@@ -9,9 +9,75 @@ use rand::Rng;
 use rand_distr::{Distribution, StandardNormal};
 
 use crate::{
-    num::Num, raw_tensor::RawTensor, raw_tensor_cpu::CpuRawTensor, raw_tensor_wgpu::WgpuRawTensor,
-    shape::Shape, tensor_mut::TensorMut,
+    diffable_ops::Diffable, num::Num, raw_tensor::RawTensor, raw_tensor_cpu::CpuRawTensor,
+    raw_tensor_wgpu::WgpuRawTensor, shape::Shape, tensor_mut::TensorMut,
 };
+
+// Blanket implementation to translate from mid-level tensor ops (Diffable) to low-level tensor ops (RawTensor).
+impl<T: Num, TTensor: RawTensor<Elem = T>> Diffable for TTensor {
+    fn zeros_like(&self) -> Self {
+        TTensor::new(&vec![1; self.shape().ndims()], &[T::ZERO]).expand(self.shape())
+    }
+    fn ones_like(&self) -> Self {
+        TTensor::new(&vec![1; self.shape().ndims()], &[T::ONE]).expand(self.shape())
+    }
+
+    fn shape(&self) -> &[usize] {
+        self.shape()
+    }
+
+    fn add(&self, other: &Self) -> Self {
+        self.add(other)
+    }
+
+    fn sub(&self, other: &Self) -> Self {
+        self.sub(other)
+    }
+
+    fn mul(&self, other: &Self) -> Self {
+        self.mul(other)
+    }
+
+    fn div(&self, other: &Self) -> Self {
+        self.div(other)
+    }
+
+    fn pow(&self, other: &Self) -> Self {
+        self.pow(other)
+    }
+
+    fn eq(&self, other: &Self) -> Self {
+        self.eq(other)
+    }
+
+    fn log(&self) -> Self {
+        self.log()
+    }
+
+    fn exp(&self) -> Self {
+        self.exp()
+    }
+
+    fn sum(&self, axes: &[usize]) -> Self {
+        self.sum(axes)
+    }
+
+    fn max(&self, axes: &[usize]) -> Self {
+        self.max(axes)
+    }
+
+    fn reshape(&self, shape: &[usize]) -> Self {
+        self.reshape(shape)
+    }
+
+    fn permute(&self, dims: &[usize]) -> Self {
+        self.permute(dims)
+    }
+
+    fn expand(&self, shape: &[usize]) -> Self {
+        self.expand(shape)
+    }
+}
 
 /// The "high-level" tensor type - the face of the library.
 /// Tensors support arithmetic traits like Add, Sub, Neg to overload mathematical operators.
@@ -90,82 +156,10 @@ impl<T: Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
         Tensor::full(self.0.shape(), value)
     }
 
-    /// Create a new tensor with the same shape as self, but all elements equal to zero.
-    pub fn zeros_like(&self) -> Self {
-        self.constant_like(T::ZERO)
-    }
-
     /// Return the elements of the tensor as a Vec, i.e. on the CPU.
     /// The order of the elements is in increasing order of the last axis, then the second last, etc.
     pub fn ravel(&self) -> Vec<T> {
         self.0.ravel()
-    }
-
-    fn add(&self, other: &Self) -> Self {
-        self.broadcasted_apply(other, |a, b| Tensor(a.0.add(&b.0)), false)
-    }
-
-    fn mul(&self, other: &Self) -> Self {
-        self.broadcasted_apply(other, |a, b| Tensor(a.0.mul(&b.0)), false)
-    }
-
-    fn sub(&self, other: &Self) -> Self {
-        self.broadcasted_apply(other, |a, b| Tensor(a.0.sub(&b.0)), false)
-    }
-
-    fn div(&self, other: &Self) -> Self {
-        self.broadcasted_apply(other, |a, b| Tensor(a.0.div(&b.0)), false)
-    }
-
-    /// Raise self to the power of other, element-wise.
-    pub fn pow(&self, exp: &Self) -> Self {
-        self.broadcasted_apply(exp, |a, b| Tensor(a.0.pow(&b.0)), false)
-    }
-
-    // Return a new tensor with ones where elements are equal, and zero otherwise.
-    pub fn eq(&self, other: &Self) -> Self {
-        self.broadcasted_apply(other, |a, b| Tensor(a.0.eq(&b.0)), false)
-    }
-
-    /// Apply the natural logarithm to each element.
-    pub fn log(&self) -> Self {
-        Tensor(self.0.log())
-    }
-
-    /// Apply exp to each element.
-    pub fn exp(&self) -> Self {
-        Tensor(self.0.exp())
-    }
-
-    /// Reduce to sum along the given axes.
-    /// Keeps the reduced dimensions, but with size 1.
-    pub fn sum(&self, axes: &[usize]) -> Self {
-        Tensor(self.0.sum(axes))
-    }
-
-    /// Reduce to max element along the given axes.
-    /// Keeps the reduced dimensions, but with size 1.
-    pub fn max(&self, axes: &[usize]) -> Self {
-        Tensor(self.0.max(axes))
-    }
-
-    /// Reshape the tensor to the given shape.
-    /// The number of elements must remain the same.
-    /// Compare to numpy's `reshape`.
-    pub fn reshape(&self, shape: &[usize]) -> Self {
-        Tensor(self.0.reshape(shape))
-    }
-
-    /// Changes axes around according to the given permutation.
-    /// Compare to numpy's `transpose`.
-    pub fn permute(&self, dims: &[usize]) -> Self {
-        Tensor(self.0.permute(dims))
-    }
-
-    /// Expand the tensor to the given shape. Only dimensions of length 1 can be expanded.
-    /// Like numpy's `broadcast_to` but simpler - does not add dimensions of size 1.
-    pub fn expand(&self, shape: &[usize]) -> Self {
-        Tensor(self.0.expand(shape))
     }
 
     /// Pad the tensor with zeros according to the given padding.
@@ -179,10 +173,6 @@ impl<T: Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
     /// Needs as many limits as there are dimensions in the tensor.
     pub fn crop(&self, limits: &[(usize, usize)]) -> Self {
         Tensor(self.0.crop(limits))
-    }
-
-    pub fn shape(&self) -> &[usize] {
-        self.0.shape()
     }
 
     pub fn to_tensor_mut(&self) -> TensorMut<T> {
@@ -210,37 +200,118 @@ impl<T: Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
     }
 }
 
+impl<TOps: Diffable> Diffable for Tensor<TOps> {
+    fn add(&self, other: &Self) -> Self {
+        self.broadcasted_apply(other, |a, b| Tensor(a.0.add(&b.0)), false)
+    }
+
+    fn mul(&self, other: &Self) -> Self {
+        self.broadcasted_apply(other, |a, b| Tensor(a.0.mul(&b.0)), false)
+    }
+
+    fn sub(&self, other: &Self) -> Self {
+        self.broadcasted_apply(other, |a, b| Tensor(a.0.sub(&b.0)), false)
+    }
+
+    fn div(&self, other: &Self) -> Self {
+        self.broadcasted_apply(other, |a, b| Tensor(a.0.div(&b.0)), false)
+    }
+
+    /// Raise self to the power of other, element-wise.
+    fn pow(&self, exp: &Self) -> Self {
+        self.broadcasted_apply(exp, |a, b| Tensor(a.0.pow(&b.0)), false)
+    }
+
+    // Return a new tensor with ones where elements are equal, and zero otherwise.
+    fn eq(&self, other: &Self) -> Self {
+        self.broadcasted_apply(other, |a, b| Tensor(a.0.eq(&b.0)), false)
+    }
+
+    /// Apply the natural logarithm to each element.
+    fn log(&self) -> Self {
+        Tensor(self.0.log())
+    }
+
+    /// Apply exp to each element.
+    fn exp(&self) -> Self {
+        Tensor(self.0.exp())
+    }
+
+    /// Reduce to sum along the given axes.
+    /// Keeps the reduced dimensions, but with size 1.
+    fn sum(&self, axes: &[usize]) -> Self {
+        Tensor(self.0.sum(axes))
+    }
+
+    /// Reduce to max element along the given axes.
+    /// Keeps the reduced dimensions, but with size 1.
+    fn max(&self, axes: &[usize]) -> Self {
+        Tensor(self.0.max(axes))
+    }
+
+    /// Reshape the tensor to the given shape.
+    /// The number of elements must remain the same.
+    /// Compare to numpy's `reshape`.
+    fn reshape(&self, shape: &[usize]) -> Self {
+        Tensor(self.0.reshape(shape))
+    }
+
+    /// Changes axes around according to the given permutation.
+    /// Compare to numpy's `transpose`.
+    fn permute(&self, dims: &[usize]) -> Self {
+        Tensor(self.0.permute(dims))
+    }
+
+    /// Expand the tensor to the given shape. Only dimensions of length 1 can be expanded.
+    /// Like numpy's `broadcast_to` but simpler - does not add dimensions of size 1.
+    fn expand(&self, shape: &[usize]) -> Self {
+        Tensor(self.0.expand(shape))
+    }
+
+    fn zeros_like(&self) -> Self {
+        Tensor(self.0.zeros_like())
+    }
+
+    fn ones_like(&self) -> Self {
+        Tensor(self.0.ones_like())
+    }
+
+    fn shape(&self) -> &[usize] {
+        self.0.shape()
+    }
+}
+
 macro_rules! impl_difftensor_tensor {
     ($op_trait:ident, $op_fn:ident) => {
-        impl<T: RawTensor> $op_trait<&Tensor<T>> for &Tensor<T> {
+        impl<T: Diffable> $op_trait<&Tensor<T>> for &Tensor<T> {
             type Output = Tensor<T>;
 
             fn $op_fn(self, rhs: &Tensor<T>) -> Tensor<T> {
-                Tensor::<_>::$op_fn(self, rhs)
+                Diffable::$op_fn(self, rhs)
             }
         }
 
-        impl<T: RawTensor> $op_trait<&Tensor<T>> for Tensor<T> {
+        impl<T: Diffable> $op_trait<&Tensor<T>> for Tensor<T> {
             type Output = Tensor<T>;
 
             fn $op_fn(self, rhs: &Tensor<T>) -> Tensor<T> {
-                Self::$op_fn(&self, rhs)
+                Diffable::$op_fn(&self, rhs)
             }
         }
 
-        impl<T: RawTensor> $op_trait<Tensor<T>> for Tensor<T> {
+        impl<T: Diffable> $op_trait<Tensor<T>> for Tensor<T> {
             type Output = Tensor<T>;
 
             fn $op_fn(self, rhs: Tensor<T>) -> Tensor<T> {
-                Self::$op_fn(&self, &rhs)
+                Diffable::$op_fn(&self, &rhs)
             }
         }
 
-        impl<T: RawTensor> $op_trait<Tensor<T>> for &Tensor<T> {
+        impl<T: Diffable> $op_trait<Tensor<T>> for &Tensor<T> {
             type Output = Tensor<T>;
 
             fn $op_fn(self, rhs: Tensor<T>) -> Tensor<T> {
-                Self::$op_fn(self, &rhs)
+                Diffable::$op_fn(self, &rhs)
             }
         }
     };
@@ -267,7 +338,7 @@ impl<T: RawTensor> Neg for Tensor<T> {
     }
 }
 
-impl<TRawTensor: RawTensor> Tensor<TRawTensor> {
+impl<TRawTensor: Diffable> Tensor<TRawTensor> {
     fn broadcasted_apply(
         &self,
         other: &Self,
@@ -438,4 +509,69 @@ impl<RT: RawTensor, const N: usize> IndexValue<&[usize; N]> for Tensor<RT> {
         let limits = index.iter().map(|&i| (i, i + 1)).collect::<Vec<_>>();
         self.crop(&limits).to_scalar()
     }
+}
+
+/// One of two traits to make it easy to write generic functions over tensors.
+// TODO: find a better name?
+#[allow(clippy::module_name_repetitions)]
+pub trait TensorLike<'a>:
+    'a
+    + Clone
+    + Diffable
+    + Neg<Output = Self>
+    + Add<Output = Self>
+    + Sub<Output = Self>
+    + Div<Output = Self>
+    + Mul<Output = Self>
+    + Add<&'a Self, Output = Self>
+    + Sub<&'a Self, Output = Self>
+    + Div<&'a Self, Output = Self>
+    + Mul<&'a Self, Output = Self>
+{
+}
+
+impl<'a, T> TensorLike<'a> for T where
+    Self: 'a
+        + Clone
+        + Diffable
+        + Neg<Output = Self>
+        + Add<Output = Self>
+        + Sub<Output = Self>
+        + Div<Output = Self>
+        + Mul<Output = Self>
+        + Add<&'a Self, Output = Self>
+        + Sub<&'a Self, Output = Self>
+        + Div<&'a Self, Output = Self>
+        + Mul<&'a Self, Output = Self>
+{
+}
+
+/// One of two traits to make it easy to write generic functions over tensors,
+/// that can be differentiated.
+#[allow(clippy::module_name_repetitions)]
+pub trait TensorLikeRef<T>:
+    Sized
+    + Neg<Output = T>
+    + Add<Output = T>
+    + Sub<Output = T>
+    + Div<Output = T>
+    + Mul<Output = T>
+    + Add<T, Output = T>
+    + Sub<T, Output = T>
+    + Div<T, Output = T>
+    + Mul<T, Output = T>
+{
+}
+
+impl<'a, T> TensorLikeRef<T> for &'a T where
+    Self: Neg<Output = T>
+        + Add<Output = T>
+        + Sub<Output = T>
+        + Div<Output = T>
+        + Mul<Output = T>
+        + Add<T, Output = T>
+        + Sub<T, Output = T>
+        + Div<T, Output = T>
+        + Mul<T, Output = T>
+{
 }
