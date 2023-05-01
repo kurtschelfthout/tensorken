@@ -10,10 +10,8 @@ use bytemuck::{NoUninit, Pod};
 use wgpu::util::DeviceExt;
 
 use crate::{
-    num::Num,
-    raw_tensor::RawTensor,
-    raw_tensor_cpu::CpuRawTensor,
-    shape_strider::{Shape, ShapeStrider},
+    num::Num, raw_tensor::RawTensor, raw_tensor_cpu::CpuRawTensor, shape::Shape,
+    shape_strider::ShapeStrider,
 };
 
 // Misc WGSL notes/tips:
@@ -828,7 +826,7 @@ mod tests {
 
     #[test]
     fn test_expand() {
-        let t = WgpuRawTensor::new(&[1], &[42.0], get_wgpu_device());
+        let t = WgpuRawTensor::new(&[1, 1], &[42.0], get_wgpu_device());
         let t = t.expand(&[5, 4]);
 
         assert_eq!(t.shape(), &[5, 4]);

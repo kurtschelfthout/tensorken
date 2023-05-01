@@ -6,10 +6,7 @@ use crate::{num::Num, raw_tensor_cpu::CpuRawTensor};
 /// As such it can be used to implement a new type of accelerator, but can also support
 /// optimizations like fusing.
 /// Think of `RawTensor` as the DSL for accelerators, in final style.
-pub trait RawTensor
-where
-    Self: Sized,
-{
+pub trait RawTensor {
     // Note: Elem is an associated type, not a generic parameter, for rather subtle reasons.
     // We often want to implement traits for e.g. Tensor<impl RawTensor> without having to mention
     // the element type, as the element type is not restricted by the implementation. See e.g. Add, Neg on Tensor:

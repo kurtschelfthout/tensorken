@@ -1,35 +1,4 @@
-/// A trait for types that can be used as shapes for tensors,
-/// with some convenience methods for working with shapes.
-pub trait Shape {
-    /// Returns the shape as a slice.
-    fn shape(&self) -> &[usize];
-
-    /// Returns the number of dimensions.
-    fn ndims(&self) -> usize {
-        self.shape().len()
-    }
-
-    /// Returns the total number of elements.
-    fn size(&self) -> usize {
-        if self.ndims() == 0 {
-            0
-        } else {
-            self.shape().iter().product()
-        }
-    }
-}
-
-impl Shape for &[usize] {
-    fn shape(&self) -> &[usize] {
-        self
-    }
-}
-
-impl Shape for Vec<usize> {
-    fn shape(&self) -> &[usize] {
-        self
-    }
-}
+use crate::shape::Shape;
 
 impl Shape for ShapeStrider {
     fn shape(&self) -> &[usize] {
@@ -79,6 +48,32 @@ impl ShapeStrider {
         &self.strides
     }
 
+    pub(crate) fn offset(&self) -> usize {
+        self.offset
+    }
+
+    pub(crate) fn buffer_index(&self, index: &[usize]) -> usize {
+        self.offset
+            + index
+                .iter()
+                .zip(self.strides.iter())
+                .map(|(&i, &s)| i * s)
+                .sum::<usize>()
+    }
+
+    pub(crate) fn is_contiguous(&self) -> bool {
+        self.strides == Self::contiguous(self.shape()).strides()
+    }
+
+    fn is_valid_index(&self, index: &[usize]) -> bool {
+        !self.shape.is_empty() && index.iter().zip(self.shape.iter()).all(|(i, s)| i < s)
+    }
+
+    /// Iterate over tensor indexes, in increasing order.
+    pub(crate) fn iter_tensor_index(&self) -> TensorIndexIterator {
+        TensorIndexIterator::new(self)
+    }
+
     pub(crate) fn validate_can_zip(&self, other: &Self) -> Result<(), String> {
         if self.shape != other.shape {
             return Err(format!(
@@ -98,14 +93,6 @@ impl ShapeStrider {
             ));
         }
         Ok(())
-    }
-
-    pub(crate) fn buffer_index(&self, index: &[usize]) -> usize {
-        let mut result = self.offset;
-        for (i, &stride) in self.strides.iter().enumerate() {
-            result += index[i] * stride;
-        }
-        result
     }
 
     /// Remove all dimensions of length 1.
@@ -141,17 +128,12 @@ impl ShapeStrider {
             strides[axis] = 0;
         }
         let reducer = Self {
-            shape: shape.clone(),
+            shape,
             strides,
-            offset: self.offset,
+            offset: 0,
         };
 
         (result, reducer)
-    }
-
-    /// Iterate over tensor indexes.
-    pub(crate) fn iter_tensor_index(&self) -> TensorIndexIterator {
-        TensorIndexIterator::new(self)
     }
 
     pub(crate) fn validate_can_reshape(&self, shape: &[usize]) -> Result<(), String> {
@@ -285,10 +267,6 @@ impl ShapeStrider {
                 ));
             }
         }
-        for s in shape.iter().take(ndims - self.shape.ndims()) {
-            new_shape.push(*s);
-            new_strides.push(0);
-        }
         new_shape.reverse();
         new_strides.reverse();
         Ok(Self {
@@ -296,14 +274,6 @@ impl ShapeStrider {
             strides: new_strides,
             offset: self.offset,
         })
-    }
-
-    pub(crate) fn is_contiguous(&self) -> bool {
-        self.strides == Self::contiguous(self.shape()).strides()
-    }
-
-    fn is_valid_index(&self, index: &[usize]) -> bool {
-        !self.shape.is_empty() && index.iter().zip(self.shape.iter()).all(|(i, s)| i < s)
     }
 
     pub(crate) fn pad(&self, padding: &[(usize, usize)]) -> Self {
@@ -349,25 +319,16 @@ impl ShapeStrider {
     }
 
     pub(crate) fn crop(&self, limits: &[(usize, usize)]) -> ShapeStrider {
-        let offset = self.offset
-            + limits
-                .iter()
-                .zip(self.strides.iter())
-                .map(|(&(start, _), &stride)| start * stride)
-                .sum::<usize>();
-        let mut new_shape = self.shape.clone();
-        for (i, &(start, end)) in limits.iter().enumerate() {
-            new_shape[i] = end - start;
-        }
+        let offset = self.buffer_index(&limits.iter().map(|&(start, _)| start).collect::<Vec<_>>());
+        let shape = limits
+            .iter()
+            .map(|&(start, end)| end - start)
+            .collect::<Vec<_>>();
         Self {
-            shape: new_shape,
+            shape,
             strides: self.strides.clone(),
             offset,
         }
-    }
-
-    pub(crate) fn offset(&self) -> usize {
-        self.offset
     }
 }
 

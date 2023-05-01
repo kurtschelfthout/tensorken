@@ -34,7 +34,7 @@ fn assert_vec_eq(a: &[f32], b: &[f32]) {
 
 // a few functions that are "compile time" tests - to check that the
 // TernsorLike traits are having the right effect.
-fn fun<'t, T: RawTensor>(t1: &'t Tensor<T>, t2: &'t Tensor<T>) -> Tensor<T> {
+fn fun<'t, RT: RawTensor>(t1: &'t Tensor<RT>, t2: &'t Tensor<RT>) -> Tensor<RT> {
     let r1 = t1.exp();
     let r2 = t2.log();
     let r3 = t1 + r1; // &T + T
@@ -182,7 +182,7 @@ fn movement_ops<T: RawTensor<Elem = f32>>(t1: &Tensor<T>) {
     assert_eq!(&[3, 2], r2.shape());
     assert_eq!(r2.ravel(), vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0]);
 
-    let r3 = t1.expand(&[2, 2, 3]);
+    let r3 = t1.reshape(&[1, 2, 3]).expand(&[2, 2, 3]);
     assert_eq!(&[2, 2, 3], r3.shape());
 }
 

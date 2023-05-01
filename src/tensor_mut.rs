@@ -1,10 +1,7 @@
 use std::ops::{Index, IndexMut};
 
 use crate::{
-    num::Num,
-    raw_tensor::RawTensor,
-    shape_strider::{Shape, ShapeStrider},
-    tensor::Tensor,
+    num::Num, raw_tensor::RawTensor, shape::Shape, shape_strider::ShapeStrider, tensor::Tensor,
 };
 
 // Implementation note:

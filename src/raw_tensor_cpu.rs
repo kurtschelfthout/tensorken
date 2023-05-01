@@ -4,7 +4,8 @@ use std::rc::Rc;
 
 use crate::num::Num;
 use crate::raw_tensor::RawTensor;
-use crate::shape_strider::{Shape, ShapeStrider, TensorIndexIterator};
+use crate::shape::Shape;
+use crate::shape_strider::{ShapeStrider, TensorIndexIterator};
 
 /// Implementation of `RawTensor` for CPU.
 /// The "numpy" part of the tensor library.
@@ -352,25 +353,25 @@ mod tests {
     #[test]
     fn test_expand_scalar() {
         let t = CpuRawTensor::new_into(&[1], vec![42.0]);
-        let t = t.expand(&[5, 4]);
+        let t = t.expand(&[4]);
 
-        assert_eq!(t.shape(), &[5, 4]);
-        assert_eq!(t.strides(), &[0, 0]);
-        assert_eq!(t.ravel(), repeat(42.0).take(20).collect::<Vec<_>>());
+        assert_eq!(t.shape(), &[4]);
+        assert_eq!(t.strides(), &[0]);
+        assert_eq!(t.ravel(), repeat(42.0).take(4).collect::<Vec<_>>());
     }
 
     #[test]
     fn test_expand_3x1() {
         let t = CpuRawTensor::new_into(&[3, 1], make_vec(3));
-        let t = t.expand(&[15, 3, 5]);
+        let t = t.expand(&[3, 5]);
 
-        assert_eq!(t.shape(), &[15, 3, 5]);
-        assert_eq!(t.strides(), &[0, 1, 0]);
+        assert_eq!(t.shape(), &[3, 5]);
+        assert_eq!(t.strides(), &[1, 0]);
     }
 
     #[test]
-    fn test_expand_2x3x4() {
-        let t = CpuRawTensor::new_into(&[2, 3, 4], make_vec(24));
+    fn test_expand_1x2x3x4() {
+        let t = CpuRawTensor::new_into(&[1, 2, 3, 4], make_vec(24));
         let t = t.expand(&[5, 2, 3, 4]);
 
         assert_eq!(t.shape(), &[5, 2, 3, 4]);
@@ -427,7 +428,7 @@ mod tests {
 
     #[test]
     fn test_binary_ops_different_strides() {
-        let t1 = CpuRawTensor::new_into(&[1], vec![20.0]).expand(&[2, 3]);
+        let t1 = CpuRawTensor::new_into(&[1, 1], vec![20.0]).expand(&[2, 3]);
         let t2 = CpuRawTensor::new_into(&[2, 3], make_vec(6));
         let t = t1.add(&t2);
         assert_eq!(t.shape(), &[2, 3]);

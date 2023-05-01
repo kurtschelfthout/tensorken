@@ -7,7 +7,7 @@ use prettytable::{format, Cell, Table};
 
 use crate::{
     num::Num, raw_tensor::RawTensor, raw_tensor_cpu::CpuRawTensor, raw_tensor_wgpu::WgpuRawTensor,
-    shape_strider::Shape, tensor_mut::TensorMut,
+    shape::Shape, tensor_mut::TensorMut,
 };
 
 /// The "high-level" tensor type - the face of the library.
