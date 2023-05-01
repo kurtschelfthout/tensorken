@@ -23,3 +23,11 @@ Some cool stuff I looked at while figuring out how to build this.
 - [MiniTorch](https://minitorch.github.io/module0/module0/)
 - [JAX](https://jax.readthedocs.io/en/latest/autodidax.html#jax-core-machinery)
 - [DiffSharp](https://diffsharp.github.io/)
+
+## Getting started
+
+Just clone the repo and run `cargo run --example tour`. Then explore the code - it's not big!
+
+Emerging posts with more explanation:
+
+- [Fun and Hackable Tensors in Rust, From Scratch](https://getcode.substack.com/p/fun-and-hackable-tensors-in-rust?sd=pf)
