@@ -111,7 +111,7 @@ impl<T: PartialEq> PartialEq for Reverse<'_, '_, T> {
     }
 }
 
-impl<'t, T: Diffable + Clone> Reverse<'_, 't, T> {
+impl<'t, T: Diffable> Reverse<'_, 't, T> {
     fn unary<O: UnaryOp<T, Args = TArgs> + 't, TArgs>(&self, args: &TArgs) -> Self {
         let (op, primal) = O::f(self.primal(), args);
         match self {
@@ -209,62 +209,18 @@ impl<T: Clone + Diffable> Diffable for Reverse<'_, '_, T> {
     }
 }
 
-macro_rules! impl_difftensor_reverse {
-    ($op_trait:ident, $op_fn:ident) => {
-        impl<'a, 't, T: Diffable + Clone> $op_trait for Reverse<'a, 't, T> {
-            type Output = Self;
+crate::tensor::impl_bin_op!(Add, add, Reverse<'a, 't, T: Diffable + Clone>);
+crate::tensor::impl_bin_op!(Sub, sub, Reverse<'a, 't, T: Diffable + Clone>);
+crate::tensor::impl_bin_op!(Mul, mul, Reverse<'a, 't, T: Diffable + Clone>);
+crate::tensor::impl_bin_op!(Div, div, Reverse<'a, 't, T: Diffable + Clone>);
 
-            fn $op_fn(self, rhs: Self) -> Self::Output {
-                Diffable::$op_fn(&self, &rhs)
-            }
-        }
-
-        impl<'a, 't, T: Diffable + Clone> $op_trait for &'a Reverse<'a, 't, T> {
-            type Output = Reverse<'a, 't, T>;
-
-            fn $op_fn(self, rhs: Self) -> Self::Output {
-                Diffable::$op_fn(self, rhs)
-            }
-        }
-
-        impl<'a, 't, T: Diffable + Clone> $op_trait<&'a Reverse<'a, 't, T>> for Reverse<'a, 't, T> {
-            type Output = Self;
-
-            fn $op_fn(self, rhs: &'a Reverse<'a, 't, T>) -> Self::Output {
-                Diffable::$op_fn(&self, rhs)
-            }
-        }
-
-        impl<'a, 't, T: Diffable + Clone> $op_trait<Reverse<'a, 't, T>> for &'a Reverse<'a, 't, T> {
-            type Output = Reverse<'a, 't, T>;
-
-            fn $op_fn(self, rhs: Reverse<'a, 't, T>) -> Self::Output {
-                Diffable::$op_fn(self, &rhs)
-            }
-        }
-    };
-}
-
-impl_difftensor_reverse!(Add, add);
-impl_difftensor_reverse!(Sub, sub);
-impl_difftensor_reverse!(Mul, mul);
-impl_difftensor_reverse!(Div, div);
-
-impl<'a, 't, T: Clone + Diffable> Neg for &'a Reverse<'a, 't, T> {
-    type Output = Reverse<'a, 't, T>;
-
-    fn neg(self) -> Self::Output {
-        Reverse::lift(self.primal().zeros_like()).sub(self)
+impl<'a, 't, T: Clone + Diffable> Reverse<'a, 't, T> {
+    fn neg(&self) -> Self {
+        self.zeros_like().sub(self)
     }
 }
 
-impl<'a, 't, T: Clone + Diffable> Neg for Reverse<'a, 't, T> {
-    type Output = Reverse<'a, 't, T>;
-
-    fn neg(self) -> Self::Output {
-        Reverse::lift(self.primal().zeros_like()).sub(self)
-    }
-}
+crate::tensor::impl_un_op!(Neg, neg, Reverse<'a, 't, T: Diffable + Clone>);
 
 #[derive(Debug)]
 struct Grad<T> {

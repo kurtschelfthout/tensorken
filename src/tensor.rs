@@ -13,7 +13,7 @@ use crate::{
     raw_tensor_wgpu::WgpuRawTensor, shape::Shape, tensor_mut::TensorMut,
 };
 
-// Blanket implementation to translate from mid-level tensor ops (Diffable) to low-level tensor ops (RawTensor).
+// Blanket implementation to translate from diffable tensor ops (Diffable) to low-level tensor ops (RawTensor).
 impl<T: Num, TTensor: RawTensor<Elem = T>> Diffable for TTensor {
     fn zeros_like(&self) -> Self {
         TTensor::new(&vec![1; self.shape().ndims()], &[T::ZERO]).expand(self.shape())
@@ -281,62 +281,82 @@ impl<TOps: Diffable> Diffable for Tensor<TOps> {
     }
 }
 
-macro_rules! impl_difftensor_tensor {
-    ($op_trait:ident, $op_fn:ident) => {
-        impl<T: Diffable> $op_trait<&Tensor<T>> for &Tensor<T> {
-            type Output = Tensor<T>;
+macro_rules! impl_bin_op {
+    // Lots of complexity to deal with optional lifetimes, parameters and bounds.
+    // See https://stackoverflow.com/a/61189128/72211 for some explanation.
+    // Add          , add         , Reverse,    , <      'a or T :  B  + C                       >
+    ($op_trait:ident, $op_fn:ident, $name:ident $(< $( $ps:tt $( : $pb:tt $(+ $pbb:tt )* )?  ),+ >)? ) => {
+        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait for $name$(< $( $ps ),+ >)? {
+            type Output = Self;
 
-            fn $op_fn(self, rhs: &Tensor<T>) -> Tensor<T> {
-                Diffable::$op_fn(self, rhs)
-            }
-        }
-
-        impl<T: Diffable> $op_trait<&Tensor<T>> for Tensor<T> {
-            type Output = Tensor<T>;
-
-            fn $op_fn(self, rhs: &Tensor<T>) -> Tensor<T> {
-                Diffable::$op_fn(&self, rhs)
-            }
-        }
-
-        impl<T: Diffable> $op_trait<Tensor<T>> for Tensor<T> {
-            type Output = Tensor<T>;
-
-            fn $op_fn(self, rhs: Tensor<T>) -> Tensor<T> {
+            fn $op_fn(self, rhs: Self) -> Self::Output {
                 Diffable::$op_fn(&self, &rhs)
             }
         }
 
-        impl<T: Diffable> $op_trait<Tensor<T>> for &Tensor<T> {
-            type Output = Tensor<T>;
+        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait for &$name$(< $( $ps ),+ >)? {
+            type Output = $name$(< $( $ps ),+ >)?;
 
-            fn $op_fn(self, rhs: Tensor<T>) -> Tensor<T> {
+            fn $op_fn(self, rhs: Self) -> Self::Output {
+                Diffable::$op_fn(self, rhs)
+            }
+        }
+
+        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait<&$name$(< $( $ps ),+ >)?> for $name$(< $( $ps ),+ >)? {
+            type Output = Self;
+
+            fn $op_fn(self, rhs: &$name$(< $( $ps ),+ >)?) -> Self::Output {
+                Diffable::$op_fn(&self, rhs)
+            }
+        }
+
+        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait<$name$(< $( $ps ),+ >)?> for &$name$(< $( $ps ),+ >)? {
+            type Output = $name$(< $( $ps ),+ >)?;
+
+            fn $op_fn(self, rhs: $name$(< $( $ps ),+ >)?) -> Self::Output {
                 Diffable::$op_fn(self, &rhs)
             }
         }
     };
 }
 
-impl_difftensor_tensor!(Add, add);
-impl_difftensor_tensor!(Sub, sub);
-impl_difftensor_tensor!(Mul, mul);
-impl_difftensor_tensor!(Div, div);
+pub(crate) use impl_bin_op;
 
-impl<T: RawTensor> Neg for &Tensor<T> {
-    type Output = Tensor<T>;
+impl_bin_op!(Add, add, Tensor<T: Diffable>);
+impl_bin_op!(Sub, sub, Tensor<T: Diffable>);
+impl_bin_op!(Mul, mul, Tensor<T: Diffable>);
+impl_bin_op!(Div, div, Tensor<T: Diffable>);
 
-    fn neg(self) -> Tensor<T> {
+impl<T: Diffable> Tensor<T> {
+    fn neg(&self) -> Self {
         self.zeros_like().sub(self)
     }
 }
 
-impl<T: RawTensor> Neg for Tensor<T> {
-    type Output = Tensor<T>;
+macro_rules! impl_un_op {
+    ($op_trait:ident, $op_fn:ident, $name:ident $(< $( $ps:tt $( : $pb:tt $(+ $pbb:tt )* )?  ),+ >)? ) => {
 
-    fn neg(self) -> Tensor<T> {
-        self.zeros_like().sub(self)
+        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait for $name$(< $( $ps ),+ >)? {
+            type Output = Self;
+
+            fn $op_fn(self) -> Self::Output {
+                $name::$(< $( $ps ),+ >)?::$op_fn(&self)
+            }
+        }
+
+        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait for &$name$(< $( $ps ),+ >)? {
+            type Output = $name$(< $( $ps ),+ >)?;
+
+            fn $op_fn(self) -> Self::Output {
+                $name::$(< $( $ps ),+ >)?::$op_fn(self)
+            }
+        }
     }
 }
+
+pub(crate) use impl_un_op;
+
+impl_un_op!(Neg, neg, Tensor<T: Diffable>);
 
 impl<TRawTensor: Diffable> Tensor<TRawTensor> {
     fn broadcasted_apply(
