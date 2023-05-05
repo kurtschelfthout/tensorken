@@ -378,7 +378,7 @@ fn wrap_slice<'a, 't, TTensor: Clone>(
 #[allow(dead_code)]
 pub fn vjp1<'t, TTensor: Diffable + Clone + 't, F>(f: F, at: &TTensor) -> (TTensor, TTensor)
 where
-    for<'a> F: FnOnce(&'a Reverse<'a, 't, TTensor>) -> Reverse<'a, 't, TTensor>,
+    for<'a> F: Fn(&'a Reverse<'a, 't, TTensor>) -> Reverse<'a, 't, TTensor>,
 {
     let trace = Trace::new();
 
@@ -397,7 +397,7 @@ where
 #[allow(dead_code)]
 pub fn vjpn<'t, TTensor: Diffable + Clone + 't, F>(f: F, at: &[&TTensor]) -> (TTensor, Vec<TTensor>)
 where
-    for<'a> F: FnOnce(&'a [&'a Reverse<'a, 't, TTensor>]) -> Reverse<'a, 't, TTensor>,
+    for<'a> F: Fn(&'a [&'a Reverse<'a, 't, TTensor>]) -> Reverse<'a, 't, TTensor>,
 {
     let trace = Trace::new();
 
@@ -687,7 +687,7 @@ mod tests {
         );
         test_df_2::<RT, _, _, _, _>(
             |a, b| a.pow(b),
-            |a, b| a.pow(b),
+            Diffable::pow,
             |a, b| b * a.pow(&(b - b.ones_like())),
             |a, b| a.pow(b) * a.log(),
         );
@@ -700,7 +700,7 @@ mod tests {
     }
 
     fn do_test_log<RT: RawTensor<Elem = f32> + Clone + Debug + 'static>() {
-        test_df::<RT, _, _, _>(|a| a.log(), |a| a.ones_like() / a, |a| a.log());
+        test_df::<RT, _, _, _>(|a| a.log(), |a| a.ones_like() / a, Diffable::log);
         test_ddf::<RT, _, _, _>(
             |a| a.log(),
             |a| -a.ones_like() / (a * a),
@@ -715,8 +715,8 @@ mod tests {
     }
 
     fn do_test_exp<RT: RawTensor<Elem = f32> + Clone + Debug>() {
-        test_df::<RT, _, _, _>(|a| a.exp(), |a| a.exp(), |a| a.exp());
-        test_ddf::<RT, _, _, _>(|a| a.exp(), |a| a.exp(), |a| a.exp());
+        test_df::<RT, _, _, _>(|a| a.exp(), Diffable::exp, Diffable::exp);
+        test_ddf::<RT, _, _, _>(|a| a.exp(), Diffable::exp, Diffable::exp);
     }
 
     fn all_axes(shape: &[usize]) -> Vec<usize> {
