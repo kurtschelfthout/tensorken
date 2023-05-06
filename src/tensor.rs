@@ -12,15 +12,11 @@ use crate::{
 
 // Blanket implementation to translate from diffable tensor ops (Diffable) to low-level tensor ops (RawTensor).
 impl<T: Num, TTensor: RawTensor<Elem = T>> Diffable for TTensor {
-    fn zeros_like(&self) -> Self {
-        TTensor::new(&vec![1; self.shape().ndims()], &[T::ZERO]).expand(self.shape())
+    fn log(&self) -> Self {
+        self.log()
     }
-    fn ones_like(&self) -> Self {
-        TTensor::new(&vec![1; self.shape().ndims()], &[T::ONE]).expand(self.shape())
-    }
-
-    fn shape(&self) -> &[usize] {
-        self.shape()
+    fn exp(&self) -> Self {
+        self.exp()
     }
 
     fn add(&self, other: &Self) -> Self {
@@ -47,14 +43,6 @@ impl<T: Num, TTensor: RawTensor<Elem = T>> Diffable for TTensor {
         self.eq(other)
     }
 
-    fn log(&self) -> Self {
-        self.log()
-    }
-
-    fn exp(&self) -> Self {
-        self.exp()
-    }
-
     fn sum(&self, axes: &[usize]) -> Self {
         self.sum(axes)
     }
@@ -73,6 +61,26 @@ impl<T: Num, TTensor: RawTensor<Elem = T>> Diffable for TTensor {
 
     fn expand(&self, shape: &[usize]) -> Self {
         self.expand(shape)
+    }
+
+    fn pad(&self, padding: &[(usize, usize)]) -> Self {
+        self.pad(padding)
+    }
+
+    fn crop(&self, limits: &[(usize, usize)]) -> Self {
+        self.crop(limits)
+    }
+
+    fn zeros_like(&self) -> Self {
+        TTensor::new(&vec![1; self.shape().ndims()], &[T::ZERO]).expand(self.shape())
+    }
+
+    fn ones_like(&self) -> Self {
+        TTensor::new(&vec![1; self.shape().ndims()], &[T::ONE]).expand(self.shape())
+    }
+
+    fn shape(&self) -> &[usize] {
+        self.shape()
     }
 }
 
@@ -175,16 +183,26 @@ impl<T: Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
 }
 
 impl<TOps: Diffable> Diffable for Tensor<TOps> {
+    /// Apply the natural logarithm to each element.
+    fn log(&self) -> Self {
+        Tensor(self.0.log())
+    }
+
+    /// Apply exp to each element.
+    fn exp(&self) -> Self {
+        Tensor(self.0.exp())
+    }
+
     fn add(&self, other: &Self) -> Self {
         self.broadcasted_apply(other, |a, b| Tensor(a.0.add(&b.0)), false)
     }
 
-    fn mul(&self, other: &Self) -> Self {
-        self.broadcasted_apply(other, |a, b| Tensor(a.0.mul(&b.0)), false)
-    }
-
     fn sub(&self, other: &Self) -> Self {
         self.broadcasted_apply(other, |a, b| Tensor(a.0.sub(&b.0)), false)
+    }
+
+    fn mul(&self, other: &Self) -> Self {
+        self.broadcasted_apply(other, |a, b| Tensor(a.0.mul(&b.0)), false)
     }
 
     fn div(&self, other: &Self) -> Self {
@@ -199,16 +217,6 @@ impl<TOps: Diffable> Diffable for Tensor<TOps> {
     // Return a new tensor with ones where elements are equal, and zero otherwise.
     fn eq(&self, other: &Self) -> Self {
         self.broadcasted_apply(other, |a, b| Tensor(a.0.eq(&b.0)), false)
-    }
-
-    /// Apply the natural logarithm to each element.
-    fn log(&self) -> Self {
-        Tensor(self.0.log())
-    }
-
-    /// Apply exp to each element.
-    fn exp(&self) -> Self {
-        Tensor(self.0.exp())
     }
 
     /// Reduce to sum along the given axes.
@@ -240,6 +248,14 @@ impl<TOps: Diffable> Diffable for Tensor<TOps> {
     /// Like numpy's `broadcast_to` but simpler - does not add dimensions of size 1.
     fn expand(&self, shape: &[usize]) -> Self {
         Tensor(self.0.expand(shape))
+    }
+
+    fn pad(&self, padding: &[(usize, usize)]) -> Self {
+        Tensor(self.0.pad(padding))
+    }
+
+    fn crop(&self, limits: &[(usize, usize)]) -> Self {
+        Tensor(self.0.crop(limits))
     }
 
     fn zeros_like(&self) -> Self {
