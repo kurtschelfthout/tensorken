@@ -1,6 +1,4 @@
-use tensorken::diffable_ops::Diffable;
-use tensorken::raw_tensor_cpu::CpuRawTensor;
-use tensorken::tensor::{Cpu32, IndexValue, Tensor};
+use tensorken::{Cpu32, CpuRawTensor, Diffable, IndexValue, Tensor};
 
 /// A macro to print the result of an expression and the expression itself.
 macro_rules! do_example {
