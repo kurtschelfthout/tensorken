@@ -1,10 +1,7 @@
 use rand::{rngs::StdRng, SeedableRng};
 use tensorken::{
-    diffable_ops::Diffable,
-    raw_tensor::RawTensor,
-    raw_tensor_cpu::CpuRawTensor,
-    raw_tensor_wgpu::WgpuRawTensor,
-    tensor::{Cpu32, IndexValue, Tensor, TensorLike, TensorLikeRef, Wgpu32},
+    CpuRawTensor, Diffable, RawTensor, WgpuRawTensor,
+    {Cpu32, IndexValue, Tensor, TensorLike, TensorLikeRef, Wgpu32},
 };
 
 fn assert_tensor_eq<T1: RawTensor<Elem = f32>, T2: RawTensor<Elem = f32>>(

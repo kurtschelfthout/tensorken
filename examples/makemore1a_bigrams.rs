@@ -11,11 +11,7 @@ use std::{
 
 use prettytable::{Cell, Row, Table};
 use rand::{distributions::WeightedIndex, prelude::Distribution, rngs::StdRng, SeedableRng};
-use tensorken::{
-    diffable_ops::Diffable,
-    raw_tensor_cpu::CpuRawTensor,
-    tensor::{IndexValue, Tensor},
-};
+use tensorken::{CpuRawTensor, Diffable, IndexValue, Tensor};
 
 // This example shows the first half of the first of Karpathy's from zero-to-hero tutorials on makemomre.
 // It builds a bigram, character-level language model from a set of names.

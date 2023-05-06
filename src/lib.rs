@@ -4,13 +4,23 @@
 #![allow(clippy::redundant_closure_for_method_calls)]
 
 mod ad_reverse;
-pub mod diffable_ops;
+mod diffable_ops;
 mod num;
-pub mod raw_tensor;
-pub mod raw_tensor_cpu;
-pub mod raw_tensor_wgpu;
-pub mod shape;
+mod raw_tensor;
+mod raw_tensor_cpu;
+mod raw_tensor_wgpu;
+mod shape;
 mod shape_strider;
 pub mod tensor;
+mod tensor;
 pub mod tensor_mut;
+mod tensor_mut;
 mod wgpu_context;
+
+pub use ad_reverse::{vjp1, vjpn, Reverse};
+pub use diffable_ops::Diffable;
+pub use raw_tensor::RawTensor;
+pub use raw_tensor_cpu::CpuRawTensor;
+pub use raw_tensor_wgpu::WgpuRawTensor;
+pub use shape::Shape;
+pub use tensor::{Cpu32, IndexValue, Tensor, TensorLike, TensorLikeRef, Wgpu32};
