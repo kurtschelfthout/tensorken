@@ -5,9 +5,13 @@ use std::{
     ptr,
 };
 
-use crate::diffable_ops::{
-    AddOp, BinaryOp, BinaryRevOp, CropOp, Diffable, DivOp, EqOp, ExpOp, ExpandOp, LogOp, MaxOp,
-    MulOp, PadOp, PermuteOp, PowOp, ReshapeOp, SubOp, SumOp, UnaryOp, UnaryRevOp,
+use crate::{
+    ad_reverse_ops::{
+        AddOp, BinaryOp, BinaryRevOp, CropOp, DivOp, EqOp, ExpOp, ExpandOp, LogOp, MaxOp, MulOp,
+        PadOp, PermuteOp, PowOp, ReshapeOp, SubOp, SumOp, UnaryOp, UnaryRevOp,
+    },
+    diffable::DiffableExt,
+    Diffable,
 };
 
 /// Reverse AD implementation.
@@ -93,12 +97,6 @@ impl<T: Debug> Debug for Reverse<'_, '_, T> {
             Reverse::Lift(x) => write!(f, "Lift({x:?})"),
             Reverse::Reverse(_, x, i) => write!(f, "Reverse(_, {x:?}, {i})"),
         }
-    }
-}
-
-impl<T: Default> Default for Reverse<'_, '_, T> {
-    fn default() -> Self {
-        Reverse::Lift(T::default())
     }
 }
 
@@ -218,18 +216,12 @@ impl<T: Clone + Diffable> Diffable for Reverse<'_, '_, T> {
     }
 }
 
-crate::tensor::impl_bin_op!(Add, add, Reverse<'a, 't, T: Diffable + Clone>);
-crate::tensor::impl_bin_op!(Sub, sub, Reverse<'a, 't, T: Diffable + Clone>);
-crate::tensor::impl_bin_op!(Mul, mul, Reverse<'a, 't, T: Diffable + Clone>);
-crate::tensor::impl_bin_op!(Div, div, Reverse<'a, 't, T: Diffable + Clone>);
+crate::math_macros::impl_bin_op!(Add, add, Reverse<'a, 't, T: Diffable + Clone>);
+crate::math_macros::impl_bin_op!(Sub, sub, Reverse<'a, 't, T: Diffable + Clone>);
+crate::math_macros::impl_bin_op!(Mul, mul, Reverse<'a, 't, T: Diffable + Clone>);
+crate::math_macros::impl_bin_op!(Div, div, Reverse<'a, 't, T: Diffable + Clone>);
 
-impl<'a, 't, T: Clone + Diffable> Reverse<'a, 't, T> {
-    fn neg(&self) -> Self {
-        self.zeros_like().sub(self)
-    }
-}
-
-crate::tensor::impl_un_op!(Neg, neg, Reverse<'a, 't, T: Diffable + Clone>);
+crate::math_macros::impl_un_op!(Neg, neg, Reverse<'a, 't, T: Diffable + Clone>);
 
 #[derive(Debug)]
 struct Grad<T> {
