@@ -1,6 +1,6 @@
 use rand::{rngs::StdRng, SeedableRng};
 use tensorken::{
-    CpuRawTensor, Diffable, RawTensor, WgpuRawTensor,
+    CpuRawTensor, Diffable, DiffableExt, RawTensor, WgpuRawTensor,
     {Cpu32, IndexValue, Tensor, TensorLike, TensorLikeRef, Wgpu32},
 };
 

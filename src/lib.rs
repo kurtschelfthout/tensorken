@@ -4,7 +4,9 @@
 #![allow(clippy::redundant_closure_for_method_calls)]
 
 mod ad_reverse;
-mod diffable_ops;
+mod ad_reverse_ops;
+mod diffable;
+mod math_macros;
 mod num;
 mod raw_tensor;
 mod raw_tensor_cpu;
@@ -18,7 +20,7 @@ mod tensor_mut;
 mod wgpu_context;
 
 pub use ad_reverse::{vjp1, vjpn, Reverse};
-pub use diffable_ops::Diffable;
+pub use diffable::{Diffable, DiffableExt};
 pub use raw_tensor::RawTensor;
 pub use raw_tensor_cpu::CpuRawTensor;
 pub use raw_tensor_wgpu::WgpuRawTensor;

@@ -9,8 +9,13 @@ use rand::Rng;
 use rand_distr::{Distribution, StandardNormal};
 
 use crate::{
-    diffable_ops::Diffable, num::Num, raw_tensor::RawTensor, raw_tensor_cpu::CpuRawTensor,
-    raw_tensor_wgpu::WgpuRawTensor, shape::Shape, tensor_mut::TensorMut,
+    diffable::{Diffable, DiffableExt},
+    num::Num,
+    raw_tensor::RawTensor,
+    raw_tensor_cpu::CpuRawTensor,
+    raw_tensor_wgpu::WgpuRawTensor,
+    shape::Shape,
+    tensor_mut::TensorMut,
 };
 
 // Blanket implementation to translate from diffable tensor ops (Diffable) to low-level tensor ops (RawTensor).
@@ -91,8 +96,9 @@ impl<T: Num, TTensor: RawTensor<Elem = T>> Diffable for TTensor {
 /// Tensors support arithmetic traits like Add, Sub, Neg to overload mathematical operators.
 /// Unlike on `RawTensor`, all operations are broadcasted for convenience.
 /// Also, we add higher-level operators to it like `matmul`.
-/// All operations are ultimately implemented in terms of the `RawTensor` trait - this is nice,
-/// because to implement a new type of accelerator, you only need to implement `RawTensor`.
+/// All operations are ultimately implemented in terms of the `Diffable` trait, which due
+/// to the blanket implementation above, get translated ultimately to `RawTensor` operations.
+/// This is nice, because to implement a new type of accelerator, you only need to implement `RawTensor`.
 #[derive(Debug, Clone)]
 #[must_use]
 pub struct Tensor<TRawTensor>(TRawTensor);
@@ -170,19 +176,6 @@ impl<T: Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
         self.0.ravel()
     }
 
-    /// Pad the tensor with zeros according to the given padding.
-    /// Like numpy's `pad`, but simpler - needs as many elements in `padding` as there
-    /// are dimensions in the tensor.
-    pub fn pad(&self, padding: &[(usize, usize)]) -> Self {
-        Tensor(self.0.pad(padding))
-    }
-
-    /// Crop the tensor according to the given limits.
-    /// Needs as many limits as there are dimensions in the tensor.
-    pub fn crop(&self, limits: &[(usize, usize)]) -> Self {
-        Tensor(self.0.crop(limits))
-    }
-
     pub fn to_tensor_mut(&self) -> TensorMut<T> {
         TensorMut::new(self)
     }
@@ -208,7 +201,45 @@ impl<T: Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
     }
 }
 
-impl<TOps: Diffable> Diffable for Tensor<TOps> {
+impl<T: Diffable> Tensor<T> {
+    fn broadcasted_apply(
+        &self,
+        other: &Self,
+        f: impl Fn(&Self, &Self) -> Self,
+        reverse: bool,
+    ) -> Self {
+        if self.shape().ndims() > other.shape().ndims() {
+            // Rust tidbit: I originally did not have a reverse parameter,
+            // but just called |a,b| f(b,a) in the recursive call. This doesn't work,
+            // because it hits the recursion limit: https://stackoverflow.com/questions/54613966/error-reached-the-recursion-limit-while-instantiating-funcclosure
+            return other.broadcasted_apply(self, f, !reverse);
+        }
+
+        if self.shape().ndims() == other.shape().ndims() {
+            let res_shape = self
+                .shape()
+                .iter()
+                .zip(other.shape().iter())
+                .map(|(a, b)| *a.max(b))
+                .collect::<Vec<_>>();
+            let s_expanded = self.expand(&res_shape);
+            let o_expanded = other.expand(&res_shape);
+            if reverse {
+                return f(&o_expanded, &s_expanded);
+            }
+            return f(&s_expanded, &o_expanded);
+        }
+
+        let num_ones_to_add = other.shape().len().saturating_sub(self.shape().len());
+        let mut new_shape = vec![1; num_ones_to_add];
+        new_shape.extend(self.shape());
+
+        self.reshape(&new_shape)
+            .broadcasted_apply(other, f, reverse)
+    }
+}
+
+impl<T: Diffable> Diffable for Tensor<T> {
     /// Apply the natural logarithm to each element.
     fn log(&self) -> Self {
         Tensor(self.0.log())
@@ -297,158 +328,12 @@ impl<TOps: Diffable> Diffable for Tensor<TOps> {
     }
 }
 
-macro_rules! impl_bin_op {
-    // Lots of complexity to deal with optional lifetimes, parameters and bounds.
-    // See https://stackoverflow.com/a/61189128/72211 for some explanation.
-    // Add          , add         , Reverse,    , <      'a or T :  B  + C                       >
-    ($op_trait:ident, $op_fn:ident, $name:ident $(< $( $ps:tt $( : $pb:tt $(+ $pbb:tt )* )?  ),+ >)? ) => {
-        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait for $name$(< $( $ps ),+ >)? {
-            type Output = Self;
+crate::math_macros::impl_bin_op!(Add, add, Tensor<T: Diffable>);
+crate::math_macros::impl_bin_op!(Sub, sub, Tensor<T: Diffable>);
+crate::math_macros::impl_bin_op!(Mul, mul, Tensor<T: Diffable>);
+crate::math_macros::impl_bin_op!(Div, div, Tensor<T: Diffable>);
 
-            fn $op_fn(self, rhs: Self) -> Self::Output {
-                Diffable::$op_fn(&self, &rhs)
-            }
-        }
-
-        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait for &$name$(< $( $ps ),+ >)? {
-            type Output = $name$(< $( $ps ),+ >)?;
-
-            fn $op_fn(self, rhs: Self) -> Self::Output {
-                Diffable::$op_fn(self, rhs)
-            }
-        }
-
-        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait<&$name$(< $( $ps ),+ >)?> for $name$(< $( $ps ),+ >)? {
-            type Output = Self;
-
-            fn $op_fn(self, rhs: &$name$(< $( $ps ),+ >)?) -> Self::Output {
-                Diffable::$op_fn(&self, rhs)
-            }
-        }
-
-        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait<$name$(< $( $ps ),+ >)?> for &$name$(< $( $ps ),+ >)? {
-            type Output = $name$(< $( $ps ),+ >)?;
-
-            fn $op_fn(self, rhs: $name$(< $( $ps ),+ >)?) -> Self::Output {
-                Diffable::$op_fn(self, &rhs)
-            }
-        }
-    };
-}
-
-pub(crate) use impl_bin_op;
-
-impl_bin_op!(Add, add, Tensor<T: Diffable>);
-impl_bin_op!(Sub, sub, Tensor<T: Diffable>);
-impl_bin_op!(Mul, mul, Tensor<T: Diffable>);
-impl_bin_op!(Div, div, Tensor<T: Diffable>);
-
-impl<T: Diffable> Tensor<T> {
-    fn neg(&self) -> Self {
-        self.zeros_like().sub(self)
-    }
-}
-
-macro_rules! impl_un_op {
-    ($op_trait:ident, $op_fn:ident, $name:ident $(< $( $ps:tt $( : $pb:tt $(+ $pbb:tt )* )?  ),+ >)? ) => {
-
-        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait for $name$(< $( $ps ),+ >)? {
-            type Output = Self;
-
-            fn $op_fn(self) -> Self::Output {
-                $name::$(< $( $ps ),+ >)?::$op_fn(&self)
-            }
-        }
-
-        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait for &$name$(< $( $ps ),+ >)? {
-            type Output = $name$(< $( $ps ),+ >)?;
-
-            fn $op_fn(self) -> Self::Output {
-                $name::$(< $( $ps ),+ >)?::$op_fn(self)
-            }
-        }
-    }
-}
-
-pub(crate) use impl_un_op;
-
-impl_un_op!(Neg, neg, Tensor<T: Diffable>);
-
-impl<TRawTensor: Diffable> Tensor<TRawTensor> {
-    fn broadcasted_apply(
-        &self,
-        other: &Self,
-        f: impl Fn(&Self, &Self) -> Self,
-        reverse: bool,
-    ) -> Self {
-        if self.shape().ndims() > other.shape().ndims() {
-            // Rust tidbit: I originally did not have a reverse parameter,
-            // but just called |a,b| f(b,a) in the recursive call. This doesn't work,
-            // because it hits the recursion limit: https://stackoverflow.com/questions/54613966/error-reached-the-recursion-limit-while-instantiating-funcclosure
-            return other.broadcasted_apply(self, f, !reverse);
-        }
-
-        if self.shape().ndims() == other.shape().ndims() {
-            let res_shape = self
-                .shape()
-                .iter()
-                .zip(other.shape().iter())
-                .map(|(a, b)| *a.max(b))
-                .collect::<Vec<_>>();
-            let s_expanded = self.expand(&res_shape);
-            let o_expanded = other.expand(&res_shape);
-            if reverse {
-                return f(&o_expanded, &s_expanded);
-            }
-            return f(&s_expanded, &o_expanded);
-        }
-
-        let num_ones_to_add = other.shape().len().saturating_sub(self.shape().len());
-        let mut new_shape = vec![1; num_ones_to_add];
-        new_shape.extend(self.shape());
-
-        self.reshape(&new_shape)
-            .broadcasted_apply(other, f, reverse)
-    }
-
-    /// Swap two axes. The order of the axes as given does not matter.
-    pub fn transpose(&self, axis0: usize, axis1: usize) -> Self {
-        let mut axes = (0..self.shape().ndims()).collect::<Vec<_>>();
-        axes.swap(axis0, axis1);
-        self.permute(&axes)
-    }
-
-    /// Matrix multiplication, generalized to tensors.
-    /// i.e. multiply [..., m, n] with [..., n, o] to [..., m, o]
-    pub fn matmul(&self, other: &Self) -> Self {
-        // self's shape from [..., m, n] to [..., m, 1, n]
-        // using just reshape.
-        let s = self.shape();
-        let self_shape = [&s[..s.ndims() - 1], &[1, s[s.ndims() - 1]]].concat();
-        let l = self.reshape(&self_shape);
-
-        // other's shape from [..., n, o] to [..., 1, o, n]
-        // using reshape + transpose.
-        let s = other.shape();
-        let other_shape = [&s[..s.ndims() - 2], &[1], &s[s.ndims() - 2..]].concat();
-        let r = other
-            .reshape(&other_shape)
-            .transpose(other_shape.ndims() - 1, other_shape.ndims() - 2);
-
-        // // after multiply: [..., m, o, n]
-        // let prod = &l * &r;
-        // // after sum:      [..., m, o, 1]
-        // let sum = prod.sum(&[prod.shape().ndims() - 1]);
-
-        // fused multiply + sum
-        let last_dim = max(l.shape().ndims(), r.shape().ndims()) - 1;
-        let sum = l.fused_multiply_add(&r, &[last_dim]);
-
-        // after reshape:  [..., m, o]
-        let s = sum.shape();
-        sum.reshape(&s[..s.ndims() - 1])
-    }
-}
+crate::math_macros::impl_un_op!(Neg, neg, Tensor<T: Diffable>);
 
 pub type Cpu32 = Tensor<CpuRawTensor<f32>>;
 pub type Wgpu32<'d> = Tensor<WgpuRawTensor<'d, f32>>;
@@ -520,6 +405,7 @@ pub trait IndexValue<Idx> {
     fn at(&self, index: Idx) -> Self::Output;
 }
 
+// TODO: this at should go to DiffableExt, as it can and should work for any Diffable.
 impl<RT: RawTensor> IndexValue<usize> for Tensor<RT> {
     type Output = Self;
 
@@ -537,6 +423,7 @@ impl<RT: RawTensor> IndexValue<usize> for Tensor<RT> {
     }
 }
 
+// This at can only work for RawTensors, because it returns a scalar using to_scalar.
 impl<RT: RawTensor, const N: usize> IndexValue<&[usize; N]> for Tensor<RT> {
     type Output = RT::Elem;
 
@@ -553,7 +440,7 @@ impl<RT: RawTensor, const N: usize> IndexValue<&[usize; N]> for Tensor<RT> {
 pub trait TensorLike<'a>:
     'a
     + Clone
-    + Diffable
+    + DiffableExt
     + Neg<Output = Self>
     + Add<Output = Self>
     + Sub<Output = Self>
@@ -569,7 +456,7 @@ pub trait TensorLike<'a>:
 impl<'a, T> TensorLike<'a> for T where
     Self: 'a
         + Clone
-        + Diffable
+        + DiffableExt
         + Neg<Output = Self>
         + Add<Output = Self>
         + Sub<Output = Self>
