@@ -6,8 +6,8 @@ use std::{
 };
 
 use crate::diffable_ops::{
-    AddOp, BinaryOp, BinaryRevOp, Diffable, DivOp, EqOp, ExpOp, ExpandOp, LogOp, MaxOp, MulOp,
-    PermuteOp, PowOp, ReshapeOp, SubOp, SumOp, UnaryOp, UnaryRevOp,
+    AddOp, BinaryOp, BinaryRevOp, CropOp, Diffable, DivOp, EqOp, ExpOp, ExpandOp, LogOp, MaxOp,
+    MulOp, PadOp, PermuteOp, PowOp, ReshapeOp, SubOp, SumOp, UnaryOp, UnaryRevOp,
 };
 
 /// Reverse AD implementation.
@@ -113,7 +113,7 @@ impl<T: PartialEq> PartialEq for Reverse<'_, '_, T> {
 }
 
 impl<'t, T: Diffable> Reverse<'_, 't, T> {
-    fn unary<O: UnaryOp<T, Args = TArgs> + 't, TArgs>(&self, args: &TArgs) -> Self {
+    fn unary<O: UnaryOp<T, Args = TArgs> + 't, TArgs: ?Sized>(&self, args: &TArgs) -> Self {
         let (op, primal) = O::f(self.primal(), args);
         match self {
             Reverse::Lift(_) => Reverse::Lift(primal),
@@ -145,16 +145,12 @@ impl<'t, T: Diffable> Reverse<'_, 't, T> {
     }
 }
 impl<T: Clone + Diffable> Diffable for Reverse<'_, '_, T> {
-    fn zeros_like(&self) -> Self {
-        Reverse::lift(self.primal().zeros_like())
+    fn log(&self) -> Self {
+        self.unary::<LogOp<T>, _>(&())
     }
 
-    fn ones_like(&self) -> Self {
-        Reverse::lift(self.primal().ones_like())
-    }
-
-    fn shape(&self) -> &[usize] {
-        self.primal().shape()
+    fn exp(&self) -> Self {
+        self.unary::<ExpOp<T>, _>(&())
     }
 
     fn add(&self, rhs: &Self) -> Self {
@@ -181,32 +177,44 @@ impl<T: Clone + Diffable> Diffable for Reverse<'_, '_, T> {
         self.binary::<EqOp>(other)
     }
 
-    fn log(&self) -> Self {
-        self.unary::<LogOp<T>, _>(&())
-    }
-
-    fn exp(&self) -> Self {
-        self.unary::<ExpOp<T>, _>(&())
-    }
-
     fn sum(&self, axes: &[usize]) -> Self {
-        self.unary::<SumOp, _>(&axes.to_vec())
+        self.unary::<SumOp, _>(axes)
     }
 
     fn max(&self, axes: &[usize]) -> Self {
-        self.unary::<MaxOp<T>, _>(&axes.to_vec())
+        self.unary::<MaxOp<T>, _>(axes)
     }
 
     fn reshape(&self, shape: &[usize]) -> Self {
-        self.unary::<ReshapeOp, _>(&shape.to_vec())
+        self.unary::<ReshapeOp, _>(shape)
     }
 
     fn permute(&self, dims: &[usize]) -> Self {
-        self.unary::<PermuteOp, _>(&dims.to_vec())
+        self.unary::<PermuteOp, _>(dims)
     }
 
     fn expand(&self, shape: &[usize]) -> Self {
-        self.unary::<ExpandOp, _>(&shape.to_vec())
+        self.unary::<ExpandOp, _>(shape)
+    }
+
+    fn pad(&self, padding: &[(usize, usize)]) -> Self {
+        self.unary::<PadOp, _>(padding)
+    }
+
+    fn crop(&self, limits: &[(usize, usize)]) -> Self {
+        self.unary::<CropOp, _>(limits)
+    }
+
+    fn zeros_like(&self) -> Self {
+        Reverse::lift(self.primal().zeros_like())
+    }
+
+    fn ones_like(&self) -> Self {
+        Reverse::lift(self.primal().ones_like())
+    }
+
+    fn shape(&self) -> &[usize] {
+        self.primal().shape()
     }
 }
 

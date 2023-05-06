@@ -36,6 +36,10 @@ pub trait Diffable {
     fn permute(&self, dims: &[usize]) -> Self;
     #[must_use]
     fn expand(&self, shape: &[usize]) -> Self;
+    #[must_use]
+    fn pad(&self, padding: &[(usize, usize)]) -> Self;
+    #[must_use]
+    fn crop(&self, limits: &[(usize, usize)]) -> Self;
 
     #[must_use]
     fn zeros_like(&self) -> Self;
@@ -49,16 +53,21 @@ pub trait Diffable {
 /// reverse pass.
 /// This design allows the reverse pass to reuse calculations in the forward
 /// pass.
-pub trait UnaryOp<TTensor> {
-    type Result: UnaryRevOp<TTensor>;
-    type Args;
-    fn f(a: &TTensor, args: &Self::Args) -> (Self::Result, TTensor);
+pub trait UnaryOp<TTensor>: UnaryRevOp<TTensor>
+where
+    //this can be avoided by making Self the last element of the tuple.
+    Self: Sized,
+{
+    type Args: ?Sized;
+    fn f(a: &TTensor, args: &Self::Args) -> (Self, TTensor);
 }
 
 /// Same as `UnaryOp`, but for binary operations.
-pub trait BinaryOp<TTensor> {
-    type Result: BinaryRevOp<TTensor>;
-    fn f(a: &TTensor, b: &TTensor) -> (Self::Result, TTensor);
+pub trait BinaryOp<TTensor>: BinaryRevOp<TTensor>
+where
+    Self: Sized,
+{
+    fn f(a: &TTensor, b: &TTensor) -> (Self, TTensor);
 }
 
 /// A trait that represents a unary operation on the adjoints in the reverse pass.
@@ -75,8 +84,7 @@ pub trait BinaryRevOp<TTensor> {
 pub(crate) struct AddOp;
 
 impl<TTensor: Clone + Diffable> BinaryOp<TTensor> for AddOp {
-    type Result = AddOp;
-    fn f(a: &TTensor, b: &TTensor) -> (Self::Result, TTensor) {
+    fn f(a: &TTensor, b: &TTensor) -> (Self, TTensor) {
         (AddOp, a.add(b))
     }
 }
@@ -94,7 +102,6 @@ impl<TTensor: Clone + Diffable> BinaryRevOp<TTensor> for AddOp {
 pub(crate) struct MulOp<TTensor>(TTensor, TTensor);
 
 impl<TTensor: Clone + Diffable> BinaryOp<TTensor> for MulOp<TTensor> {
-    type Result = MulOp<TTensor>;
     fn f(a: &TTensor, b: &TTensor) -> (Self, TTensor) {
         (MulOp(a.clone(), b.clone()), a.mul(b))
     }
@@ -113,8 +120,7 @@ impl<TTensor: Diffable> BinaryRevOp<TTensor> for MulOp<TTensor> {
 pub(crate) struct SubOp;
 
 impl<TTensor: Clone + Diffable> BinaryOp<TTensor> for SubOp {
-    type Result = SubOp;
-    fn f(a: &TTensor, b: &TTensor) -> (Self::Result, TTensor) {
+    fn f(a: &TTensor, b: &TTensor) -> (Self, TTensor) {
         (SubOp, a.sub(b))
     }
 }
@@ -132,8 +138,7 @@ impl<TTensor: Clone + Diffable> BinaryRevOp<TTensor> for SubOp {
 pub(crate) struct DivOp<TTensor>(TTensor, TTensor);
 
 impl<TTensor: Clone + Diffable> BinaryOp<TTensor> for DivOp<TTensor> {
-    type Result = DivOp<TTensor>;
-    fn f(a: &TTensor, b: &TTensor) -> (Self::Result, TTensor) {
+    fn f(a: &TTensor, b: &TTensor) -> (Self, TTensor) {
         (DivOp(a.clone(), b.clone()), a.div(b))
     }
 }
@@ -152,8 +157,7 @@ impl<TTensor: Diffable> BinaryRevOp<TTensor> for DivOp<TTensor> {
 pub(crate) struct PowOp<TTensor>(TTensor, TTensor, TTensor);
 
 impl<TTensor: Clone + Diffable> BinaryOp<TTensor> for PowOp<TTensor> {
-    type Result = PowOp<TTensor>;
-    fn f(a: &TTensor, b: &TTensor) -> (Self::Result, TTensor) {
+    fn f(a: &TTensor, b: &TTensor) -> (Self, TTensor) {
         let r = a.pow(b);
         (PowOp(a.clone(), b.clone(), r.clone()), r)
     }
@@ -172,8 +176,7 @@ impl<TTensor: Clone + Diffable> BinaryRevOp<TTensor> for PowOp<TTensor> {
 pub(crate) struct EqOp;
 
 impl<TTensor: Diffable> BinaryOp<TTensor> for EqOp {
-    type Result = EqOp;
-    fn f(a: &TTensor, b: &TTensor) -> (Self::Result, TTensor) {
+    fn f(a: &TTensor, b: &TTensor) -> (Self, TTensor) {
         (EqOp, a.eq(b))
     }
 }
@@ -191,9 +194,8 @@ impl<TTensor: Diffable> BinaryRevOp<TTensor> for EqOp {
 pub(crate) struct LogOp<TTensor>(TTensor);
 
 impl<TTensor: Clone + Diffable> UnaryOp<TTensor> for LogOp<TTensor> {
-    type Result = LogOp<TTensor>;
     type Args = ();
-    fn f(a: &TTensor, _: &Self::Args) -> (Self::Result, TTensor) {
+    fn f(a: &TTensor, _: &Self::Args) -> (Self, TTensor) {
         (LogOp(a.clone()), a.log())
     }
 }
@@ -207,9 +209,8 @@ impl<TTensor: Diffable> UnaryRevOp<TTensor> for LogOp<TTensor> {
 pub(crate) struct ExpOp<TTensor>(TTensor);
 
 impl<TTensor: Clone + Diffable> UnaryOp<TTensor> for ExpOp<TTensor> {
-    type Result = ExpOp<TTensor>;
     type Args = ();
-    fn f(a: &TTensor, _: &Self::Args) -> (Self::Result, TTensor) {
+    fn f(a: &TTensor, _: &Self::Args) -> (Self, TTensor) {
         let r = a.exp();
         (ExpOp(r.clone()), r)
     }
@@ -224,9 +225,8 @@ impl<TTensor: Diffable> UnaryRevOp<TTensor> for ExpOp<TTensor> {
 pub(crate) struct SumOp(Vec<usize>);
 
 impl<TTensor: Diffable> UnaryOp<TTensor> for SumOp {
-    type Result = SumOp;
-    type Args = Vec<usize>;
-    fn f(a: &TTensor, axes: &Self::Args) -> (Self::Result, TTensor) {
+    type Args = [usize];
+    fn f(a: &TTensor, axes: &Self::Args) -> (Self, TTensor) {
         let r = a.sum(axes);
         (SumOp(a.shape().to_vec()), r)
     }
@@ -241,9 +241,8 @@ impl<TTensor: Diffable> UnaryRevOp<TTensor> for SumOp {
 pub(crate) struct MaxOp<TTensor>(TTensor, TTensor);
 
 impl<TTensor: Clone + Diffable> UnaryOp<TTensor> for MaxOp<TTensor> {
-    type Result = MaxOp<TTensor>;
-    type Args = Vec<usize>;
-    fn f(a: &TTensor, axes: &Self::Args) -> (Self::Result, TTensor) {
+    type Args = [usize];
+    fn f(a: &TTensor, axes: &Self::Args) -> (Self, TTensor) {
         let r = a.max(axes);
         (MaxOp(a.clone(), r.clone()), r)
     }
@@ -278,9 +277,8 @@ impl<TTensor: Diffable> UnaryRevOp<TTensor> for MaxOp<TTensor> {
 pub(crate) struct ExpandOp(Vec<usize>);
 
 impl<TTensor: Diffable> UnaryOp<TTensor> for ExpandOp {
-    type Result = ExpandOp;
-    type Args = Vec<usize>;
-    fn f(a: &TTensor, new_shape: &Self::Args) -> (Self::Result, TTensor) {
+    type Args = [usize];
+    fn f(a: &TTensor, new_shape: &Self::Args) -> (Self, TTensor) {
         let r = a.expand(new_shape);
         (ExpandOp(a.shape().to_vec()), r)
     }
@@ -295,9 +293,8 @@ impl<TTensor: Diffable> UnaryRevOp<TTensor> for ExpandOp {
 pub(crate) struct ReshapeOp(Vec<usize>);
 
 impl<TTensor: Diffable> UnaryOp<TTensor> for ReshapeOp {
-    type Result = ReshapeOp;
-    type Args = Vec<usize>;
-    fn f(a: &TTensor, new_shape: &Self::Args) -> (Self::Result, TTensor) {
+    type Args = [usize];
+    fn f(a: &TTensor, new_shape: &Self::Args) -> (Self, TTensor) {
         let r = a.reshape(new_shape);
         (ReshapeOp(a.shape().to_vec()), r)
     }
@@ -312,10 +309,9 @@ impl<TTensor: Diffable> UnaryRevOp<TTensor> for ReshapeOp {
 pub(crate) struct PermuteOp(Vec<usize>);
 
 impl<TTensor: Diffable> UnaryOp<TTensor> for PermuteOp {
-    type Result = PermuteOp;
-    type Args = Vec<usize>;
-    fn f(a: &TTensor, order: &Self::Args) -> (Self::Result, TTensor) {
-        (PermuteOp(order.clone()), a.permute(order))
+    type Args = [usize];
+    fn f(a: &TTensor, order: &Self::Args) -> (Self, TTensor) {
+        (PermuteOp(order.to_vec()), a.permute(order))
     }
 }
 
@@ -330,5 +326,47 @@ fn argsort(v: &[usize]) -> Vec<usize> {
 impl<TTensor: Diffable> UnaryRevOp<TTensor> for PermuteOp {
     fn df_dfda(&self, df: &TTensor) -> TTensor {
         df.permute(&argsort(&self.0))
+    }
+}
+
+pub(crate) struct PadOp(Vec<(usize, usize)>);
+
+impl<TTensor: Diffable> UnaryOp<TTensor> for PadOp {
+    type Args = [(usize, usize)];
+    fn f(a: &TTensor, padding: &Self::Args) -> (Self, TTensor) {
+        let r = a.pad(padding);
+        let limits = padding
+            .iter()
+            .zip(a.shape())
+            .map(|((pl, _), s)| (*pl, pl + s))
+            .collect::<Vec<_>>();
+        (PadOp(limits), r)
+    }
+}
+
+impl<TTensor: Diffable> UnaryRevOp<TTensor> for PadOp {
+    fn df_dfda(&self, df: &TTensor) -> TTensor {
+        df.crop(&self.0)
+    }
+}
+
+pub(crate) struct CropOp(Vec<(usize, usize)>);
+
+impl<TTensor: Diffable> UnaryOp<TTensor> for CropOp {
+    type Args = [(usize, usize)];
+    fn f(a: &TTensor, limits: &Self::Args) -> (Self, TTensor) {
+        let r = a.crop(limits);
+        let padding = limits
+            .iter()
+            .zip(a.shape())
+            .map(|((l0, l1), s)| (*l0, s - l1))
+            .collect::<Vec<_>>();
+        (CropOp(padding), r)
+    }
+}
+
+impl<TTensor: Diffable> UnaryRevOp<TTensor> for CropOp {
+    fn df_dfda(&self, df: &TTensor) -> TTensor {
+        df.pad(&self.0)
     }
 }
