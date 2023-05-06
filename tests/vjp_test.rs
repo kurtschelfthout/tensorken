@@ -424,3 +424,51 @@ fn do_test_expand<RT: RawTensor<Elem = f32> + Clone + Debug>() {
         |a| a.constant_like(4.0),
     );
 }
+
+fn f_crop<'t, T>(a: &'t T) -> T
+where
+    T: TensorLike<'t>,
+    &'t T: TensorLikeRef<T>,
+{
+    a.crop(&[(0, 1), (1, 2)])
+}
+
+#[test]
+fn test_crop() {
+    do_test_crop::<CpuRawTensor<f32>>();
+    do_test_crop::<WgpuRawTensor<f32>>();
+}
+
+fn do_test_crop<RT: RawTensor<Elem = f32> + Clone + Debug>() {
+    test_df::<RT, _, _, _>(
+        |a| f_crop(a),
+        |a| a.ones_like().crop(&[(0, 1), (1, 2)]).pad(&[(0, 1), (1, 2)]),
+        |a| f_crop(a),
+    );
+    test_ddf::<RT, _, _, _>(
+        |a| f_crop(a),
+        Diffable::zeros_like,
+        // note: padding is different here from test_df, because test_ddf
+        // tests with a [2,2] tensor only.
+        |a| a.ones_like().crop(&[(0, 1), (1, 2)]).pad(&[(0, 1), (1, 0)]),
+    );
+}
+
+fn f_pad<'t, T>(a: &'t T) -> T
+where
+    T: TensorLike<'t>,
+    &'t T: TensorLikeRef<T>,
+{
+    a.pad(&[(1, 2), (3, 4)])
+}
+
+#[test]
+fn test_pad() {
+    do_test_pad::<CpuRawTensor<f32>>();
+    do_test_pad::<WgpuRawTensor<f32>>();
+}
+
+fn do_test_pad<RT: RawTensor<Elem = f32> + Clone + Debug>() {
+    test_df::<RT, _, _, _>(|a| f_pad(a), Diffable::ones_like, |a| f_pad(a));
+    test_ddf::<RT, _, _, _>(|a| f_pad(a), Diffable::zeros_like, Diffable::ones_like);
+}
