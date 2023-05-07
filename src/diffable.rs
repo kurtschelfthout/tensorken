@@ -170,13 +170,13 @@ where
             .transpose(other_shape.ndims() - 1, other_shape.ndims() - 2);
 
         // // after multiply: [..., m, o, n]
-        // let prod = &l.mul(&r);
-        // // after sum:      [..., m, o, 1]
-        // let sum = prod.sum(&[prod.shape().ndims() - 1]);
+        let prod = &l.mul(&r);
+        // after sum:      [..., m, o, 1]
+        let sum = prod.sum(&[prod.shape().ndims() - 1]);
 
-        // fused multiply + sum
-        let last_dim = max(l.shape().ndims(), r.shape().ndims()) - 1;
-        let sum = l.fused_multiply_add(&r, &[last_dim]);
+        // TODO fused multiply + sum
+        // let last_dim = max(l.shape().ndims(), r.shape().ndims()) - 1;
+        // let sum = l.fused_multiply_add(&r, &[last_dim]);
 
         // after reshape:  [..., m, o]
         let s = sum.shape();

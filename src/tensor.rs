@@ -1,5 +1,4 @@
 use std::{
-    cmp::max,
     fmt::{Debug, Display, Formatter},
     ops::{Add, Div, Mul, Neg, Sub},
 };
@@ -192,13 +191,13 @@ impl<T: Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
         Tensor(self.0.to_cpu())
     }
 
-    fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self {
-        self.broadcasted_apply(
-            other,
-            |a, b| Tensor(a.0.fused_multiply_add(&b.0, axes)),
-            false,
-        )
-    }
+    // fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self {
+    //     self.broadcasted_apply(
+    //         other,
+    //         |a, b| Tensor(a.0.fused_multiply_add(&b.0, axes)),
+    //         false,
+    //     )
+    // }
 }
 
 impl<T: Diffable> Diffable for Tensor<T> {
