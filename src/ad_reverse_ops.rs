@@ -37,7 +37,7 @@ pub(crate) struct AddOp;
 
 impl<TTensor: Clone + Diffable> BinaryOp<TTensor> for AddOp {
     fn f(a: &TTensor, b: &TTensor) -> (Self, TTensor) {
-        (AddOp, a.add(b))
+        (AddOp, a.elementwise_add(b))
     }
 }
 
@@ -55,17 +55,17 @@ pub(crate) struct MulOp<TTensor>(TTensor, TTensor);
 
 impl<TTensor: Clone + Diffable> BinaryOp<TTensor> for MulOp<TTensor> {
     fn f(a: &TTensor, b: &TTensor) -> (Self, TTensor) {
-        (MulOp(a.clone(), b.clone()), a.mul(b))
+        (MulOp(a.clone(), b.clone()), a.elementwise_mul(b))
     }
 }
 
 impl<TTensor: Diffable> BinaryRevOp<TTensor> for MulOp<TTensor> {
     fn df_dfda(&self, df: &TTensor) -> TTensor {
-        df.mul(&self.1)
+        df.elementwise_mul(&self.1)
     }
 
     fn df_dfdb(&self, df: &TTensor) -> TTensor {
-        df.mul(&self.0)
+        df.elementwise_mul(&self.0)
     }
 }
 
@@ -73,7 +73,7 @@ pub(crate) struct SubOp;
 
 impl<TTensor: Clone + Diffable> BinaryOp<TTensor> for SubOp {
     fn f(a: &TTensor, b: &TTensor) -> (Self, TTensor) {
-        (SubOp, a.sub(b))
+        (SubOp, a.elementwise_sub(b))
     }
 }
 
@@ -83,7 +83,7 @@ impl<TTensor: Clone + Diffable> BinaryRevOp<TTensor> for SubOp {
     }
 
     fn df_dfdb(&self, df: &TTensor) -> TTensor {
-        df.zeros_like().sub(df)
+        df.zeros_like().elementwise_sub(df)
     }
 }
 
@@ -91,18 +91,21 @@ pub(crate) struct DivOp<TTensor>(TTensor, TTensor);
 
 impl<TTensor: Clone + Diffable> BinaryOp<TTensor> for DivOp<TTensor> {
     fn f(a: &TTensor, b: &TTensor) -> (Self, TTensor) {
-        (DivOp(a.clone(), b.clone()), a.div(b))
+        (DivOp(a.clone(), b.clone()), a.elementwise_div(b))
     }
 }
 
 impl<TTensor: Diffable> BinaryRevOp<TTensor> for DivOp<TTensor> {
     fn df_dfda(&self, df: &TTensor) -> TTensor {
-        df.div(&self.1)
+        df.elementwise_div(&self.1)
     }
 
     fn df_dfdb(&self, df: &TTensor) -> TTensor {
-        let b2 = self.1.mul(&self.1);
-        df.zeros_like().sub(df).mul(&self.0).div(&b2)
+        let b2 = self.1.elementwise_mul(&self.1);
+        df.zeros_like()
+            .elementwise_sub(df)
+            .elementwise_mul(&self.0)
+            .elementwise_div(&b2)
     }
 }
 
@@ -110,18 +113,18 @@ pub(crate) struct PowOp<TTensor>(TTensor, TTensor, TTensor);
 
 impl<TTensor: Clone + Diffable> BinaryOp<TTensor> for PowOp<TTensor> {
     fn f(a: &TTensor, b: &TTensor) -> (Self, TTensor) {
-        let r = a.pow(b);
+        let r = a.elementwise_pow(b);
         (PowOp(a.clone(), b.clone(), r.clone()), r)
     }
 }
 
 impl<TTensor: Clone + Diffable> BinaryRevOp<TTensor> for PowOp<TTensor> {
     fn df_dfda(&self, df: &TTensor) -> TTensor {
-        df.mul(&self.1.mul(&self.2.div(&self.0)))
+        df.elementwise_mul(&self.1.elementwise_mul(&self.2.elementwise_div(&self.0)))
     }
 
     fn df_dfdb(&self, df: &TTensor) -> TTensor {
-        df.mul(&self.0.log().mul(&self.2))
+        df.elementwise_mul(&self.0.log().elementwise_mul(&self.2))
     }
 }
 
@@ -129,7 +132,7 @@ pub(crate) struct EqOp;
 
 impl<TTensor: Diffable> BinaryOp<TTensor> for EqOp {
     fn f(a: &TTensor, b: &TTensor) -> (Self, TTensor) {
-        (EqOp, a.eq(b))
+        (EqOp, a.elementwise_eq(b))
     }
 }
 
@@ -154,7 +157,7 @@ impl<TTensor: Clone + Diffable> UnaryOp<TTensor> for LogOp<TTensor> {
 
 impl<TTensor: Diffable> UnaryRevOp<TTensor> for LogOp<TTensor> {
     fn df_dfda(&self, df: &TTensor) -> TTensor {
-        df.div(&self.0)
+        df.elementwise_div(&self.0)
     }
 }
 
@@ -170,7 +173,7 @@ impl<TTensor: Clone + Diffable> UnaryOp<TTensor> for ExpOp<TTensor> {
 
 impl<TTensor: Diffable> UnaryRevOp<TTensor> for ExpOp<TTensor> {
     fn df_dfda(&self, df: &TTensor) -> TTensor {
-        df.mul(&self.0)
+        df.elementwise_mul(&self.0)
     }
 }
 
@@ -215,14 +218,14 @@ fn shape_to_axes(old_shape: &[usize], new_shape: &[usize]) -> Vec<usize> {
 
 impl<TTensor: Diffable> UnaryRevOp<TTensor> for MaxOp<TTensor> {
     fn df_dfda(&self, df: &TTensor) -> TTensor {
-        let max_is_1s = self.0.eq(&self.1.expand(self.0.shape()));
+        let max_is_1s = self.0.elementwise_eq(&self.1.expand(self.0.shape()));
         let div = max_is_1s
             .sum(&shape_to_axes(max_is_1s.shape(), df.shape()))
             .expand(self.0.shape());
-        let max_is_amount = max_is_1s.div(&div);
+        let max_is_amount = max_is_1s.elementwise_div(&div);
         let df_expanded = df.expand(self.0.shape());
 
-        max_is_amount.mul(&df_expanded)
+        max_is_amount.elementwise_mul(&df_expanded)
     }
 }
 

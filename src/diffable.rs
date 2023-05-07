@@ -14,18 +14,25 @@ pub trait Diffable {
     #[must_use]
     fn exp(&self) -> Self;
 
+    // These ops are all elementwise, meaning in particular they have identical shapes.
+    // No broadcasting. It's important to implemented broadcasted ops in terms of these ops,
+    // so that everything flows through correctly. For example, for reverse AD, these will
+    // add an elementary diffable operation to the tape, and it would be quite complicated
+    // and unnecessary to implement broadcasting in the add operation, especially since it is
+    // defined in terms of the other movement ops on this level.
+    // As a result, the add,sub etc we actually use are on DiffableExt.
     #[must_use]
-    fn add(&self, other: &Self) -> Self;
+    fn elementwise_add(&self, other: &Self) -> Self;
     #[must_use]
-    fn sub(&self, other: &Self) -> Self;
+    fn elementwise_sub(&self, other: &Self) -> Self;
     #[must_use]
-    fn mul(&self, other: &Self) -> Self;
+    fn elementwise_mul(&self, other: &Self) -> Self;
     #[must_use]
-    fn div(&self, other: &Self) -> Self;
+    fn elementwise_div(&self, other: &Self) -> Self;
     #[must_use]
-    fn pow(&self, exp: &Self) -> Self;
+    fn elementwise_pow(&self, exp: &Self) -> Self;
     #[must_use]
-    fn eq(&self, other: &Self) -> Self;
+    fn elementwise_eq(&self, other: &Self) -> Self;
 
     #[must_use]
     fn sum(&self, axes: &[usize]) -> Self;
@@ -50,6 +57,41 @@ pub trait Diffable {
     fn shape(&self) -> &[usize];
 }
 
+pub(crate) fn broadcasted_apply<T: Diffable>(
+    lhs: &T,
+    rhs: &T,
+    f: impl Fn(&T, &T) -> T,
+    reverse: bool,
+) -> T {
+    if lhs.shape().ndims() > rhs.shape().ndims() {
+        // Rust tidbit: I originally did not have a reverse parameter,
+        // but just called |a,b| f(b,a) in the recursive call. This doesn't work,
+        // because it hits the recursion limit: https://stackoverflow.com/questions/54613966/error-reached-the-recursion-limit-while-instantiating-funcclosure
+        return broadcasted_apply(rhs, lhs, f, !reverse);
+    }
+
+    if lhs.shape().ndims() == rhs.shape().ndims() {
+        let res_shape = lhs
+            .shape()
+            .iter()
+            .zip(rhs.shape().iter())
+            .map(|(a, b)| *a.max(b))
+            .collect::<Vec<_>>();
+        let s_expanded = lhs.expand(&res_shape);
+        let o_expanded = rhs.expand(&res_shape);
+        if reverse {
+            return f(&o_expanded, &s_expanded);
+        }
+        return f(&s_expanded, &o_expanded);
+    }
+
+    let num_ones_to_add = rhs.shape().len().saturating_sub(lhs.shape().len());
+    let mut new_shape = vec![1; num_ones_to_add];
+    new_shape.extend(lhs.shape());
+
+    broadcasted_apply(&lhs.reshape(&new_shape), rhs, f, reverse)
+}
+
 /// These are operations that are based on the core Diffable operations.
 /// Could have added those to Diffable itself, but this seems a bit tidier.
 /// They can optionally be further split out by category.
@@ -69,6 +111,36 @@ where
     }
 
     // math
+    #[must_use]
+    fn add(&self, other: &Self) -> Self {
+        broadcasted_apply(self, other, |a, b| a.elementwise_add(b), false)
+    }
+
+    #[must_use]
+    fn sub(&self, other: &Self) -> Self {
+        broadcasted_apply(self, other, |a, b| a.elementwise_sub(b), false)
+    }
+
+    #[must_use]
+    fn mul(&self, other: &Self) -> Self {
+        broadcasted_apply(self, other, |a, b| a.elementwise_mul(b), false)
+    }
+
+    #[must_use]
+    fn div(&self, other: &Self) -> Self {
+        broadcasted_apply(self, other, |a, b| a.elementwise_div(b), false)
+    }
+
+    #[must_use]
+    fn pow(&self, other: &Self) -> Self {
+        broadcasted_apply(self, other, |a, b| a.elementwise_pow(b), false)
+    }
+
+    #[must_use]
+    fn eq(&self, other: &Self) -> Self {
+        broadcasted_apply(self, other, |a, b| a.elementwise_eq(b), false)
+    }
+
     #[must_use]
     fn neg(&self) -> Self {
         self.zeros_like().sub(self)

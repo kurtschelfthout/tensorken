@@ -160,27 +160,27 @@ impl<T: Clone + Diffable> Diffable for Reverse<'_, '_, T> {
         self.unary::<ExpOp<T>, _>(&())
     }
 
-    fn add(&self, rhs: &Self) -> Self {
+    fn elementwise_add(&self, rhs: &Self) -> Self {
         self.binary::<AddOp>(rhs)
     }
 
-    fn sub(&self, rhs: &Self) -> Self {
+    fn elementwise_sub(&self, rhs: &Self) -> Self {
         self.binary::<SubOp>(rhs)
     }
 
-    fn mul(&self, rhs: &Self) -> Self {
+    fn elementwise_mul(&self, rhs: &Self) -> Self {
         self.binary::<MulOp<T>>(rhs)
     }
 
-    fn div(&self, rhs: &Self) -> Self {
+    fn elementwise_div(&self, rhs: &Self) -> Self {
         self.binary::<DivOp<T>>(rhs)
     }
 
-    fn pow(&self, rhs: &Self) -> Self {
+    fn elementwise_pow(&self, rhs: &Self) -> Self {
         self.binary::<PowOp<T>>(rhs)
     }
 
-    fn eq(&self, other: &Self) -> Self {
+    fn elementwise_eq(&self, other: &Self) -> Self {
         self.binary::<EqOp>(other)
     }
 
@@ -247,7 +247,7 @@ impl<T: Diffable + Clone> Adjoints<T> {
     fn update(&mut self, idx: usize, dfda: T) {
         self.adjoints[idx] = self.adjoints[idx]
             .as_ref()
-            .map(|c| c.add(&dfda))
+            .map(|c| c.elementwise_add(&dfda))
             .or(Some(dfda));
     }
     fn pop(&mut self) {
