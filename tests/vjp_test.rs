@@ -106,7 +106,7 @@ fn do_test_constant<RT: RawTensor<Elem = f32> + Clone + Debug>() {
 fn f_id<'t, T>(a: &'t T) -> T
 where
     T: TensorLike<'t>,
-    &'t T: TensorLikeRef<T>,
+    for<'s> &'s T: TensorLikeRef<T>,
 {
     a.clone()
 }
@@ -156,7 +156,7 @@ fn do_test_add<RT: RawTensor<Elem = f32> + Clone + Debug>() {
 fn f_mul<'t, T>(a: &'t T) -> T
 where
     T: TensorLike<'t>,
-    &'t T: TensorLikeRef<T>,
+    for<'s> &'s T: TensorLikeRef<T>,
 {
     a * a
 }
@@ -186,7 +186,7 @@ fn do_test_mul<RT: RawTensor<Elem = f32> + Clone + Debug>() {
 fn f_sub<'t, T>(a: &'t T) -> T
 where
     T: TensorLike<'t>,
-    &'t T: TensorLikeRef<T>,
+    for<'s> &'s T: TensorLikeRef<T>,
 {
     a - a
 }
@@ -212,7 +212,7 @@ fn do_test_sub<RT: RawTensor<Elem = f32> + Clone + Debug>() {
 fn f_div<'t, T>(a: &'t T) -> T
 where
     T: TensorLike<'t>,
-    &'t T: TensorLikeRef<T>,
+    for<'s> &'s T: TensorLikeRef<T>,
 {
     a.ones_like() / a
 }
@@ -241,7 +241,7 @@ fn do_test_div<RT: RawTensor<Elem = f32> + Clone + Debug>() {
 fn f_pow<'t, T>(a: &'t T) -> T
 where
     T: TensorLike<'t>,
-    &'t T: TensorLikeRef<T>,
+    for<'s> &'s T: TensorLikeRef<T>,
 {
     a.pow(a)
 }
@@ -307,7 +307,7 @@ fn all_axes(shape: &[usize]) -> Vec<usize> {
 fn f_sum<'t, T>(a: &'t T) -> T
 where
     T: TensorLike<'t>,
-    &'t T: TensorLikeRef<T>,
+    for<'s> &'s T: TensorLikeRef<T>,
 {
     a.sum(&all_axes(a.shape()))
 }
@@ -330,7 +330,7 @@ fn do_test_sum<RT: RawTensor<Elem = f32> + Clone + Debug>() {
 fn f_max<'t, T>(a: &'t T) -> T
 where
     T: TensorLike<'t>,
-    &'t T: TensorLikeRef<T>,
+    for<'s> &'s T: TensorLikeRef<T>,
 {
     a.max(&all_axes(a.shape()))
 }
@@ -357,7 +357,7 @@ fn do_test_max<RT: RawTensor<Elem = f32> + Clone + Debug>() {
 fn f_reshape<'t, T>(a: &'t T) -> T
 where
     T: TensorLike<'t>,
-    &'t T: TensorLikeRef<T>,
+    for<'s> &'s T: TensorLikeRef<T>,
 {
     a.reshape(&[a.shape().size()])
 }
@@ -380,7 +380,7 @@ fn do_test_reshape<RT: RawTensor<Elem = f32> + Clone + Debug>() {
 fn f_permute<'t, T>(a: &'t T) -> T
 where
     T: TensorLike<'t>,
-    &'t T: TensorLikeRef<T>,
+    for<'s> &'s T: TensorLikeRef<T>,
 {
     a.permute(&[1, 0])
 }
@@ -404,7 +404,7 @@ fn do_test_permute<RT: RawTensor<Elem = f32> + Clone + Debug>() {
 fn f_expand<'t, T>(a: &'t T) -> T
 where
     T: TensorLike<'t>,
-    &'t T: TensorLikeRef<T>,
+    for<'s> &'s T: TensorLikeRef<T>,
 {
     a.reshape(&[1, 2, 4]).expand(&[4, 2, 4])
 }
@@ -427,7 +427,7 @@ fn do_test_expand<RT: RawTensor<Elem = f32> + Clone + Debug>() {
 fn f_crop<'t, T>(a: &'t T) -> T
 where
     T: TensorLike<'t>,
-    &'t T: TensorLikeRef<T>,
+    for<'s> &'s T: TensorLikeRef<T>,
 {
     a.crop(&[(0, 1), (1, 2)])
 }
@@ -456,7 +456,7 @@ fn do_test_crop<RT: RawTensor<Elem = f32> + Clone + Debug>() {
 fn f_pad<'t, T>(a: &'t T) -> T
 where
     T: TensorLike<'t>,
-    &'t T: TensorLikeRef<T>,
+    for<'s> &'s T: TensorLikeRef<T>,
 {
     a.pad(&[(1, 2), (3, 4)])
 }
@@ -475,7 +475,7 @@ fn do_test_pad<RT: RawTensor<Elem = f32> + Clone + Debug>() {
 fn f_matmul<'t, T>(a: &'t T, b: &'t T) -> T
 where
     T: TensorLike<'t>,
-    &'t T: TensorLikeRef<T>,
+    for<'s> &'s T: TensorLikeRef<T>,
 {
     a.matmul(b)
 }
