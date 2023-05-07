@@ -14,9 +14,7 @@ mod raw_tensor_wgpu;
 mod shape;
 mod shape_strider;
 pub mod tensor;
-mod tensor;
 pub mod tensor_mut;
-mod tensor_mut;
 mod wgpu_context;
 
 pub use ad_reverse::{

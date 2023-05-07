@@ -33,10 +33,10 @@ fn assert_vec_eq(a: &[f32], b: &[f32]) {
 
 // a few functions that are "compile time" tests - to check that the
 // TernsorLike traits are having the right effect.
-fn fun<'t, T>(t1: &'t T, t2: &'t T) -> T
+fn fun<T>(t1: &T, t2: &T) -> T
 where
-    T: TensorLike<'t>,
-    &'t T: TensorLikeRef<T>,
+    for<'s> T: TensorLike<'s>,
+    for<'s> &'s T: TensorLikeRef<T>,
 {
     let r1 = t1.exp(); // DiffTensor ops
     let r2 = t2.log();
@@ -45,7 +45,8 @@ where
     let r5 = t1 / t2; // T / T
     let r6 = r3 / r4.exp(); // T / T
     let r7 = t1 * t2; // &T * &T
-    r6 + r5 + r7
+    let r8 = &r6 + &r5;
+    &r7 + r8 + &r7
 }
 
 #[test]
