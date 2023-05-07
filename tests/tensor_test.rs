@@ -60,18 +60,18 @@ fn test_tensorlike() {
 }
 
 #[test]
-fn test_elementwise_ops() {
+fn test_math_ops() {
     let shape = &[2, 3];
     let t1 = &Cpu32::linspace(1., 6., 6).reshape(shape);
     let t2 = &Cpu32::linspace(6., 11., 6).reshape(shape);
-    elementwise_ops(t1, t2);
+    math_ops(t1, t2);
 
     let t1 = &Wgpu32::linspace(1., 6., 6).reshape(shape);
     let t2 = &Wgpu32::linspace(6., 11., 6).reshape(shape);
-    elementwise_ops(t1, t2);
+    math_ops(t1, t2);
 }
 
-fn elementwise_ops<T: RawTensor<Elem = f32>>(t1: &Tensor<T>, t2: &Tensor<T>) {
+fn math_ops<T: RawTensor<Elem = f32>>(t1: &Tensor<T>, t2: &Tensor<T>) {
     let r1 = t1.exp();
     assert_vec_eq(
         &r1.ravel(),

@@ -268,7 +268,7 @@ fn do_test_pow<RT: RawTensor<Elem = f32> + Clone + Debug>() {
     );
     test_df_2::<RT, _, _, _, _>(
         |a, b| a.pow(b),
-        Diffable::pow,
+        DiffableExt::pow,
         |a, b| b * a.pow(&(b - b.ones_like())),
         |a, b| a.pow(b) * a.log(),
     );
@@ -470,4 +470,35 @@ fn test_pad() {
 fn do_test_pad<RT: RawTensor<Elem = f32> + Clone + Debug>() {
     test_df::<RT, _, _, _>(|a| f_pad(a), Diffable::ones_like, |a| f_pad(a));
     test_ddf::<RT, _, _, _>(|a| f_pad(a), Diffable::zeros_like, Diffable::ones_like);
+}
+
+fn f_matmul<'t, T>(a: &'t T, b: &'t T) -> T
+where
+    T: TensorLike<'t>,
+    &'t T: TensorLikeRef<T>,
+{
+    a.matmul(b)
+}
+
+#[test]
+fn test_matmul() {
+    do_test_matmul::<CpuRawTensor<f32>>();
+    do_test_matmul::<WgpuRawTensor<f32>>();
+}
+
+fn do_test_matmul<RT: RawTensor<Elem = f32> + Clone + Debug>() {
+    let a: Tensor<RT> = Tensor::new(&[2, 3], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+    let b: Tensor<RT> = Tensor::new(&[3, 2], &[7.0, 8.0, 9.0, 10.0, 11.0, 12.0]);
+
+    let (primals, pullback) = vjpn(|ab| f_matmul(&ab[0], &ab[1]), &[&a, &b]);
+    assert_eq!(primals.shape(), &[2, 2]);
+    assert_eq!(primals.ravel(), &[58.0, 64.0, 139.0, 154.0]);
+
+    let cotangent: Tensor<RT> = Tensor::new(&[2, 2], &[1.0, 2.0, 3.0, 4.0]);
+    let grads = pullback.call(&cotangent);
+    assert_eq!(grads.len(), 2);
+    assert_eq!(grads[0].shape(), a.shape());
+    assert_eq!(grads[1].shape(), b.shape());
+    assert_eq!(grads[0].ravel(), [23.0, 29.0, 35.0, 53.0, 67.0, 81.0,]);
+    assert_eq!(grads[1].ravel(), [13.0, 18.0, 17.0, 24.0, 21.0, 30.0,]);
 }

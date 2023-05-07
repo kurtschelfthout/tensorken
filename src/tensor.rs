@@ -27,27 +27,27 @@ impl<T: Num, TTensor: RawTensor<Elem = T>> Diffable for TTensor {
         self.exp()
     }
 
-    fn add(&self, other: &Self) -> Self {
+    fn elementwise_add(&self, other: &Self) -> Self {
         self.add(other)
     }
 
-    fn sub(&self, other: &Self) -> Self {
+    fn elementwise_sub(&self, other: &Self) -> Self {
         self.sub(other)
     }
 
-    fn mul(&self, other: &Self) -> Self {
+    fn elementwise_mul(&self, other: &Self) -> Self {
         self.mul(other)
     }
 
-    fn div(&self, other: &Self) -> Self {
+    fn elementwise_div(&self, other: &Self) -> Self {
         self.div(other)
     }
 
-    fn pow(&self, other: &Self) -> Self {
+    fn elementwise_pow(&self, other: &Self) -> Self {
         self.pow(other)
     }
 
-    fn eq(&self, other: &Self) -> Self {
+    fn elementwise_eq(&self, other: &Self) -> Self {
         self.eq(other)
     }
 
@@ -201,44 +201,6 @@ impl<T: Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
     }
 }
 
-impl<T: Diffable> Tensor<T> {
-    fn broadcasted_apply(
-        &self,
-        other: &Self,
-        f: impl Fn(&Self, &Self) -> Self,
-        reverse: bool,
-    ) -> Self {
-        if self.shape().ndims() > other.shape().ndims() {
-            // Rust tidbit: I originally did not have a reverse parameter,
-            // but just called |a,b| f(b,a) in the recursive call. This doesn't work,
-            // because it hits the recursion limit: https://stackoverflow.com/questions/54613966/error-reached-the-recursion-limit-while-instantiating-funcclosure
-            return other.broadcasted_apply(self, f, !reverse);
-        }
-
-        if self.shape().ndims() == other.shape().ndims() {
-            let res_shape = self
-                .shape()
-                .iter()
-                .zip(other.shape().iter())
-                .map(|(a, b)| *a.max(b))
-                .collect::<Vec<_>>();
-            let s_expanded = self.expand(&res_shape);
-            let o_expanded = other.expand(&res_shape);
-            if reverse {
-                return f(&o_expanded, &s_expanded);
-            }
-            return f(&s_expanded, &o_expanded);
-        }
-
-        let num_ones_to_add = other.shape().len().saturating_sub(self.shape().len());
-        let mut new_shape = vec![1; num_ones_to_add];
-        new_shape.extend(self.shape());
-
-        self.reshape(&new_shape)
-            .broadcasted_apply(other, f, reverse)
-    }
-}
-
 impl<T: Diffable> Diffable for Tensor<T> {
     /// Apply the natural logarithm to each element.
     fn log(&self) -> Self {
@@ -250,30 +212,30 @@ impl<T: Diffable> Diffable for Tensor<T> {
         Tensor(self.0.exp())
     }
 
-    fn add(&self, other: &Self) -> Self {
-        self.broadcasted_apply(other, |a, b| Tensor(a.0.add(&b.0)), false)
+    fn elementwise_add(&self, other: &Self) -> Self {
+        Tensor(self.0.elementwise_add(&other.0))
     }
 
-    fn sub(&self, other: &Self) -> Self {
-        self.broadcasted_apply(other, |a, b| Tensor(a.0.sub(&b.0)), false)
+    fn elementwise_sub(&self, other: &Self) -> Self {
+        Tensor(self.0.elementwise_sub(&other.0))
     }
 
-    fn mul(&self, other: &Self) -> Self {
-        self.broadcasted_apply(other, |a, b| Tensor(a.0.mul(&b.0)), false)
+    fn elementwise_mul(&self, other: &Self) -> Self {
+        Tensor(self.0.elementwise_mul(&other.0))
     }
 
-    fn div(&self, other: &Self) -> Self {
-        self.broadcasted_apply(other, |a, b| Tensor(a.0.div(&b.0)), false)
+    fn elementwise_div(&self, other: &Self) -> Self {
+        Tensor(self.0.elementwise_div(&other.0))
     }
 
     /// Raise self to the power of other, element-wise.
-    fn pow(&self, exp: &Self) -> Self {
-        self.broadcasted_apply(exp, |a, b| Tensor(a.0.pow(&b.0)), false)
+    fn elementwise_pow(&self, exp: &Self) -> Self {
+        Tensor(self.0.elementwise_pow(&exp.0))
     }
 
     // Return a new tensor with ones where elements are equal, and zero otherwise.
-    fn eq(&self, other: &Self) -> Self {
-        self.broadcasted_apply(other, |a, b| Tensor(a.0.eq(&b.0)), false)
+    fn elementwise_eq(&self, other: &Self) -> Self {
+        Tensor(self.0.elementwise_eq(&other.0))
     }
 
     /// Reduce to sum along the given axes.

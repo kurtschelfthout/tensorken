@@ -10,7 +10,7 @@ macro_rules! impl_bin_op {
             type Output = Self;
 
             fn $op_fn(self, rhs: Self) -> Self::Output {
-                Diffable::$op_fn(&self, &rhs)
+                DiffableExt::$op_fn(&self, &rhs)
             }
         }
 
@@ -18,7 +18,7 @@ macro_rules! impl_bin_op {
             type Output = $name$(< $( $ps ),+ >)?;
 
             fn $op_fn(self, rhs: Self) -> Self::Output {
-                Diffable::$op_fn(self, rhs)
+                DiffableExt::$op_fn(self, rhs)
             }
         }
 
@@ -26,7 +26,7 @@ macro_rules! impl_bin_op {
             type Output = Self;
 
             fn $op_fn(self, rhs: &$name$(< $( $ps ),+ >)?) -> Self::Output {
-                Diffable::$op_fn(&self, rhs)
+                DiffableExt::$op_fn(&self, rhs)
             }
         }
 
@@ -34,7 +34,7 @@ macro_rules! impl_bin_op {
             type Output = $name$(< $( $ps ),+ >)?;
 
             fn $op_fn(self, rhs: $name$(< $( $ps ),+ >)?) -> Self::Output {
-                Diffable::$op_fn(self, &rhs)
+                DiffableExt::$op_fn(self, &rhs)
             }
         }
     };
