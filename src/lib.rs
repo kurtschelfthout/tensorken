@@ -19,7 +19,9 @@ pub mod tensor_mut;
 mod tensor_mut;
 mod wgpu_context;
 
-pub use ad_reverse::{vjp1, vjpn, Reverse};
+pub use ad_reverse::{
+    grad1, grad2, value_and_grad1, value_and_grad2, value_and_gradn, vjpn, PullBack, Reverse,
+};
 pub use diffable::{Diffable, DiffableExt};
 pub use raw_tensor::RawTensor;
 pub use raw_tensor_cpu::CpuRawTensor;
