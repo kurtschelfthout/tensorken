@@ -74,10 +74,6 @@ pub enum Reverse<'a, 't, T> {
 }
 
 impl<T> Reverse<'_, '_, T> {
-    pub fn lift(x: T) -> Self {
-        Reverse::Lift(x)
-    }
-
     fn into_primal(self) -> T {
         match self {
             Reverse::Lift(x) | Reverse::Reverse(_, x, _) => x,
@@ -88,6 +84,19 @@ impl<T> Reverse<'_, '_, T> {
         match self {
             Reverse::Lift(x) | Reverse::Reverse(_, x, _) => x,
         }
+    }
+
+    fn try_get_adjoint_index(&self) -> Option<usize> {
+        match self {
+            Reverse::Reverse(_, _, i) => Some(*i),
+            Reverse::Lift(_) => None,
+        }
+    }
+}
+
+impl<T: Clone> Reverse<'_, '_, T> {
+    pub fn lift(x: &T) -> Self {
+        Reverse::Lift(x.clone())
     }
 }
 
@@ -204,11 +213,11 @@ impl<T: Clone + Diffable> Diffable for Reverse<'_, '_, T> {
     }
 
     fn zeros_like(&self) -> Self {
-        Reverse::lift(self.primal().zeros_like())
+        Reverse::Lift(self.primal().zeros_like())
     }
 
     fn ones_like(&self) -> Self {
-        Reverse::lift(self.primal().ones_like())
+        Reverse::Lift(self.primal().ones_like())
     }
 
     fn shape(&self) -> &[usize] {
@@ -223,11 +232,7 @@ crate::math_macros::impl_bin_op!(Div, div, Reverse<'a, 't, T: Diffable + Clone>)
 
 crate::math_macros::impl_un_op!(Neg, neg, Reverse<'a, 't, T: Diffable + Clone>);
 
-#[derive(Debug)]
-struct Grad<T> {
-    grad: Option<Vec<T>>,
-}
-
+// somewhat wonky helper type to deal with optional adjoints
 #[derive(Debug)]
 struct Adjoints<T> {
     adjoints: Vec<Option<T>>,
@@ -257,115 +262,150 @@ impl<T> Index<usize> for Adjoints<T> {
     }
 }
 
-impl<T: Diffable + Clone> Grad<T> {
-    pub fn of(result: &Reverse<T>) -> Self {
-        match result {
-            Reverse::Reverse(trace, primal, var) => {
-                let trace = trace.trace.borrow();
-                let mut adjoints = Adjoints::new(var + 1);
-                adjoints.adjoints[*var] = Some(primal.ones_like());
+/// `PullBack` is a function from a cotangent vector to a `Vec` of cotangent vectors.
+/// Use `call` to access it.
+pub struct PullBack<'t, T> {
+    trace: Trace<'t, T>,
+    index_result: Option<usize>,
+    zero_primals: Vec<T>,
+    // only used to assert the shape matches with cotangent
+    primal_out_shape: Vec<usize>,
+}
 
-                // backpropagate
-                for i in (0..=*var).rev() {
-                    if adjoints.adjoints[i].is_none() {
-                        // no gradient to propagate - this node makes no contribution.
-                        continue;
-                    }
-                    let node = &trace[i];
-                    match node {
-                        TracedOp::Var => {
-                            // vars are always at the start of the trace (see vjp)
-                            // and don't contribute to each other. So we can stop now.
-                            break;
-                        }
-                        TracedOp::Unary(op, a) => adjoints.update(*a, op.df_dfda(&adjoints[i])),
-                        TracedOp::Binary(op, a, b) => {
-                            adjoints.update(*a, op.df_dfda(&adjoints[i]));
-                            adjoints.update(*b, op.df_dfdb(&adjoints[i]));
-                        }
-                        TracedOp::BinaryDA(op, a) => {
-                            adjoints.update(*a, op.df_dfda(&adjoints[i]));
-                        }
-                        TracedOp::BinaryDB(op, b) => {
-                            adjoints.update(*b, op.df_dfdb(&adjoints[i]));
-                        }
-                    }
-                    adjoints.pop();
-                }
+impl<T: Diffable + Clone> PullBack<'_, T> {
+    fn reverse(&self, var: usize, cotangent: &T) -> Vec<T> {
+        assert!(
+            self.primal_out_shape == cotangent.shape(),
+            "cotangent shape must match primal shape"
+        );
+        let trace = self.trace.trace.borrow();
+        let mut adjoints = Adjoints::new(var + 1);
+        adjoints.adjoints[var] = Some(cotangent.clone());
 
-                Self {
-                    grad: Some(
-                        adjoints
-                            .adjoints
-                            .into_iter()
-                            // zeros is correct, but we don't know the shape.
-                            // Perhaps grad should contain options as well?
-                            .map(|x| x.unwrap_or(primal.zeros_like()))
-                            .collect(),
-                    ),
+        // backpropagate
+        for i in (0..=var).rev() {
+            // if none, there's no gradient to propagate - this node makes no contribution.
+            if adjoints.adjoints[i].is_some() {
+                let node = &trace[i];
+                match node {
+                    TracedOp::Var => {
+                        // vars are always at the start of the trace (see vjp)
+                        // and don't contribute to each other. We can stop.
+                        // We can't pop this adjoint, so we must break.
+                        break;
+                    }
+                    TracedOp::Unary(op, a) => adjoints.update(*a, op.df_dfda(&adjoints[i])),
+                    TracedOp::Binary(op, a, b) => {
+                        adjoints.update(*a, op.df_dfda(&adjoints[i]));
+                        adjoints.update(*b, op.df_dfdb(&adjoints[i]));
+                    }
+                    TracedOp::BinaryDA(op, a) => {
+                        adjoints.update(*a, op.df_dfda(&adjoints[i]));
+                    }
+                    TracedOp::BinaryDB(op, b) => {
+                        adjoints.update(*b, op.df_dfdb(&adjoints[i]));
+                    }
                 }
             }
-            Reverse::Lift(_) => Self {
-                // signal that the result was a constant, so we have no trace.
-                grad: None,
-            },
+            adjoints.pop();
         }
-    }
-
-    pub fn get(&self, vars: &[&Reverse<T>]) -> Vec<T> {
-        vars.iter()
-            .map(|rev| match rev {
-                Reverse::Reverse(_, p, var) => self
-                    .grad
-                    .as_ref()
-                    .map_or(p.zeros_like(), |v| v[*var].clone()),
-                Reverse::Lift(x) => x.zeros_like(),
-            })
+        assert_eq!(
+            adjoints.adjoints.len(),
+            self.zero_primals.len(),
+            "adjoints length after propagation must match length of given zero primals"
+        );
+        adjoints
+            .adjoints
+            .into_iter()
+            .zip(self.zero_primals.iter())
+            .map(|(x, z)| x.unwrap_or(z.clone()))
             .collect()
     }
+
+    /// Takes a cotangent tensor with the same shape as the result of this `PullBack` originating vjp function,
+    /// and returns a `Vec` of cotangent vectors with the same number and shapes as vjp's primals,
+    ///  representing the vector-Jacobian product of vjp's function evaluated at primals.
+    pub fn call(&self, cotangent: &T) -> Vec<T>
+    where
+        T: Diffable + Clone,
+    {
+        match self.index_result {
+            None => self.zero_primals.clone(),
+            Some(var) => self.reverse(var, cotangent),
+        }
+    }
 }
 
-fn wrap_slice<'a, 't, TTensor: Clone>(
-    primal: &[&TTensor],
-    trace: &'a Trace<'t, TTensor>,
-) -> Vec<Reverse<'a, 't, TTensor>> {
-    primal.iter().map(|&ati| trace.var(ati.clone())).collect()
-}
-
-/// Compute the result and the vector-Jacobian product of a function at the given point.
-#[allow(clippy::missing_panics_doc)]
-pub fn vjp1<'t, TTensor: Diffable + Clone + 't, F>(f: F, at: &TTensor) -> (TTensor, TTensor)
+/// Compute a reverse-mode vector-Jacobian product of a function `f` evaluated at the given primals.
+/// Returns a tuple of the result of `f` and a `PullBack` object. `PullBack.call` can be used to
+/// compute the vector-Jacobian product of `f` at any cotangent.
+pub fn vjpn<'b, 't, T: Diffable + Clone + 't, F>(f: F, at: &[&T]) -> (T, PullBack<'t, T>)
 where
-    for<'a> F: Fn(&'a Reverse<'a, 't, TTensor>) -> Reverse<'a, 't, TTensor>,
+    for<'a> F: Fn(&'a [Reverse<'a, 't, T>]) -> Reverse<'a, 't, T>,
 {
     let trace = Trace::new();
+    let vars: Vec<_> = at.iter().map(|&ati| trace.var(ati.clone())).collect();
+    let result = f(&vars);
 
-    let owned_vars = wrap_slice(&[at], &trace);
-    let vars: Vec<_> = owned_vars.iter().collect();
-
-    let result = f(vars[0]);
-
-    let grad = Grad::of(&result);
+    let index_result = result.try_get_adjoint_index();
+    let zero_primals: Vec<_> = at.iter().map(|&ati| ati.zeros_like()).collect();
+    let primal_out_shape = result.shape().to_vec();
     (
         result.into_primal(),
-        // the unwrap is "fine" here - this should only panic if
-        // something is seriously wrong with the implementation.
-        grad.get(&vars).into_iter().next().unwrap(),
+        PullBack {
+            trace,
+            index_result,
+            zero_primals,
+            primal_out_shape,
+        },
     )
 }
 
-// Compute the result and the vector-Jacobian product of a function at the given points.
-pub fn vjpn<'t, TTensor: Diffable + Clone + 't, F>(f: F, at: &[&TTensor]) -> (TTensor, Vec<TTensor>)
+/// Compute the result and the gradient of a function at the given primals.
+pub fn value_and_gradn<'t, T: Diffable + Clone + 't, F>(f: F, at: &[&T]) -> (T, Vec<T>)
 where
-    for<'a> F: Fn(&'a [&'a Reverse<'a, 't, TTensor>]) -> Reverse<'a, 't, TTensor>,
+    for<'a> F: Fn(&'a [Reverse<'a, 't, T>]) -> Reverse<'a, 't, T>,
 {
-    let trace = Trace::new();
+    let (primal, pb) = vjpn(f, at);
+    let tangents = pb.call(&primal.ones_like());
+    (primal, tangents)
+}
 
-    let owned_vars = wrap_slice(at, &trace);
-    let vars: Vec<_> = owned_vars.iter().collect();
+/// Compute the result and the gradient of a function at the given primal.
+#[allow(clippy::missing_panics_doc)]
+pub fn value_and_grad1<'t, T: Diffable + Clone + 't, F>(f: F, at: &T) -> (T, T)
+where
+    for<'a> F: Fn(&'a Reverse<'a, 't, T>) -> Reverse<'a, 't, T>,
+{
+    let (primal, tangents) = value_and_gradn(|s| f(&s[0]), &[at]);
+    (primal, tangents.into_iter().next().unwrap())
+}
 
-    let result = f(&vars);
+/// Compute the result and the gradient of a function at the given primals.
+#[allow(clippy::missing_panics_doc)]
+pub fn value_and_grad2<'t, T: Diffable + Clone + 't, F>(f: F, at0: &T, at1: &T) -> (T, (T, T))
+where
+    for<'a> F: Fn(&'a Reverse<'a, 't, T>, &'a Reverse<'a, 't, T>) -> Reverse<'a, 't, T>,
+{
+    let (primal, tangents) = value_and_gradn(|s| f(&s[0], &s[1]), &[at0, at1]);
+    let mut dr_iter = tangents.into_iter();
+    (primal, (dr_iter.next().unwrap(), dr_iter.next().unwrap()))
+}
 
-    let grad = Grad::of(&result);
-    (result.into_primal(), grad.get(&vars))
+/// Compute the gradient of a function at the given primal.
+#[allow(clippy::missing_panics_doc)]
+pub fn grad1<'t, T: Diffable + Clone + 't, F>(f: F, at: &T) -> T
+where
+    for<'a> F: Fn(&'a Reverse<'a, 't, T>) -> Reverse<'a, 't, T>,
+{
+    value_and_grad1(f, at).1
+}
+
+/// Compute the gradient of a function at the given primals.
+#[allow(clippy::missing_panics_doc)]
+pub fn grad2<'t, T: Diffable + Clone + 't, F>(f: F, at0: &T, at1: &T) -> (T, T)
+where
+    for<'a> F: Fn(&'a Reverse<'a, 't, T>, &'a Reverse<'a, 't, T>) -> Reverse<'a, 't, T>,
+{
+    value_and_grad2(f, at0, at1).1
 }

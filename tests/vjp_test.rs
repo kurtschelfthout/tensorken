@@ -1,6 +1,6 @@
 use tensorken::{
-    CpuRawTensor, Diffable, RawTensor, Shape, WgpuRawTensor, {vjp1, vjpn, Reverse},
-    {Tensor, TensorLike, TensorLikeRef},
+    CpuRawTensor, Diffable, DiffableExt, RawTensor, Shape, WgpuRawTensor,
+    {value_and_grad1, value_and_grad2, vjpn, Reverse}, {Tensor, TensorLike, TensorLikeRef},
 };
 
 use std::{fmt::Debug, ops::Add};
@@ -24,7 +24,7 @@ where
     for<'a> H: Fn(&'a Tensor<RT>) -> Tensor<RT>, // we need to use two different types.
 {
     let at: Tensor<RT> = Tensor::new(&[2, 4], &(1u8..9).map(f32::from).collect::<Vec<_>>());
-    let (f_actual, df_actual) = vjp1(f, &at);
+    let (f_actual, df_actual) = value_and_grad1(f, &at);
     let f_expected = ft(&at);
     let df_expected = df(&at);
     assert_eq!(f_actual.shape(), f_expected.shape());
@@ -45,7 +45,7 @@ where
     for<'a> H: Fn(&'a Tensor<RT>) -> Tensor<RT>,
 {
     let at: Tensor<RT> = Tensor::new(&[2, 2], &(1u8..5).map(f32::from).collect::<Vec<_>>());
-    let (df_actual, ddf_actual) = vjp1(|r| vjp1(&f, r).1, &at);
+    let (df_actual, ddf_actual) = value_and_grad1(|r| value_and_grad1(&f, r).1, &at);
     let df_expected = dft(&at);
     let ddf_expected = ddf(&at);
     assert_eq!(df_actual.shape(), df_expected.shape());
@@ -70,10 +70,9 @@ fn test_df_2<RT: RawTensor<Elem = f32> + Clone + Debug, F, H, GA, GB>(
     for<'a> GB: Fn(&'a Tensor<RT>, &'a Tensor<RT>) -> Tensor<RT>,
     for<'a> H: Fn(&'a Tensor<RT>, &'a Tensor<RT>) -> Tensor<RT>,
 {
-    let a: &Tensor<RT> = &Tensor::new(&[2, 3], &[1.0, 2.0, 3.0, 4.0, -3.0, -2.0]);
-    let b: &Tensor<RT> = &Tensor::new(&[2, 3], &[4.0, 5.0, 6.0, 7.0, -6.0, -5.0]);
-    let (f_actual, df_actual) = vjpn(|es| f(es[0], es[1]), &[a, b]);
-    let (dfda_actual, dfdb_actual) = (&df_actual[0], &df_actual[1]);
+    let a = &Tensor::new(&[2, 3], &[1.0, 2.0, 3.0, 4.0, -3.0, -2.0]);
+    let b = &Tensor::new(&[2, 3], &[4.0, 5.0, 6.0, 7.0, -6.0, -5.0]);
+    let (f_actual, (dfda_actual, dfdb_actual)) = value_and_grad2(f, a, b);
     let f_expected = ft(a, b);
     let dfda_expected = dfda(a, b);
     let dfdb_expected = dfdb(a, b);
@@ -93,12 +92,12 @@ fn test_derivative_constant() {
 
 fn do_test_constant<RT: RawTensor<Elem = f32> + Clone + Debug>() {
     test_df::<RT, _, _, _>(
-        |t| Reverse::lift(t.primal().clone()),
+        |t| Reverse::lift(t.primal()),
         Diffable::zeros_like,
         Clone::clone,
     );
     test_ddf::<RT, _, _, _>(
-        |t| Reverse::lift(Reverse::lift(t.primal().primal().clone())),
+        |t| Reverse::lift(&Reverse::lift(t.primal().primal())),
         Diffable::zeros_like,
         Diffable::zeros_like,
     );

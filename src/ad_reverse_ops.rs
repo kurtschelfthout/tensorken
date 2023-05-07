@@ -322,3 +322,17 @@ impl<TTensor: Diffable> UnaryRevOp<TTensor> for CropOp {
         df.pad(&self.0)
     }
 }
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn test_argsort() {
+        assert_eq!(argsort(&[0, 1]), [0, 1]);
+        assert_eq!(argsort(&[1, 0]), [1, 0]);
+        assert_eq!(argsort(&[2, 0, 1]), [1, 2, 0]);
+        assert_eq!(argsort(&[0, 1, 2]), [0, 1, 2]);
+    }
+}
