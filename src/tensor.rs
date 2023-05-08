@@ -4,6 +4,8 @@ use std::{
 };
 
 use prettytable::{format, Cell, Table};
+use rand::Rng;
+use rand_distr::{Distribution, StandardNormal};
 
 use crate::{
     num::Num, raw_tensor::RawTensor, raw_tensor_cpu::CpuRawTensor, raw_tensor_wgpu::WgpuRawTensor,
@@ -65,6 +67,21 @@ impl<T: Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
             data.push(start + step * T::from_usize(i));
         }
         Self::new(&[num], &data)
+    }
+
+    /// Create a new tensor with the given shape, and fill it with random values from a standard normal distribution
+    pub fn randn<R>(shape: &[usize], rng: &mut R) -> Self
+    where
+        R: Rng + ?Sized,
+        rand_distr::StandardNormal: Distribution<T>,
+    {
+        // let normal = StandardNormal //.unwrap();
+        let mut data: Vec<T> = Vec::with_capacity(shape.size());
+        for _ in 0..shape.size() {
+            data.push(rng.sample(StandardNormal));
+        }
+
+        Self::new(shape, &data)
     }
 
     /// Create a new tensor with the same shape as self, but all elements equal to given value.

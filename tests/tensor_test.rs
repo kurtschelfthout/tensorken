@@ -1,3 +1,4 @@
+use rand::{rngs::StdRng, SeedableRng};
 use tensorken::{
     raw_tensor::RawTensor,
     raw_tensor_cpu::CpuRawTensor,
@@ -292,4 +293,15 @@ fn do_test_at<T: RawTensor<Elem = f32>>(t: &Tensor<T>) {
 
     let s = s.at(1);
     assert_eq!(s.shape(), &[1]);
+}
+
+#[test]
+fn test_randn() {
+    let mut rng = StdRng::seed_from_u64(0u64);
+    let t1 = Cpu32::randn(&[2, 3], &mut rng);
+    assert_eq!(t1.shape(), &[2, 3]);
+    assert_eq!(
+        t1.ravel(),
+        [0.712813, 0.85833144, -2.4362438, 0.16334426, -1.2750102, 1.287171]
+    );
 }
