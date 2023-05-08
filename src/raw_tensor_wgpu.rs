@@ -335,10 +335,13 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
         })
     }
 
+    const WORKGROUP_SIZE: usize = 256;
+
     fn encode_and_submit(
         &self,
         compute_pipeline: &wgpu::ComputePipeline,
         bind_group: &wgpu::BindGroup,
+        work_items_count: usize,
     ) {
         let mut encoder = self
             .device()
@@ -348,7 +351,9 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
                 encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });
             compute_pass.set_pipeline(compute_pipeline);
             compute_pass.set_bind_group(0, bind_group, &[]);
-            let num_work_groups = u32::try_from((self.strider.size() + 63) / 64 * 64).unwrap();
+            let num_work_groups =
+                u32::try_from((work_items_count + Self::WORKGROUP_SIZE - 1) / Self::WORKGROUP_SIZE)
+                    .unwrap();
             compute_pass.dispatch_workgroups(num_work_groups, 1, 1);
         }
         self.queue().submit(Some(encoder.finish()));
@@ -415,7 +420,7 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
 
         let bind_group =
             self.get_bind_group_unary(compute_pipeline, &output_buffer, &strides_and_shapes);
-        self.encode_and_submit(compute_pipeline, &bind_group);
+        self.encode_and_submit(compute_pipeline, &bind_group, self.strider.size());
 
         WgpuRawTensor {
             buffer: Rc::new(output_buffer),
@@ -437,7 +442,7 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
             self.get_strides_and_shapes_buffer(Some(&other.strider), &output_strider, None, None);
         let bind_group =
             self.get_bind_group_zip(other, compute_pipeline, &output_buffer, &strides_and_shapes);
-        self.encode_and_submit(compute_pipeline, &bind_group);
+        self.encode_and_submit(compute_pipeline, &bind_group, self.strider.size());
 
         WgpuRawTensor {
             buffer: Rc::new(output_buffer),
@@ -462,7 +467,7 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
         );
         let bind_group =
             self.get_bind_group_unary(compute_pipeline, &output_buffer, &strides_and_shapes);
-        self.encode_and_submit(compute_pipeline, &bind_group);
+        self.encode_and_submit(compute_pipeline, &bind_group, strider.size());
 
         WgpuRawTensor {
             buffer: Rc::new(output_buffer),
@@ -483,7 +488,7 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
             self.get_strides_and_shapes_buffer(None, &output_strider, None, Some(padding));
         let bind_group =
             self.get_bind_group_unary(compute_pipeline, &output_buffer, &strides_and_shapes);
-        self.encode_and_submit(compute_pipeline, &bind_group);
+        self.encode_and_submit(compute_pipeline, &bind_group, output_strider.size());
 
         WgpuRawTensor {
             buffer: Rc::new(output_buffer),
@@ -928,6 +933,16 @@ mod tests {
         assert_eq!(s_raveled.iter().filter(|&&x| x != 0.0).count(), 23);
         assert_eq!(s_raveled[s.strider.buffer_index(&[1, 1, 2])], 1.0);
         assert_eq!(s_raveled[s.strider.buffer_index(&[1, 1, 3])], 2.0);
+
+        // pad a lot in one dimension
+        let padding = &[(20, 0), (0, 0), (0, 0)];
+        let s = t.pad(padding);
+        assert_eq!(s.shape(), &[22, 3, 4]);
+        assert_eq!(s.strides(), &[12, 4, 1]);
+        let s_raveled = s.ravel();
+        assert_eq!(s_raveled.iter().filter(|&&x| x != 0.0).count(), 23);
+        assert_eq!(s_raveled[s.strider.buffer_index(&[20, 0, 1])], 1.0);
+        assert_eq!(s_raveled[s.strider.buffer_index(&[20, 0, 2])], 2.0);
 
         // pad a lot
         let padding = &[(1, 2), (3, 4), (5, 6)];

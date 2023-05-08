@@ -5,7 +5,7 @@ var<storage, read> input_0: array<f32>;
 @group(0) @binding(1)
 var<storage, read_write> output_0: array<f32>;
 
-// ndims, input_offset, input_strides, output_strides, shape, padding_before, padding_after
+// ndims, input_offset, input_strides, output_strides, input_shape, padding_before, padding_after
 @group(0) @binding(2)
 var<storage, read> strides_and_shape: array<u32>;
 
@@ -19,7 +19,7 @@ fn output_strides(i: u32) -> u32 {
     return strides_and_shape[i + preamble + strides_and_shape[0] ];
 }
 
-fn shape(i: u32) -> u32 {
+fn input_shape(i: u32) -> u32 {
     return strides_and_shape[i + preamble + strides_and_shape[0] * 2u];
 }
 
@@ -37,10 +37,10 @@ fn value_for(output_i: u32) -> f32 {
     var input_i: u32 = strides_and_shape[1];
     
     for (var i: u32 = 0u; i < strides_and_shape[0]; i = i + 1u) {
-        let len = shape(i) + padding_after(i) + padding_before(i);
+        let len = input_shape(i) + padding_after(i) + padding_before(i);
         let stride = output_strides(i);
         let output_coord: u32 = output_i / stride % len;
-        if output_coord < padding_before(i) || output_coord >= padding_before(i) + shape(i) {
+        if output_coord < padding_before(i) || output_coord >= padding_before(i) + input_shape(i) {
             return 0.0;
         }
         let input_coord = output_coord - padding_before(i);
@@ -51,7 +51,7 @@ fn value_for(output_i: u32) -> f32 {
     return input_0[input_i];
 }
 
-@compute @workgroup_size(64)
+@compute @workgroup_size(256)
 fn call(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let gidx = global_id.x;
     // because of workgroup size, gidx is a multiple of 64. Our output array may not be,

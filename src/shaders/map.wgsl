@@ -52,7 +52,7 @@ fn input_index_of(output_i: u32) -> u32 {
     return input_i;
 }
 
-@compute @workgroup_size(64)
+@compute @workgroup_size(256)
 fn call(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let gidx = global_id.x;
     // because of workgroup size, gidx is a multiple of 64. Our output array may not be,
