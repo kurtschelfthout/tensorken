@@ -335,7 +335,7 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
         })
     }
 
-    const WORKGROUP_SIZE: usize = 256;
+    const WORKGROUP_SIZE: usize = 64;
 
     fn encode_and_submit(
         &self,

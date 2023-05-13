@@ -295,7 +295,7 @@ impl<TRawTensor: RawTensor> Tensor<TRawTensor> {
             .broadcasted_apply(other, f, reverse)
     }
 
-    /// Switch the two axes around.
+    /// Swap two axes. The order of the axes as given does not matter.
     pub fn transpose(&self, axis0: usize, axis1: usize) -> Self {
         let mut axes = (0..self.shape().ndims()).collect::<Vec<_>>();
         axes.swap(axis0, axis1);

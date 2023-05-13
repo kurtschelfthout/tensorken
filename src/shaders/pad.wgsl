@@ -51,12 +51,10 @@ fn value_for(output_i: u32) -> f32 {
     return input_0[input_i];
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(64)
 fn call(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let gidx = global_id.x;
-    // because of workgroup size, gidx is a multiple of 64. Our output array may not be,
-    // so we need to make sure we don't go out of bounds. Such acesses are clamped by WGSL,
-    // but will typically result in wrong results anyway.
+
     if(global_id.x >= arrayLength(&output_0)) {
         return;
     }

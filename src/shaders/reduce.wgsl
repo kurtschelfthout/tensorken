@@ -47,7 +47,7 @@ fn input_size() -> u32 {
     return size;
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(64)
 fn call(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let gidx = global_id.x;
     // because of workgroup size, gidx is a multiple of 64. Our output array may not be,
@@ -70,7 +70,15 @@ fn call(@builtin(global_invocation_id) global_id: vec3<u32>) {
     // 4. If output_i == gidx, then we're meant to calculate this output and so we reduce the current contents
     //    of output_0[gidx] with the new element.
 
-    output_0[gidx] = replace_me_with_actual_default();
+    // Ok, this is REALLY BAD approach that's probably the reason why matmul is slow and crashes my GPU sometimes. 
+    // (see tensor_sum benchmark, which also crashes, and is also slow)
+    // The first problem is that the more we reduce, the fewer threads do actual useful work:
+    // in the limit, we reduce to a single number which means we're starting 256 threads, only one of which will write the result.
+    // IN principle, the more we reduce, the more parallelism we should be able to exploit!
+    // Second, this whole thing of iterating over the input elements and only writing to the reduced output is bonkers.
+    // Should find a way to 
+
+    var acc = replace_me_with_actual_default();
     for (var input_e: u32 = 0u; input_e < input_size(); input_e += 1u) {
         var output_i: u32 = 0u;
         var input_i: u32 = strides_and_shape[1];
@@ -83,7 +91,8 @@ fn call(@builtin(global_invocation_id) global_id: vec3<u32>) {
             output_i += coord * reducer_strides(i);
         }
         if (output_i == gidx) {
-            output_0[gidx] = replace_me_with_actual_operation(output_0[gidx], input_0[input_i]);
+            acc = replace_me_with_actual_operation(acc, input_0[input_i]);
         }
     }
+    output_0[gidx] = acc;
 }
