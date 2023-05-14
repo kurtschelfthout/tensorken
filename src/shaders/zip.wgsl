@@ -11,12 +11,12 @@ var<storage, read_write> output_0: array<f32>;
 // So to encode our necessary strides and shape in one struct,
 // we concatenate them all in one array, and the first element
 // is the number of dimensions.
-// ndims, offset_0, offset_1, strides_0, strides_1, output_strides, shape
+// ndims, offset_0, offset_1, chunk_size, strides_0, strides_1, output_strides, shape
 // These are all elementwise ops, so shape must be identical for all.
 @group(0) @binding(3)
 var<storage, read> strides_and_shape: array<u32>;
 
-const preamble = 3u;
+const preamble = 4u;
 
 fn input_0_strides(i: u32) -> u32 {
     return strides_and_shape[i + preamble];
@@ -66,10 +66,13 @@ fn eq(a: f32, b: f32) -> f32 { return f32(a == b); }
 @compute
 @workgroup_size(64)
 fn call(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    let gidx = global_id.x;
-    if(global_id.x >= arrayLength(&output_0)) {
-        return;
+    let fro = global_id.x * strides_and_shape[3];
+    let to = fro + strides_and_shape[3];
+    for (var gidx = fro; gidx < to; gidx = gidx + 1u) {
+        if(gidx >= arrayLength(&output_0)) {
+            return;
+        }
+        let indexes = input_index_of(gidx);
+        output_0[gidx] = replace_me_with_actual_operation(input_0[ indexes[0] ], input_1[ indexes[1] ]);
     }
-    let indexes = input_index_of(gidx);
-    output_0[gidx] = replace_me_with_actual_operation(input_0[ indexes[0] ], input_1[ indexes[1] ]);
 }

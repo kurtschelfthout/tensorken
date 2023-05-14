@@ -377,7 +377,7 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
         &self,
         compute_pipeline: &wgpu::ComputePipeline,
         bind_group: &wgpu::BindGroup,
-        dispatch_work_items_count: usize,
+        workgroup_count: usize,
     ) {
         let mut encoder = self
             .device()
@@ -387,8 +387,8 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
                 encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });
             compute_pass.set_pipeline(compute_pipeline);
             compute_pass.set_bind_group(0, bind_group, &[]);
-            let num_work_groups = u32::try_from(dispatch_work_items_count).unwrap();
-            compute_pass.dispatch_workgroups(num_work_groups, 1, 1);
+            let workgroup_count = u32::try_from(workgroup_count).unwrap();
+            compute_pass.dispatch_workgroups(workgroup_count, 1, 1);
         }
         self.queue().submit(Some(encoder.finish()));
     }
@@ -405,19 +405,20 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
 impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
     fn get_strides_and_shapes_buffer(
         &self,
+        chunk_size: usize,
         other: Option<&ShapeStrider>,
         output_strider: &ShapeStrider,
         // reduced_strides, reduced_shape, output_shape
         reduce: Option<(&[usize], &[usize], &[usize])>,
         padding: Option<&[(usize, usize)]>,
     ) -> wgpu::Buffer {
-        let mut contents = Vec::with_capacity(5 * self.shape().ndims() + 2);
+        let mut contents = Vec::with_capacity(8 * self.shape().ndims() + 3);
         contents.push(self.shape().ndims());
-
         contents.push(self.strider.offset());
         if let Some(other) = other {
             contents.push(other.offset());
         }
+        contents.push(chunk_size);
 
         contents.extend(self.strider.strides());
         if let Some(other) = other {
@@ -469,16 +470,30 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
     }
 
     const MAX_WORKGROUP_SIZE: usize = 256;
+    const MAX_WORKGROUP_COUNT: usize = 65535;
 
-    fn thread_counts(work_item_count: usize) -> (usize, usize) {
-        if work_item_count > Self::MAX_WORKGROUP_SIZE {
-            (
-                Self::MAX_WORKGROUP_SIZE,
-                (work_item_count + Self::MAX_WORKGROUP_SIZE - 1) / Self::MAX_WORKGROUP_SIZE,
-            )
-        } else {
-            (1, work_item_count)
+    /// Return:
+    /// - workgroup size (the number of threads in each workgroup),
+    /// - workgroup count (the number of workgroups to run)
+    /// - chunk size (the number of elements each thread will process)
+    fn counts_n_sizes(work_item_count: usize) -> (usize, usize, usize) {
+        if work_item_count <= Self::MAX_WORKGROUP_SIZE {
+            return (work_item_count, 1, 1);
         }
+
+        let workgroup_count =
+            (work_item_count + Self::MAX_WORKGROUP_SIZE - 1) / Self::MAX_WORKGROUP_SIZE;
+        if workgroup_count <= Self::MAX_WORKGROUP_COUNT {
+            return (Self::MAX_WORKGROUP_SIZE, workgroup_count, 1);
+        }
+
+        let chunk_size =
+            (work_item_count + Self::MAX_WORKGROUP_COUNT - 1) / Self::MAX_WORKGROUP_COUNT;
+        (
+            Self::MAX_WORKGROUP_SIZE,
+            Self::MAX_WORKGROUP_COUNT,
+            chunk_size,
+        )
     }
 
     /// Return a new tensor with the same shape as self, after applying f to each element.
@@ -486,21 +501,19 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
     fn map(&self, operation: &'static str) -> Self {
         let output_strider = ShapeStrider::contiguous(self.shape());
 
-        let (workgroup_size, dispatch_workgroup_count) = Self::thread_counts(output_strider.size());
+        let (workgroup_size, workgroup_count, chunk_size) =
+            Self::counts_n_sizes(output_strider.size());
+
         let output_buffer = self.make_output_buffer(output_strider.size());
         let compute_pipeline = self.pipeline_for(operation, workgroup_size);
         let strides_and_shapes =
-            self.get_strides_and_shapes_buffer(None, &output_strider, None, None);
+            self.get_strides_and_shapes_buffer(chunk_size, None, &output_strider, None, None);
         let bind_group = self.get_bind_group_unary(
             compute_pipeline.as_ref(),
             &output_buffer,
             &strides_and_shapes,
         );
-        self.encode_and_submit(
-            compute_pipeline.as_ref(),
-            &bind_group,
-            dispatch_workgroup_count,
-        );
+        self.encode_and_submit(compute_pipeline.as_ref(), &bind_group, workgroup_count);
 
         self.with_buffer_strider(output_buffer, output_strider)
     }
@@ -510,22 +523,24 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
     fn zip(&self, other: &Self, operation: &'static str) -> Self {
         let output_strider = ShapeStrider::contiguous(self.shape());
 
-        let (workgroup_size, dispatch_workgroup_count) = Self::thread_counts(output_strider.size());
+        let (workgroup_size, workgroup_count, chunk_size) =
+            Self::counts_n_sizes(output_strider.size());
         let output_buffer = self.make_output_buffer(output_strider.size());
         let compute_pipeline = self.pipeline_for(operation, workgroup_size);
-        let strides_and_shapes =
-            self.get_strides_and_shapes_buffer(Some(&other.strider), &output_strider, None, None);
+        let strides_and_shapes = self.get_strides_and_shapes_buffer(
+            chunk_size,
+            Some(&other.strider),
+            &output_strider,
+            None,
+            None,
+        );
         let bind_group = self.get_bind_group_zip(
             other,
             compute_pipeline.as_ref(),
             &output_buffer,
             &strides_and_shapes,
         );
-        self.encode_and_submit(
-            compute_pipeline.as_ref(),
-            &bind_group,
-            dispatch_workgroup_count,
-        );
+        self.encode_and_submit(compute_pipeline.as_ref(), &bind_group, workgroup_count);
 
         self.with_buffer_strider(output_buffer, output_strider)
     }
@@ -539,10 +554,12 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
         }
         let reduced_strider = ShapeStrider::contiguous(&reduced_shape);
 
-        let (workgroup_size, dispatch_workgroup_count) = Self::thread_counts(output_strider.size());
+        let (workgroup_size, workgroup_count, chunk_size) =
+            Self::counts_n_sizes(output_strider.size());
         let output_buffer = self.make_output_buffer(output_strider.size());
         let compute_pipeline = self.pipeline_for(operation, workgroup_size);
         let strides_and_shapes = self.get_strides_and_shapes_buffer(
+            chunk_size,
             None,
             &output_strider,
             Some((
@@ -557,11 +574,7 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
             &output_buffer,
             &strides_and_shapes,
         );
-        self.encode_and_submit(
-            compute_pipeline.as_ref(),
-            &bind_group,
-            dispatch_workgroup_count,
-        );
+        self.encode_and_submit(compute_pipeline.as_ref(), &bind_group, workgroup_count);
 
         self.with_buffer_strider(output_buffer, output_strider)
     }
@@ -572,20 +585,22 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
         // unary ops can keep the same _buffer_ size, i.e. we don't expand the buffer
         let output_buffer = self.make_output_buffer(output_strider.size());
 
-        let (workgroup_size, dispatch_workgroup_count) = Self::thread_counts(output_strider.size());
+        let (workgroup_size, workgroup_count, chunk_size) =
+            Self::counts_n_sizes(output_strider.size());
         let compute_pipeline = self.pipeline_for("pad", workgroup_size);
-        let strides_and_shapes =
-            self.get_strides_and_shapes_buffer(None, &output_strider, None, Some(padding));
+        let strides_and_shapes = self.get_strides_and_shapes_buffer(
+            chunk_size,
+            None,
+            &output_strider,
+            None,
+            Some(padding),
+        );
         let bind_group = self.get_bind_group_unary(
             compute_pipeline.as_ref(),
             &output_buffer,
             &strides_and_shapes,
         );
-        self.encode_and_submit(
-            compute_pipeline.as_ref(),
-            &bind_group,
-            dispatch_workgroup_count,
-        );
+        self.encode_and_submit(compute_pipeline.as_ref(), &bind_group, workgroup_count);
 
         self.with_buffer_strider(output_buffer, output_strider)
     }
