@@ -10,15 +10,13 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     for size in [64, 128, 256, 512] {
         let t1s = &[size, size];
         let t1_gpu = Wgpu32::randn(t1s, &mut rng);
-        // let t2_gpu = Wgpu32::randn(t1s, &mut rng);
         let t1_cpu = t1_gpu.to_cpu();
-        // let t2_cpu = t2_gpu.to_cpu();
 
         group.bench_with_input(BenchmarkId::new("cpu", size), &size, |b, _| {
-            b.iter(|| (black_box(t1_cpu.sum(&[0, 1]))))
+            b.iter(|| (black_box(t1_cpu.sum(&[0]))))
         });
         group.bench_with_input(BenchmarkId::new("gpu", size), &size, |b, _| {
-            b.iter(|| (black_box(t1_gpu.sum(&[0, 1]))))
+            b.iter(|| (black_box(t1_gpu.sum(&[0]))))
         });
     }
     group.finish();

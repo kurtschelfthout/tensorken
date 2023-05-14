@@ -7,7 +7,9 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("Tensor: matmul");
 
-    for size in [32, 64] {
+    // sadly 256 runs into "Each current dispatch group size dimension ([65536, 1, 1]) must be less or equal to 65535"
+    // This is because our implementation of matmul first creates an intermediate tensor of size [256, 256, 256] and then reduces it to [256, 256].
+    for size in [64, 128] {
         let t1s = &[size, size];
         let t1_gpu = Wgpu32::randn(t1s, &mut rng);
         let t2_gpu = Wgpu32::randn(t1s, &mut rng);

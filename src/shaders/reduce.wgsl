@@ -5,7 +5,7 @@ var<storage, read> input_0: array<f32>;
 @group(0) @binding(1)
 var<storage, read_write> output_0: array<f32>;
 
-// ndims, input_offset, input_strides, input_contiguous_strides, reducer_strides, input_shape
+// ndims, input_offset, input_strides, output_strides, input_shape, reduced_strides,  reduced_shape, output_shape
 @group(0) @binding(2)
 var<storage, read> strides_and_shape: array<u32>;
 
@@ -15,16 +15,24 @@ fn input_strides(i: u32) -> u32 {
     return strides_and_shape[i + preamble];
 }
 
-fn input_contiguous_strides(i: u32) -> u32 {
-    return strides_and_shape[i + preamble + strides_and_shape[0] ];
+fn output_strides(i: u32) -> u32 {
+    return strides_and_shape[i + preamble + strides_and_shape[0] * 1u];
 }
 
-fn reducer_strides(i: u32) -> u32 {
+fn input_shape(i: u32) -> u32 {
     return strides_and_shape[i + preamble + strides_and_shape[0] * 2u];
 }
 
-fn shape(i: u32) -> u32 {
+fn reduced_strides(i: u32) -> u32 {
     return strides_and_shape[i + preamble + strides_and_shape[0] * 3u];
+}
+
+fn reduced_shape(i: u32) -> u32 {
+    return strides_and_shape[i + preamble + strides_and_shape[0] * 4u];
+}
+
+fn output_shape(i: u32) -> u32 {
+    return strides_and_shape[i + preamble + strides_and_shape[0] * 5u];
 }
 
 // Same parlor trick as in unary_ops.wgsl.
@@ -39,15 +47,30 @@ fn sum(a: f32, b: f32) -> f32 { return a + b; }
 const MAX: f32 = -1.17549435082228750797e-38f;
 const SUM: f32 = 0.0;
 
-fn input_size() -> u32 {
-    var size: u32 = 1u;
+fn sizes() -> vec2<u32> {
+    var size = vec2(1u, 1u);
     for (var i: u32 = 0u; i < strides_and_shape[0]; i += 1u) {
-        size *= shape(i);
+        size *= vec2(input_shape(i), output_shape(i));
     }
     return size;
 }
 
-@compute @workgroup_size(64)
+fn input_index_of(output_i: u32) -> u32 {
+    var input_i: u32 = strides_and_shape[1];
+    
+    for (var i: u32 = 0u; i < strides_and_shape[0]; i = i + 1u) {
+        let len = output_shape(i);
+        let stride = output_strides(i);
+        let coord_i: u32 = output_i / stride % len;
+
+        input_i += coord_i * input_strides(i);
+    }
+
+    return input_i;
+}
+
+@compute
+@workgroup_size(64)
 fn call(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let gidx = global_id.x;
     // because of workgroup size, gidx is a multiple of 64. Our output array may not be,
@@ -60,39 +83,42 @@ fn call(@builtin(global_invocation_id) global_id: vec3<u32>) {
     // Outline of approach - it's a bit awkward because we'd like to avoid synchronization, so
     // each thread only writes to a single output location in the output buffer. Furthermore, we
     // don't have a way to have an array to represent coordinates, so we need to inline all the calculations.
-    //
-    // Overview:
-    // 1. Iterate over all input elements - note that this is not the same as iterating over
-    //    the input _buffer_ - we're iterating over all the possible coordinates in the input tensor, as indicated
-    //    by their order input_e.
-    // 2. For each input element, compute the real buffer index input_i in the input buffer
-    // 3. For each input element, compute the real buffer index output_i in the output buffer.
-    // 4. If output_i == gidx, then we're meant to calculate this output and so we reduce the current contents
-    //    of output_0[gidx] with the new element.
+    
+    // We should have multiple levels of parallelism here, but start with the first: each thread reduces one element in the
+    // remaining tensor. 
+    // The first step is to figure out to which element in the input buffer we're reducing.
+    // We'll start one thread in the 'x' global id dimension for each element in the output buffer.
+    // We translate that to the corresponding index in the input buffer.
+    let target_input_idx = input_index_of(gidx);
 
-    // Ok, this is REALLY BAD approach that's probably the reason why matmul is slow and crashes my GPU sometimes. 
-    // (see tensor_sum benchmark, which also crashes, and is also slow)
-    // The first problem is that the more we reduce, the fewer threads do actual useful work:
-    // in the limit, we reduce to a single number which means we're starting 256 threads, only one of which will write the result.
-    // IN principle, the more we reduce, the more parallelism we should be able to exploit!
-    // Second, this whole thing of iterating over the input elements and only writing to the reduced output is bonkers.
-    // Should find a way to 
+    // We now have the target offset in the input tensor. Calculate the number of elements that need to
+    // be reduced to the target element.
+    // So e.g.
+    // [2, 3].sum(0) --> reduce_size = 2
+    // [2, 3].sum(1) --> reduce_size = 3
+    let sizes = sizes();
+    let reduce_size = sizes.x / sizes.y;
 
+    // Now we can actually reduce.
     var acc = replace_me_with_actual_default();
-    for (var input_e: u32 = 0u; input_e < input_size(); input_e += 1u) {
-        var output_i: u32 = 0u;
-        var input_i: u32 = strides_and_shape[1];
-        for (var i: u32 = 0u; i < strides_and_shape[0]; i += 1u) {
-            let len = shape(i);
-            let stride = input_contiguous_strides(i);
-            let coord: u32 = input_e / stride % len;
+    for (var rec_i = 0u; rec_i < reduce_size; rec_i += 1u) {
 
+        // The reduced shape and strides here represent the virtual tensor to be reduced.
+        // For example, if we're reducing [2, 3] to [2, 1], then the reduced shape is [1, 3].
+        // The reduced strides are [3, 1]. The variable here will count up to 3, which we
+        // interpret as a buffer index in the reduced virtual tensor. We calculate the tensor
+        // coordinatee in the virtual reduced tensor from it, and then transform those coordinate
+        // to the real buffer indices in the input tensor.
+        var input_i = target_input_idx;
+        for (var i = 0u; i < strides_and_shape[0]; i = i + 1u) {
+            let len = reduced_shape(i);
+            let stride = reduced_strides(i);
+            let coord = rec_i / stride % len;
             input_i += coord * input_strides(i);
-            output_i += coord * reducer_strides(i);
         }
-        if (output_i == gidx) {
-            acc = replace_me_with_actual_operation(acc, input_0[input_i]);
-        }
+
+        acc = replace_me_with_actual_operation(acc, input_0[input_i]);
     }
+
     output_0[gidx] = acc;
 }

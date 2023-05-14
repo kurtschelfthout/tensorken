@@ -42,18 +42,23 @@ fn id(in: f32) -> f32 {
 fn input_index_of(output_i: u32) -> u32 {
     var input_i: u32 = strides_and_shape[1];
     
+    // this works by transforming the output_i buffer index into a 
+    // tensor coordinate. coord_i represents the i'th item in the tensor coordinate.
+    // This is multiplied by the i'th stride of the input tensor, giving
+    // us a buffer index in the input, input_i.
     for (var i: u32 = 0u; i < strides_and_shape[0]; i = i + 1u) {
         let len = output_shape(i);
         let stride = output_strides(i);
-        let coord: u32 = output_i / stride % len;
+        let coord_i: u32 = output_i / stride % len;
 
-        input_i += coord * input_strides(i);
+        input_i += coord_i * input_strides(i);
     }
 
     return input_i;
 }
 
-@compute @workgroup_size(64)
+@compute
+@workgroup_size(64)
 fn call(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let gidx = global_id.x;
     // gidx is a multiple of workgroup size. Our output array may not be,

@@ -51,7 +51,8 @@ fn value_for(output_i: u32) -> f32 {
     return input_0[input_i];
 }
 
-@compute @workgroup_size(64)
+@compute
+@workgroup_size(64)
 fn call(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let gidx = global_id.x;
 

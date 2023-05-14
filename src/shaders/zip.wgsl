@@ -63,7 +63,8 @@ fn div(a: f32, b: f32) -> f32 { return a / b; }
 fn eq(a: f32, b: f32) -> f32 { return f32(a == b); }
 
 
-@compute @workgroup_size(64)
+@compute
+@workgroup_size(64)
 fn call(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let gidx = global_id.x;
     if(global_id.x >= arrayLength(&output_0)) {
