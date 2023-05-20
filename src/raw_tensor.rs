@@ -116,4 +116,17 @@ pub trait RawTensor {
 
     /// Return the tensor on the CPU.
     fn to_cpu(&self) -> CpuRawTensor<Self::Elem>;
+
+    // fused operations
+    // ----------------
+
+    /// Multiply self with other element-wise, and reduce via sum the given dimensions, in one fused
+    /// operation.
+    /// This operation is in `RawTensor` for performance reasons, as clearly functionally it is equivalent to `mul` + `sum`.
+    /// However, usually hardware have specialized instructions for vectorized fused multiply-accumulate,
+    /// or fused multiple-add, e.g. fma instruction in WebGPU. Also, for matrix multiplication, this avoids
+    /// allocation of a typically large intermediate result tensor which holds the results of the un-accumulated
+    /// element-wise multiplication, and so is essential.
+    #[must_use]
+    fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self;
 }

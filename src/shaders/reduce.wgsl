@@ -83,14 +83,15 @@ fn call(@builtin(global_invocation_id) global_id: vec3<u32>) {
         // each thread only writes to a single output location in the output buffer. Furthermore, we
         // don't have a way to have an array to represent coordinates, so we need to inline all the calculations.
         
-        // We should have multiple levels of parallelism here, but start with the first: each thread reduces one element in the
-        // remaining tensor. 
-        // The first step is to figure out to which element in the input buffer we're reducing.
+        // We should have multiple levels of parallelism here, but start with the first: each thread reduces to 
+        // one element in the output tensor. 
+        // The first step is to figure out which elements in the input buffer we're reducing.
         // We'll start one thread in the 'x' global id dimension for each element in the output buffer.
-        // We translate that to the corresponding index in the input buffer.
+        // We translate that output index to corresponding indices in the input buffer.
         let target_input_idx = input_index_of(gidx);
 
-        // We now have the target offset in the input tensor. Calculate the number of elements that need to
+        // We now have the target offset in the input tensor.
+        // Next, calculate the number of elements that need to
         // be reduced to the target element.
         // So e.g.
         // [2, 3].sum(0) --> reduce_size = 2
@@ -103,10 +104,15 @@ fn call(@builtin(global_invocation_id) global_id: vec3<u32>) {
         for (var rec_i = 0u; rec_i < reduce_size; rec_i += 1u) {
 
             // The reduced shape and strides here represent the virtual tensor to be reduced.
-            // For example, if we're reducing [2, 3] to [2, 1], then the reduced shape is [1, 3].
-            // The reduced strides are [3, 1]. The variable here will count up to 3, which we
+            // This reduced tensor contains a subset of the elements in the input tensor, and contains exactly
+            // the elements that need to be reduced to output_0[gidx].
+            // For example, if we're reducing [2, 3] to [2, 1], then the reduced tensor's shape is [1, 3].
+            // The reduced strides are always the contiguous strides of the reduced tensor shape, i.e. [3, 1].
+            // That's because we're only using it to figure out the tensor index from the buffer index in the reduced (vritual)
+            // tensor. The multiplication with the input_strides will then give us the buffer index in the input tensor.
+            // The variable rec_i will count up to 3, which we
             // interpret as a buffer index in the reduced virtual tensor. We calculate the tensor
-            // coordinatee in the virtual reduced tensor from it, and then transform those coordinate
+            // coordinate in the virtual reduced tensor from it, and then transform those coordinate
             // to the real buffer indices in the input tensor.
             var input_i = target_input_idx;
             for (var i = 0u; i < strides_and_shape[0]; i = i + 1u) {

@@ -1,4 +1,5 @@
 use std::{
+    cmp::max,
     fmt::{Debug, Display, Formatter},
     ops::{Add, Div, Mul, Neg, Sub},
 };
@@ -199,6 +200,14 @@ impl<T: Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
     pub fn to_cpu(&self) -> Tensor<CpuRawTensor<T>> {
         Tensor(self.0.to_cpu())
     }
+
+    fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self {
+        self.broadcasted_apply(
+            other,
+            |a, b| Tensor(a.0.fused_multiply_add(&b.0, axes)),
+            false,
+        )
+    }
 }
 
 macro_rules! impl_difftensor_tensor {
@@ -319,10 +328,15 @@ impl<TRawTensor: RawTensor> Tensor<TRawTensor> {
             .reshape(&other_shape)
             .transpose(other_shape.ndims() - 1, other_shape.ndims() - 2);
 
-        // after multiply: [..., m, o, n]
-        let prod = &l * &r;
-        // after sum:      [..., m, o, 1]
-        let sum = prod.sum(&[prod.shape().ndims() - 1]);
+        // // after multiply: [..., m, o, n]
+        // let prod = &l * &r;
+        // // after sum:      [..., m, o, 1]
+        // let sum = prod.sum(&[prod.shape().ndims() - 1]);
+
+        // fused multiply + sum
+        let last_dim = max(l.shape().ndims(), r.shape().ndims()) - 1;
+        let sum = l.fused_multiply_add(&r, &[last_dim]);
+
         // after reshape:  [..., m, o]
         let s = sum.shape();
         sum.reshape(&s[..s.ndims() - 1])

@@ -12,16 +12,19 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     // At some point it exceeds the max buffer size (seems to be 256MiB on my machine, 128MiB by default).
     // To make matmul workable for larger tensors, we need to implement either a direct version that just does matmul, or
     // fuse the mul and the sum into a single kernel.
-    for size in [32, 64, 128, 256] {
+    for size in [64, 128, 256, 512, 1024] {
         let t1s = &[size, size];
         let t1_gpu = Wgpu32::randn(t1s, &mut rng);
         let t2_gpu = Wgpu32::randn(t1s, &mut rng);
         let t1_cpu = t1_gpu.to_cpu();
         let t2_cpu = t2_gpu.to_cpu();
 
-        group.bench_with_input(BenchmarkId::new("cpu", size), &size, |b, _| {
-            b.iter(|| (black_box(t1_cpu.matmul(&t2_cpu))))
-        });
+        if size <= 256 {
+            // cpu too slow - already takes 3 mins at 256.
+            group.bench_with_input(BenchmarkId::new("cpu", size), &size, |b, _| {
+                b.iter(|| (black_box(t1_cpu.matmul(&t2_cpu))))
+            });
+        }
         group.bench_with_input(BenchmarkId::new("gpu", size), &size, |b, _| {
             b.iter(|| (black_box(t1_gpu.matmul(&t2_gpu))))
         });

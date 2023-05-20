@@ -1,0 +1,2 @@
+# The .. means keep whatever the defaults are, and add WebGPU to the list.
+doc-valid-idents = ["WebGPU", ".."]

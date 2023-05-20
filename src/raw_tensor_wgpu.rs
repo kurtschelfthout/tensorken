@@ -35,6 +35,7 @@ impl WgpuDevice {
     const ZIP_SHADER: &'static str = include_str!("shaders/zip.wgsl");
     const REDUCE_SHADER: &'static str = include_str!("shaders/reduce.wgsl");
     const PAD_SHADER: &'static str = include_str!("shaders/pad.wgsl");
+    const FUSED_MUL_ADD_SHADER: &'static str = include_str!("shaders/fused_mul_add.wgsl");
 
     const REPLACE_OP_NAME: &'static str = "replace_me_with_actual_operation";
     const REPLACE_DEFAULT_NAME: &'static str = "replace_me_with_actual_default()";
@@ -59,6 +60,27 @@ impl WgpuDevice {
         }
     }
 
+    fn memo_compute_pipeline(
+        &self,
+        operation: &'static str,
+        module: &wgpu::ShaderModule,
+        entry_point: &str,
+        pipelines: &mut std::sync::RwLockWriteGuard<
+            HashMap<(&str, usize), Rc<wgpu::ComputePipeline>>,
+        >,
+        workgroup_size: usize,
+    ) {
+        let compute_pipeline = Rc::new(self.device.create_compute_pipeline(
+            &wgpu::ComputePipelineDescriptor {
+                label: Some(operation),
+                layout: None,
+                module,
+                entry_point,
+            },
+        ));
+        pipelines.insert((operation, workgroup_size), compute_pipeline);
+    }
+
     #[allow(clippy::too_many_lines)]
     fn pipeline_for(
         &self,
@@ -77,8 +99,8 @@ impl WgpuDevice {
         let mut pipelines = self.pipelines.write().unwrap();
         // shaders with a single operation
         if operation == "pad" {
-            let (shader, operation) = (Self::PAD_SHADER, "pad");
-            let module = self
+            let shader = Self::PAD_SHADER;
+            let module = &self
                 .device
                 .create_shader_module(wgpu::ShaderModuleDescriptor {
                     label: Some(operation),
@@ -87,15 +109,34 @@ impl WgpuDevice {
                         &format!("@workgroup_size({workgroup_size})"),
                     ))),
                 });
-            let compute_pipeline = Rc::new(self.device.create_compute_pipeline(
-                &wgpu::ComputePipelineDescriptor {
+            self.memo_compute_pipeline(
+                operation,
+                module,
+                entry_point,
+                &mut pipelines,
+                workgroup_size,
+            );
+        }
+
+        // shaders with a single operation
+        if operation == "fused_mul_add" {
+            let (shader, operation) = (Self::FUSED_MUL_ADD_SHADER, operation);
+            let module = &self
+                .device
+                .create_shader_module(wgpu::ShaderModuleDescriptor {
                     label: Some(operation),
-                    layout: None,
-                    module: &module,
-                    entry_point,
-                },
-            ));
-            pipelines.insert((operation, workgroup_size), compute_pipeline);
+                    source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(&shader.replace(
+                        Self::REPLACE_WORKGROUP_SIZE,
+                        &format!("@workgroup_size({workgroup_size})"),
+                    ))),
+                });
+            self.memo_compute_pipeline(
+                operation,
+                module,
+                entry_point,
+                &mut pipelines,
+                workgroup_size,
+            );
         }
 
         if Self::MAP_OPS.contains(&operation) {
@@ -115,15 +156,13 @@ impl WgpuDevice {
                             .replace(Self::REPLACE_OP_NAME, operation),
                     )),
                 });
-            let compute_pipeline = Rc::new(self.device.create_compute_pipeline(
-                &wgpu::ComputePipelineDescriptor {
-                    label: Some(operation),
-                    layout: None,
-                    module,
-                    entry_point,
-                },
-            ));
-            pipelines.insert((operation, workgroup_size), compute_pipeline);
+            self.memo_compute_pipeline(
+                operation,
+                module,
+                entry_point,
+                &mut pipelines,
+                workgroup_size,
+            );
         }
 
         if Self::ZIP_OPS.contains(&operation) {
@@ -143,21 +182,19 @@ impl WgpuDevice {
                             .replace(Self::REPLACE_OP_NAME, operation),
                     )),
                 });
-            let compute_pipeline = Rc::new(self.device.create_compute_pipeline(
-                &wgpu::ComputePipelineDescriptor {
-                    label: Some(operation),
-                    layout: None,
-                    module,
-                    entry_point,
-                },
-            ));
-            pipelines.insert((operation, workgroup_size), compute_pipeline);
+            self.memo_compute_pipeline(
+                operation,
+                module,
+                entry_point,
+                &mut pipelines,
+                workgroup_size,
+            );
         }
 
         if Self::RED_OPS.contains(&operation) {
             let shader = Self::REDUCE_SHADER;
             for operation in Self::RED_OPS {
-                let module = self
+                let module = &self
                     .device
                     .create_shader_module(wgpu::ShaderModuleDescriptor {
                         label: Some(operation),
@@ -173,16 +210,13 @@ impl WgpuDevice {
                                 .replace(Self::REPLACE_DEFAULT_NAME, &operation.to_uppercase()),
                         )),
                     });
-                let compute_pipeline = Rc::new(self.device.create_compute_pipeline(
-                    &wgpu::ComputePipelineDescriptor {
-                        label: Some(operation),
-                        layout: None,
-                        module: &module,
-                        entry_point,
-                    },
-                ));
-
-                pipelines.insert((operation, workgroup_size), compute_pipeline);
+                self.memo_compute_pipeline(
+                    operation,
+                    module,
+                    entry_point,
+                    &mut pipelines,
+                    workgroup_size,
+                );
             }
         }
         Rc::clone(pipelines.get(&(operation, workgroup_size)).unwrap())
@@ -254,8 +288,8 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
         );
 
         let strider = ShapeStrider::contiguous(shape);
-
         let size = Self::byte_size(shape.size());
+        print!("Creating buffer of size {size} bytes...");
         let buffer = device.device.create_buffer(&wgpu::BufferDescriptor {
             size: size as wgpu::BufferAddress,
             usage: wgpu::BufferUsages::STORAGE
@@ -521,6 +555,8 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
     /// Return a new tensor with the same shape as self and other, after applying f to each pair of elements.
     /// Allocates a new buffer, resulting tensor is contiguous.
     fn zip(&self, other: &Self, operation: &'static str) -> Self {
+        self.strider.validate_can_zip(&other.strider).unwrap();
+
         let output_strider = ShapeStrider::contiguous(self.shape());
 
         let (workgroup_size, workgroup_count, chunk_size) =
@@ -546,6 +582,8 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
     }
 
     fn reduce(&self, axes: &[usize], operation: &'static str) -> Self {
+        self.strider.validate_can_reduce(axes).unwrap();
+
         let (output_strider, _) = self.strider.reduce(axes);
 
         let mut reduced_shape = vec![1usize; self.shape().ndims()];
@@ -580,6 +618,8 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
     }
 
     fn pad(&self, padding: &[(usize, usize)]) -> Self {
+        self.strider.validate_can_pad(padding).unwrap();
+
         let output_strider = self.strider.pad(padding);
 
         // unary ops can keep the same _buffer_ size, i.e. we don't expand the buffer
@@ -596,6 +636,44 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
             Some(padding),
         );
         let bind_group = self.get_bind_group_unary(
+            compute_pipeline.as_ref(),
+            &output_buffer,
+            &strides_and_shapes,
+        );
+        self.encode_and_submit(compute_pipeline.as_ref(), &bind_group, workgroup_count);
+
+        self.with_buffer_strider(output_buffer, output_strider)
+    }
+
+    fn fused_multiply_add_impl(&self, other: &Self, axes: &[usize]) -> Self {
+        self.strider.validate_can_zip(&other.strider).unwrap();
+        self.strider.validate_can_reduce(axes).unwrap();
+
+        let (output_strider, _) = self.strider.reduce(axes);
+
+        let mut reduced_shape = vec![1usize; self.shape().ndims()];
+        for &axis in axes {
+            reduced_shape[axis] = self.shape()[axis];
+        }
+        let reduced_strider = ShapeStrider::contiguous(&reduced_shape);
+
+        let (workgroup_size, workgroup_count, chunk_size) =
+            Self::counts_n_sizes(output_strider.size());
+        let output_buffer = self.make_output_buffer(output_strider.size());
+        let compute_pipeline = self.pipeline_for("fused_mul_add", workgroup_size);
+        let strides_and_shapes = self.get_strides_and_shapes_buffer(
+            chunk_size,
+            Some(&other.strider),
+            &output_strider,
+            Some((
+                reduced_strider.strides(),
+                reduced_strider.shape(),
+                output_strider.shape(),
+            )),
+            None,
+        );
+        let bind_group = self.get_bind_group_zip(
+            other,
             compute_pipeline.as_ref(),
             &output_buffer,
             &strides_and_shapes,
@@ -765,6 +843,10 @@ impl<T: Num + NoUninit + Pod> RawTensor for WgpuRawTensor<'_, T> {
 
     fn to_cpu(&self) -> crate::raw_tensor_cpu::CpuRawTensor<Self::Elem> {
         CpuRawTensor::new_into(self.shape(), self.ravel())
+    }
+
+    fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self {
+        self.fused_multiply_add_impl(other, axes)
     }
 }
 
@@ -977,6 +1059,20 @@ mod tests {
     }
 
     #[test]
+    fn test_reduce_ops_non_contiguous() {
+        let t = WgpuRawTensor::new(&[2, 3], &make_vec(6), get_wgpu_device()).permute(&[1, 0]);
+        let s = t.sum(&[0]);
+        assert_eq!(s.shape(), &[1, 2]);
+        assert_eq!(s.ravel(), vec![3.0, 12.0]);
+        let s = t.sum(&[1]);
+        assert_eq!(s.shape(), &[3, 1]);
+        assert_eq!(s.ravel(), vec![3.0, 5.0, 7.0]);
+        let s = t.sum(&[0, 1]);
+        assert_eq!(s.shape(), &[1, 1]);
+        assert_eq!(s.ravel(), vec![15.0]);
+    }
+
+    #[test]
     fn test_crop() {
         let orig_shape = &[2, 3, 4];
         let t = WgpuRawTensor::new(orig_shape, &make_vec(24), get_wgpu_device());
@@ -1074,5 +1170,60 @@ mod tests {
             .crop(&[(0, dim * dim)]);
         assert_eq!(t.shape(), &[4]);
         assert_eq!(t.ravel(), vec![1.0, 0.0, 0.0, 1.0]);
+    }
+
+    #[test]
+    fn test_fused_multiply_add() {
+        // contiguous
+        let t1 = WgpuRawTensor::new(&[2, 3], &make_vec(6), get_wgpu_device());
+        let t2 = t1.add(&WgpuRawTensor::new(
+            &[2, 3],
+            &make_vec(6),
+            get_wgpu_device(),
+        ));
+
+        let r = t1.fused_multiply_add(&t2, &[0]);
+        assert_eq!(r.shape(), &[1, 3]);
+        assert_eq!(r.ravel(), vec![18.0, 34.0, 58.0]);
+
+        let r = t1.fused_multiply_add(&t2, &[1]);
+        assert_eq!(r.shape(), &[2, 1]);
+        assert_eq!(r.ravel(), vec![10.0, 100.0]);
+
+        let r = t1.fused_multiply_add(&t2, &[0, 1]);
+        assert_eq!(r.shape(), &[1, 1]);
+        assert_eq!(r.ravel(), vec![110.0]);
+
+        // different strides
+        let t1 = WgpuRawTensor::new(&[1, 1], &[8.0], get_wgpu_device()).expand(&[2, 3]);
+        let t2 = WgpuRawTensor::new(&[2, 3], &make_vec(6), get_wgpu_device());
+
+        let r = t1.fused_multiply_add(&t2, &[0]);
+        assert_eq!(r.shape(), &[1, 3]);
+        assert_eq!(r.ravel(), vec![24.0, 40.0, 56.0]);
+
+        let r = t1.fused_multiply_add(&t2, &[1]);
+        assert_eq!(r.shape(), &[2, 1]);
+        assert_eq!(r.ravel(), vec![24.0, 96.0]);
+
+        let r = t1.fused_multiply_add(&t2, &[0, 1]);
+        assert_eq!(r.shape(), &[1, 1]);
+        assert_eq!(r.ravel(), vec![120.0]);
+
+        // non_contiguous
+        let t1 = WgpuRawTensor::new(&[2, 3], &make_vec(6), get_wgpu_device()).permute(&[1, 0]);
+        let t2 =
+            t1.add(&WgpuRawTensor::new(&[2, 3], &make_vec(6), get_wgpu_device()).permute(&[1, 0]));
+        let r = t1.fused_multiply_add(&t2, &[0]);
+        assert_eq!(r.shape(), &[1, 2]);
+        assert_eq!(r.ravel(), vec![10.0, 100.0]);
+
+        let r = t1.fused_multiply_add(&t2, &[1]);
+        assert_eq!(r.shape(), &[3, 1]);
+        assert_eq!(r.ravel(), vec![18.0, 34.0, 58.0]);
+
+        let r = t1.fused_multiply_add(&t2, &[0, 1]);
+        assert_eq!(r.shape(), &[1, 1]);
+        assert_eq!(r.ravel(), vec![110.0]);
     }
 }

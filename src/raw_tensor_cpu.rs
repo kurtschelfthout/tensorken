@@ -120,6 +120,44 @@ impl<T: Copy> CpuRawTensor<T> {
         }
     }
 
+    fn fused_zip_reduce(
+        &self,
+        other: &Self,
+        axes: &[usize],
+        default: T,
+        fzr: impl Fn(T, T, T) -> T,
+    ) -> Self {
+        self.strider.validate_can_zip(&other.strider).unwrap();
+        self.strider.validate_can_reduce(axes).unwrap();
+
+        let (strider_0, reducer_0) = self.strider.reduce(axes);
+        // let (strider_1, reducer_1) = other.strider.reduce(axes);
+
+        let mut result_buffer = vec![default; strider_0.size()];
+
+        for (self_index, other_index) in self
+            .strider
+            .iter_tensor_index()
+            .zip(other.strider.iter_tensor_index())
+        {
+            let self_buffer_index = self.strider.buffer_index(&self_index);
+            let other_buffer_index = other.strider.buffer_index(&other_index);
+            let result_buffer_index = reducer_0.buffer_index(&self_index);
+            result_buffer[result_buffer_index] = fzr(
+                result_buffer[result_buffer_index],
+                self.buffer.data[self_buffer_index],
+                other.buffer.data[other_buffer_index],
+            );
+        }
+
+        Self {
+            strider: strider_0,
+            buffer: Rc::new(Buffer {
+                data: result_buffer,
+            }),
+        }
+    }
+
     #[allow(dead_code)]
     fn strides(&self) -> &[usize] {
         self.strider.strides()
@@ -267,6 +305,10 @@ impl<T: Num> RawTensor for CpuRawTensor<T> {
 
     fn to_cpu(&self) -> CpuRawTensor<Self::Elem> {
         self.clone()
+    }
+
+    fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self {
+        self.fused_zip_reduce(other, axes, T::ZERO, |acc, x, y| acc + x * y)
     }
 }
 
@@ -485,6 +527,20 @@ mod tests {
     }
 
     #[test]
+    fn test_reduce_ops_non_contiguous() {
+        let t = CpuRawTensor::new_into(&[2, 3], make_vec(6)).permute(&[1, 0]);
+        let s = t.sum(&[0]);
+        assert_eq!(s.shape(), &[1, 2]);
+        assert_eq!(s.buffer.data, vec![3.0, 12.0]);
+        let s = t.sum(&[1]);
+        assert_eq!(s.shape(), &[3, 1]);
+        assert_eq!(s.buffer.data, vec![3.0, 5.0, 7.0]);
+        let s = t.sum(&[0, 1]);
+        assert_eq!(s.shape(), &[1, 1]);
+        assert_eq!(s.buffer.data, vec![15.0]);
+    }
+
+    #[test]
     fn test_crop() {
         let orig_shape = &[2, 3, 4];
         let t = CpuRawTensor::new_into(orig_shape, make_vec(24));
@@ -547,5 +603,55 @@ mod tests {
         assert_eq!(s_raveled.iter().filter(|&&x| x != 0.0).count(), 23);
         assert_eq!(s_raveled[s.strider.buffer_index(&[1, 3, 6])], 1.0);
         assert_eq!(s_raveled[s.strider.buffer_index(&[1, 3, 7])], 2.0);
+    }
+
+    #[test]
+    fn test_fused_multiply_add() {
+        // contiguous
+        let t1 = CpuRawTensor::new_into(&[2, 3], make_vec(6));
+        let t2 = t1.add(&CpuRawTensor::new_into(&[2, 3], make_vec(6)));
+
+        let r = t1.fused_multiply_add(&t2, &[0]);
+        assert_eq!(r.shape(), &[1, 3]);
+        assert_eq!(r.buffer.data, vec![18.0, 34.0, 58.0]);
+
+        let r = t1.fused_multiply_add(&t2, &[1]);
+        assert_eq!(r.shape(), &[2, 1]);
+        assert_eq!(r.buffer.data, vec![10.0, 100.0]);
+
+        let r = t1.fused_multiply_add(&t2, &[0, 1]);
+        assert_eq!(r.shape(), &[1, 1]);
+        assert_eq!(r.buffer.data, vec![110.0]);
+
+        // different strides
+        let t1 = CpuRawTensor::new_into(&[1, 1], vec![8.0]).expand(&[2, 3]);
+        let t2 = CpuRawTensor::new_into(&[2, 3], make_vec(6));
+
+        let r = t1.fused_multiply_add(&t2, &[0]);
+        assert_eq!(r.shape(), &[1, 3]);
+        assert_eq!(r.buffer.data, vec![24.0, 40.0, 56.0]);
+
+        let r = t1.fused_multiply_add(&t2, &[1]);
+        assert_eq!(r.shape(), &[2, 1]);
+        assert_eq!(r.buffer.data, vec![24.0, 96.0]);
+
+        let r = t1.fused_multiply_add(&t2, &[0, 1]);
+        assert_eq!(r.shape(), &[1, 1]);
+        assert_eq!(r.buffer.data, vec![120.0]);
+
+        // non_contiguous
+        let t1 = CpuRawTensor::new_into(&[2, 3], make_vec(6)).permute(&[1, 0]);
+        let t2 = t1.add(&CpuRawTensor::new_into(&[2, 3], make_vec(6)).permute(&[1, 0]));
+        let r = t1.fused_multiply_add(&t2, &[0]);
+        assert_eq!(r.shape(), &[1, 2]);
+        assert_eq!(r.buffer.data, vec![10.0, 100.0]);
+
+        let r = t1.fused_multiply_add(&t2, &[1]);
+        assert_eq!(r.shape(), &[3, 1]);
+        assert_eq!(r.buffer.data, vec![18.0, 34.0, 58.0]);
+
+        let r = t1.fused_multiply_add(&t2, &[0, 1]);
+        assert_eq!(r.shape(), &[1, 1]);
+        assert_eq!(r.buffer.data, vec![110.0]);
     }
 }

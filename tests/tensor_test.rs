@@ -251,6 +251,16 @@ fn do_3x2x2x3_dot_2x3x2<T: RawTensor<Elem = f32>>(t1: &Tensor<T>, t2: &Tensor<T>
     );
 }
 
+// #[test] a bit slow to run every time
+// fn test_matmul_big() {
+//     let mut rng = StdRng::seed_from_u64(0u64);
+//     let t1 = &Wgpu32::randn(&[2048, 8000], &mut rng);
+//     let t2 = &Wgpu32::randn(&[8000, 512], &mut rng);
+
+//     let r = t1.matmul(t2);
+//     assert_eq!(r.shape(), &[2048, 512]);
+// }
+
 #[test]
 fn test_eye() {
     for i in 1..8 {
