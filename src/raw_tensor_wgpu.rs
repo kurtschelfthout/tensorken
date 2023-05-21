@@ -288,19 +288,13 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
         );
 
         let strider = ShapeStrider::contiguous(shape);
-        let size = Self::byte_size(shape.size());
-        print!("Creating buffer of size {size} bytes...");
-        let buffer = device.device.create_buffer(&wgpu::BufferDescriptor {
-            size: size as wgpu::BufferAddress,
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_DST
-                | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-            label: Some("data buffer"),
-        });
-        device
-            .queue
-            .write_buffer(&buffer, 0, bytemuck::cast_slice(cpu_data));
+        let buffer = device
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("data buffer"),
+                contents: bytemuck::cast_slice(cpu_data),
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            });
 
         Self {
             buffer: Rc::new(buffer),
