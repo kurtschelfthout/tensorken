@@ -87,9 +87,9 @@ fn elementwise_ops<T: RawTensor<Elem = f32>>(t1: &Tensor<T>, t2: &Tensor<T>) {
     let r4 = t1 - t2;
     assert_eq!(r4.ravel(), vec![-5.0, -5.0, -5.0, -5.0, -5.0, -5.0]);
     let r5 = t1 / t2;
-    assert_eq!(
-        r5.ravel(),
-        vec![0.16666667, 0.2857143, 0.375, 0.44444445, 0.5, 0.54545456]
+    assert_vec_eq(
+        &r5.ravel(),
+        &[0.16666667, 0.2857143, 0.375, 0.44444445, 0.5, 0.54545456],
     );
     let r6 = t1 * t2;
     assert_eq!(r6.ravel(), vec![6.0, 14.0, 24.0, 36.0, 50.0, 66.0]);
@@ -122,9 +122,9 @@ fn broadcasted_ops<T: RawTensor<Elem = f32>>(t1: &Tensor<T>, t2: &Tensor<T>, t3:
     assert_eq!(r4.ravel(), vec![-5.0, -5.0, -5.0, -2.0, -2.0, -2.0]);
     assert_eq!(r4r.ravel(), vec![5.0, 5.0, 5.0, 2.0, 2.0, 2.0]);
     let (r5, r5r) = (t1 / t2, t2 / t1);
-    assert_eq!(
-        r5.ravel(),
-        vec![0.16666667, 0.2857143, 0.375, 0.6666667, 0.71428573, 0.75]
+    assert_vec_eq(
+        &r5.ravel(),
+        &[0.16666667, 0.2857143, 0.375, 0.6666667, 0.71428573, 0.75],
     );
     assert_eq!(r5r.ravel(), vec![6.0, 3.5, 2.6666667, 1.5, 1.4, 1.3333334]);
     let (r6, r6r) = (t1 * t2, t2 * t1);

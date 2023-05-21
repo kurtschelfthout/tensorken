@@ -1,0 +1,2 @@
+[env]
+WGPU_POWER_PREF="high"

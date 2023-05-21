@@ -226,14 +226,18 @@ impl WgpuDevice {
         // Instantiates instance of WebGPU
         let instance = wgpu::Instance::default();
 
-        // `request_adapter` instantiates the general connection to the GPU
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: None,
-                force_fallback_adapter: false,
-            })
-            .await?;
+        // Use the util method to respect the env vars `WGPU_POWER_PREF` and `WGPU_ADAPTER_NAME`
+        // WGPU_POWER_PREF can be set to `low` or `high` to prefer integrated or discrete GPUs respectively.
+        // WGPU_ADAPTER_NAME can be set to a substring of the name of the adapter you wish to use.
+        let backends = wgpu::util::backend_bits_from_env().unwrap_or_else(wgpu::Backends::all);
+        let adapter = wgpu::util::initialize_adapter_from_env_or_default(&instance, backends, None)
+            .await
+            .expect("No suitable GPU adapters found on the system!");
+        let info = adapter.get_info();
+        println!(
+            "Using {:#?} {} with {:#?} backend (Set WGPU_POWER_PREF low|high or WGPU_ADAPTER_NAME to control this).",
+            info.device_type, info.name, info.backend
+        );
 
         // `request_device` instantiates the feature specific connection to the GPU, defining some parameters,
         //  `features` being the available features.
@@ -479,9 +483,7 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
         let buffer = self
             .device()
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                usage: wgpu::BufferUsages::STORAGE
-                    | wgpu::BufferUsages::COPY_DST
-                    | wgpu::BufferUsages::COPY_SRC,
+                usage: wgpu::BufferUsages::STORAGE,
                 label: Some("shapes and strides buffer"),
                 contents: bytemuck::cast_slice(&contents_u32),
             });
@@ -898,15 +900,13 @@ mod tests {
             "mul" => a * b,
             "div" => a / b,
             "pow" =>
-            // rust returns something for powers of negative bases,
+            // Rust returns something for powers of negative bases,
             // which in general, for real exponents, is a complex number.
-            // WebGPU does not do that, always returns NaN.
+            // WebGPU does not do that - depending on the device, it seems to
+            // either return NaN (NVidia) or some number (Intel).
+            // We just make sure to call it only with positive numbers.
             {
-                if a.is_sign_negative() {
-                    f32::NAN
-                } else {
-                    a.powf(b)
-                }
+                a.powf(b)
             }
             "eq" => {
                 if a == b {
@@ -920,12 +920,15 @@ mod tests {
     }
 
     #[test]
-    fn test_single_binary_ops() {
+    fn test_binary_ops() {
         let i1 = vec![1.0, 2.0, 3.0, -1.0, -2.0, -3.0];
         let t1 = WgpuRawTensor::new(&[3, 2], &i1, get_wgpu_device());
         let i2 = vec![6.0, 7.0, 8.0, -6.0, -7.0, -8.0];
         let t2 = WgpuRawTensor::new(&[3, 2], &i2, get_wgpu_device());
         for op in WgpuDevice::ZIP_OPS {
+            if op == "pow" {
+                continue; // see separate test
+            }
             let result = t1.zip(&t2, op).ravel();
             assert_vec_eq(
                 &result,
@@ -935,6 +938,23 @@ mod tests {
                     .collect::<Vec<f32>>(),
             );
         }
+    }
+
+    #[test]
+    fn test_pow() {
+        let i1 = vec![1.0, 2.0, 3.0, 4.0, 5.0, 8.0];
+        let t1 = WgpuRawTensor::new(&[3, 2], &i1, get_wgpu_device());
+        let i2 = vec![6.0, 7.0, 8.0, -2.0, -5.0, -10.0];
+        let t2 = WgpuRawTensor::new(&[3, 2], &i2, get_wgpu_device());
+        let op = "pow";
+        let result = t1.zip(&t2, op).ravel();
+        assert_vec_eq(
+            &result,
+            &i1.iter()
+                .zip(i2.iter())
+                .map(|(a, b)| apply_binary_op(op, *a, *b))
+                .collect::<Vec<f32>>(),
+        );
     }
 
     #[test]
@@ -952,6 +972,9 @@ mod tests {
         );
         let t2 = t2.reshape(&[2, 3]);
         for op in WgpuDevice::ZIP_OPS {
+            if op == "pow" {
+                continue; // see separate test
+            }
             let actual = t1.zip(&t2, op).ravel();
             let expected = t1
                 .ravel()
@@ -961,6 +984,28 @@ mod tests {
                 .collect::<Vec<f32>>();
             assert_vec_eq(&actual, &expected);
         }
+    }
+
+    #[test]
+    fn test_non_contiguous_pow() {
+        let t1 = WgpuRawTensor::new(&[3, 2], &[1.0, 2.0, 3.0, 7.0, 8.0, 9.0], get_wgpu_device());
+        let t1 = t1.permute(&[1, 0]);
+        let t2 = WgpuRawTensor::new(
+            &[3, 2],
+            &[6.0, 7.0, 8.0, -6.0, -7.0, -8.0],
+            get_wgpu_device(),
+        );
+        let t2 = t2.reshape(&[2, 3]);
+
+        let op = "pow";
+        let actual = t1.zip(&t2, op).ravel();
+        let expected = t1
+            .ravel()
+            .into_iter()
+            .zip(t2.ravel().into_iter())
+            .map(|(a, b)| apply_binary_op(op, a, b))
+            .collect::<Vec<f32>>();
+        assert_vec_eq(&actual, &expected);
     }
 
     fn make_vec(len: u16) -> Vec<f32> {
