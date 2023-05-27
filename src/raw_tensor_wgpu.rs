@@ -53,6 +53,7 @@ impl WgpuDevice {
 
     pub(crate) fn new() -> Self {
         let (device, queue) = Self::get_device().unwrap();
+        // device.start_capture();
         Self {
             device,
             queue,
@@ -230,12 +231,20 @@ impl WgpuDevice {
         // WGPU_POWER_PREF can be set to `low` or `high` to prefer integrated or discrete GPUs respectively.
         // WGPU_ADAPTER_NAME can be set to a substring of the name of the adapter you wish to use.
         let backends = wgpu::util::backend_bits_from_env().unwrap_or_else(wgpu::Backends::all);
+        // println!("backends: {backends:?}");
+        // let adapters = instance.enumerate_adapters(backends);
+
+        // for adapter in adapters {
+        //     let info = adapter.get_info();
+        //     println!("adapter: {:?}", info);
+        // }
+
         let adapter = wgpu::util::initialize_adapter_from_env_or_default(&instance, backends, None)
             .await
             .expect("No suitable GPU adapters found on the system!");
         let info = adapter.get_info();
         println!(
-            "Using {:#?} {} with {:#?} backend (Set WGPU_POWER_PREF low|high or WGPU_ADAPTER_NAME to control this).",
+            "Using {:#?} {} with {:#?} backend (Env vars: WGPU_POWER_PREF (low|high), WGPU_ADAPTER_NAME, WGPU_BACKEND).",
             info.device_type, info.name, info.backend
         );
 
@@ -248,7 +257,7 @@ impl WgpuDevice {
                     features: wgpu::Features::empty(),
                     limits: wgpu::Limits::downlevel_defaults(),
                 },
-                None,
+                None, // Some(Path::new("./trace")),
             )
             .await
             .unwrap();

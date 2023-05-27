@@ -1,2 +1,5 @@
 [env]
 WGPU_POWER_PREF="high"
+# WGPU_BACKEND = "DX12"
+# WGPU_ADAPTER_NAME = "NVIDIA"
+# RUST_LOG="debug"
