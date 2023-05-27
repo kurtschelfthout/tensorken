@@ -3,7 +3,7 @@ use std::{
     collections::HashMap,
     fmt::{Debug, Formatter},
     rc::Rc,
-    sync::{Once, RwLock},
+    sync::{Arc, Once, RwLock},
 };
 
 use bytemuck::{NoUninit, Pod};
@@ -27,7 +27,7 @@ use crate::{
 pub struct WgpuDevice {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    pipelines: RwLock<HashMap<(&'static str, usize), Rc<wgpu::ComputePipeline>>>,
+    pipelines: RwLock<HashMap<(&'static str, usize), Arc<wgpu::ComputePipeline>>>,
 }
 
 impl WgpuDevice {
@@ -67,11 +67,11 @@ impl WgpuDevice {
         module: &wgpu::ShaderModule,
         entry_point: &str,
         pipelines: &mut std::sync::RwLockWriteGuard<
-            HashMap<(&str, usize), Rc<wgpu::ComputePipeline>>,
+            HashMap<(&str, usize), Arc<wgpu::ComputePipeline>>,
         >,
         workgroup_size: usize,
     ) {
-        let compute_pipeline = Rc::new(self.device.create_compute_pipeline(
+        let compute_pipeline = Arc::new(self.device.create_compute_pipeline(
             &wgpu::ComputePipelineDescriptor {
                 label: Some(operation),
                 layout: None,
@@ -87,13 +87,13 @@ impl WgpuDevice {
         &self,
         operation: &'static str,
         workgroup_size: usize,
-    ) -> Rc<wgpu::ComputePipeline> {
+    ) -> Arc<wgpu::ComputePipeline> {
         let entry_point = "call";
 
         {
             let pipelines = self.pipelines.read().unwrap();
             if let Some(r) = pipelines.get(&(operation, workgroup_size)) {
-                return Rc::clone(r);
+                return Arc::clone(r);
             }
         }
 
@@ -220,7 +220,7 @@ impl WgpuDevice {
                 );
             }
         }
-        Rc::clone(pipelines.get(&(operation, workgroup_size)).unwrap())
+        Arc::clone(pipelines.get(&(operation, workgroup_size)).unwrap())
     }
 
     async fn get_device_async() -> Option<(wgpu::Device, wgpu::Queue)> {
@@ -438,7 +438,7 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
         &self,
         operation: &'static str,
         workgroup_size: usize,
-    ) -> Rc<wgpu::ComputePipeline> {
+    ) -> Arc<wgpu::ComputePipeline> {
         self.device.pipeline_for(operation, workgroup_size)
     }
 }
