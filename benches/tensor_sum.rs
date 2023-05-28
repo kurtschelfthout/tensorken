@@ -7,7 +7,8 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("Tensor: sum");
 
-    for size in [64, 128, 256, 512] {
+    let sizes = [64, 128, 256, 512, 1024, 2048];
+    for size in sizes {
         let t1s = &[size, size];
         let t1_gpu = Wgpu32::randn(t1s, &mut rng);
         let t1_cpu = t1_gpu.to_cpu();

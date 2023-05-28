@@ -2,7 +2,6 @@ use std::{
     borrow::Cow,
     collections::HashMap,
     fmt::{Debug, Formatter},
-    rc::Rc,
     sync::{Arc, Once, RwLock},
 };
 
@@ -275,7 +274,7 @@ impl WgpuDevice {
 /// The buffer lives in GPU memory.
 #[derive(Clone)]
 pub struct WgpuRawTensor<'a, T> {
-    buffer: Rc<wgpu::Buffer>,
+    buffer: Arc<wgpu::Buffer>,
     strider: ShapeStrider,
     device: &'a WgpuDevice,
     phantom: std::marker::PhantomData<T>,
@@ -310,7 +309,7 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
             });
 
         Self {
-            buffer: Rc::new(buffer),
+            buffer: Arc::new(buffer),
             strider,
             device,
             phantom: std::marker::PhantomData,
@@ -325,7 +324,7 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
     /// with a different shape. Assumes the new shape is compatible.
     fn with_strider(&self, strider: ShapeStrider) -> Self {
         Self {
-            buffer: Rc::clone(&self.buffer),
+            buffer: Arc::clone(&self.buffer),
             strider,
             device: self.device,
             phantom: std::marker::PhantomData,
@@ -501,7 +500,7 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
 
     fn with_buffer_strider(&self, buffer: wgpu::Buffer, strider: ShapeStrider) -> Self {
         WgpuRawTensor {
-            buffer: Rc::new(buffer),
+            buffer: Arc::new(buffer),
             strider,
             device: self.device,
             phantom: self.phantom,
