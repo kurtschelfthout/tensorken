@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 use std::ops::Add;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::num::Num;
 use crate::raw_tensor::RawTensor;
@@ -22,7 +22,7 @@ struct Buffer<T> {
 /// As a result, buffers are reference counted. Cloning a `CpuRawTensor` is cheap.
 #[derive(Clone)]
 pub struct CpuRawTensor<T> {
-    buffer: Rc<Buffer<T>>,
+    buffer: Arc<Buffer<T>>,
     strider: ShapeStrider,
 }
 
@@ -41,7 +41,7 @@ impl<T: Copy> CpuRawTensor<T> {
 
         let strider = ShapeStrider::contiguous(shape);
 
-        let buffer = Rc::new(Buffer { data });
+        let buffer = Arc::new(Buffer { data });
 
         Self { buffer, strider }
     }
@@ -50,7 +50,7 @@ impl<T: Copy> CpuRawTensor<T> {
     /// with a different shape. Assumes the new shape is compatible.
     fn with_strider(&self, strider: ShapeStrider) -> Self {
         Self {
-            buffer: Rc::clone(&self.buffer),
+            buffer: Arc::clone(&self.buffer),
             strider,
         }
     }
@@ -114,7 +114,7 @@ impl<T: Copy> CpuRawTensor<T> {
 
         Self {
             strider,
-            buffer: Rc::new(Buffer {
+            buffer: Arc::new(Buffer {
                 data: result_buffer,
             }),
         }
@@ -152,7 +152,7 @@ impl<T: Copy> CpuRawTensor<T> {
 
         Self {
             strider: strider_0,
-            buffer: Rc::new(Buffer {
+            buffer: Arc::new(Buffer {
                 data: result_buffer,
             }),
         }
@@ -280,7 +280,7 @@ impl<T: Num> RawTensor for CpuRawTensor<T> {
         }
         Self {
             strider,
-            buffer: Rc::new(Buffer { data: buffer }),
+            buffer: Arc::new(Buffer { data: buffer }),
         }
     }
 
