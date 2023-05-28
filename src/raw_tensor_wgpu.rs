@@ -430,7 +430,20 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
             let workgroup_count = u32::try_from(workgroup_count).unwrap();
             compute_pass.dispatch_workgroups(workgroup_count, 1, 1);
         }
-        self.queue().submit(Some(encoder.finish()));
+
+        // Submit commands to the GPU, and wait synchronously for them to complete.
+        // This naive approach makes CPU-GPU interaction entirely synchronous.
+        // In principle, it's not necessary for correctness to wait for each command to finish.
+        // The output buffer needs to be created and filled before it is used in further tensor
+        // operations, but wgpu tracks such dependencies automatically, and inserts the necessary
+        // barriers.
+        // However, submitting a large number of compute passes without waiting for the result
+        // can cause resource (sometimes memory) exhaustion, and the GPU device crashes. Without this,
+        // benchmarks like matmul fail at higher sizes.
+        // See https://github.com/gfx-rs/wgpu/issues/3806
+        let index = self.queue().submit(Some(encoder.finish()));
+        self.device()
+            .poll(wgpu::Maintain::WaitForSubmissionIndex(index));
     }
 
     fn pipeline_for(
