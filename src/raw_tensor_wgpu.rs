@@ -19,6 +19,9 @@ use crate::{
 //   be a failure at runtime, saying the number of bindings doesn't correspond.
 // - I've been told it's a good idea to cache compute pipelines, as this avoids recompiling WGSL.
 
+/// Size of a workgroup in X and Y dimensions. Z dimension is always 1 at the moment, it's not included.
+type WorkgroupSize = (usize, usize);
+
 /// An instantiated wgpu "device", or what I'm calling a device anyway. Not sure this corresponds to
 /// conventional terminology.
 /// In any case, it holds a `wgpu::Device` and a `wgpu::Queue`, and it also holds a cache of compute
@@ -26,7 +29,7 @@ use crate::{
 pub struct WgpuDevice {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    pipelines: RwLock<HashMap<(&'static str, usize), Arc<wgpu::ComputePipeline>>>,
+    pipelines: RwLock<HashMap<(&'static str, WorkgroupSize), Arc<wgpu::ComputePipeline>>>,
 }
 
 impl WgpuDevice {
@@ -44,6 +47,10 @@ impl WgpuDevice {
         r"fn replace_me_with_actual_operation(in_1: f32, in_2: f32) -> f32 { discard; }";
     const REPLACE_REDUCE_DEFAULT_DEF: &'static str =
         r"fn replace_me_with_actual_default() -> f32 { discard; }";
+    const REPLACE_REDUCE_THREAD_COUNT_CONST: &'static str = r"const REDUCE_THREADS: u32 = 64u;";
+    const REPLACE_REDUCE_INTERMEDIATE_BUFFER_SIZE_CONST: &'static str =
+        r"const INTERMEDIATE_SIZE: u32 = 64u;";
+
     const REPLACE_WORKGROUP_SIZE: &'static str = "@workgroup_size(64)";
 
     const MAP_OPS: [&str; 3] = ["exp", "log", "id"];
@@ -52,7 +59,7 @@ impl WgpuDevice {
 
     pub(crate) fn new() -> Self {
         let (device, queue) = Self::get_device().unwrap();
-        // device.start_capture();
+        device.start_capture();
         Self {
             device,
             queue,
@@ -66,9 +73,9 @@ impl WgpuDevice {
         module: &wgpu::ShaderModule,
         entry_point: &str,
         pipelines: &mut std::sync::RwLockWriteGuard<
-            HashMap<(&str, usize), Arc<wgpu::ComputePipeline>>,
+            HashMap<(&str, WorkgroupSize), Arc<wgpu::ComputePipeline>>,
         >,
-        workgroup_size: usize,
+        workgroup_size: WorkgroupSize,
     ) {
         let compute_pipeline = Arc::new(self.device.create_compute_pipeline(
             &wgpu::ComputePipelineDescriptor {
@@ -85,7 +92,7 @@ impl WgpuDevice {
     fn pipeline_for(
         &self,
         operation: &'static str,
-        workgroup_size: usize,
+        workgroup_size: WorkgroupSize,
     ) -> Arc<wgpu::ComputePipeline> {
         let entry_point = "call";
 
@@ -106,7 +113,10 @@ impl WgpuDevice {
                     label: Some(operation),
                     source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(&shader.replace(
                         Self::REPLACE_WORKGROUP_SIZE,
-                        &format!("@workgroup_size({workgroup_size})"),
+                        &format!(
+                            "@workgroup_size({}, {})",
+                            workgroup_size.0, workgroup_size.1
+                        ),
                     ))),
                 });
             self.memo_compute_pipeline(
@@ -127,7 +137,10 @@ impl WgpuDevice {
                     label: Some(operation),
                     source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(&shader.replace(
                         Self::REPLACE_WORKGROUP_SIZE,
-                        &format!("@workgroup_size({workgroup_size})"),
+                        &format!(
+                            "@workgroup_size({}, {})",
+                            workgroup_size.0, workgroup_size.1,
+                        ),
                     ))),
                 });
             self.memo_compute_pipeline(
@@ -150,7 +163,10 @@ impl WgpuDevice {
                         &shader
                             .replace(
                                 Self::REPLACE_WORKGROUP_SIZE,
-                                &format!("@workgroup_size({workgroup_size})"),
+                                &format!(
+                                    "@workgroup_size({}, {})",
+                                    workgroup_size.0, workgroup_size.1
+                                ),
                             )
                             .replace(replace_op_def, "")
                             .replace(Self::REPLACE_OP_NAME, operation),
@@ -176,7 +192,10 @@ impl WgpuDevice {
                         &shader
                             .replace(
                                 Self::REPLACE_WORKGROUP_SIZE,
-                                &format!("@workgroup_size({workgroup_size})"),
+                                &format!(
+                                    "@workgroup_size({}, {})",
+                                    workgroup_size.0, workgroup_size.1
+                                ),
                             )
                             .replace(replace_op_def, "")
                             .replace(Self::REPLACE_OP_NAME, operation),
@@ -202,12 +221,26 @@ impl WgpuDevice {
                             &shader
                                 .replace(
                                     Self::REPLACE_WORKGROUP_SIZE,
-                                    &format!("@workgroup_size({workgroup_size})"),
+                                    &format!(
+                                        "@workgroup_size({}, {})",
+                                        workgroup_size.0, workgroup_size.1
+                                    ),
                                 )
                                 .replace(Self::REPLACE_BINARY_OP_DEF, "")
                                 .replace(Self::REPLACE_OP_NAME, operation)
                                 .replace(Self::REPLACE_REDUCE_DEFAULT_DEF, "")
-                                .replace(Self::REPLACE_DEFAULT_NAME, &operation.to_uppercase()),
+                                .replace(Self::REPLACE_DEFAULT_NAME, &operation.to_uppercase())
+                                .replace(
+                                    Self::REPLACE_REDUCE_THREAD_COUNT_CONST,
+                                    &format!("const REDUCE_THREADS: u32 = {}u;", workgroup_size.1),
+                                )
+                                .replace(
+                                    Self::REPLACE_REDUCE_INTERMEDIATE_BUFFER_SIZE_CONST,
+                                    &format!(
+                                        "const INTERMEDIATE_SIZE: u32 = {}u;",
+                                        workgroup_size.0 * workgroup_size.1
+                                    ),
+                                ),
                         )),
                     });
                 self.memo_compute_pipeline(
@@ -449,7 +482,7 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
     fn pipeline_for(
         &self,
         operation: &'static str,
-        workgroup_size: usize,
+        workgroup_size: WorkgroupSize,
     ) -> Arc<wgpu::ComputePipeline> {
         self.device.pipeline_for(operation, workgroup_size)
     }
@@ -520,28 +553,30 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
         }
     }
 
+    /// Max number of threads in a workgroup, as defined by WebGPU.
     const MAX_WORKGROUP_SIZE: usize = 256;
+    /// Max number of workgroups in a dispatch, as defined by WebGPU.
     const MAX_WORKGROUP_COUNT: usize = 65535;
 
     /// Return:
-    /// - workgroup size (the number of threads in each workgroup),
+    /// - workgroup size (the number of threads in each workgroup, x and y. y is always 1.),
     /// - workgroup count (the number of workgroups to run)
     /// - chunk size (the number of elements each thread will process)
-    fn counts_n_sizes(work_item_count: usize) -> (usize, usize, usize) {
+    fn counts_n_sizes(work_item_count: usize) -> ((usize, usize), usize, usize) {
         if work_item_count <= Self::MAX_WORKGROUP_SIZE {
-            return (work_item_count, 1, 1);
+            return ((work_item_count, 1), 1, 1);
         }
 
         let workgroup_count =
             (work_item_count + Self::MAX_WORKGROUP_SIZE - 1) / Self::MAX_WORKGROUP_SIZE;
         if workgroup_count <= Self::MAX_WORKGROUP_COUNT {
-            return (Self::MAX_WORKGROUP_SIZE, workgroup_count, 1);
+            return ((Self::MAX_WORKGROUP_SIZE, 1), workgroup_count, 1);
         }
 
         let chunk_size =
             (work_item_count + Self::MAX_WORKGROUP_COUNT - 1) / Self::MAX_WORKGROUP_COUNT;
         (
-            Self::MAX_WORKGROUP_SIZE,
+            (Self::MAX_WORKGROUP_SIZE, 1),
             Self::MAX_WORKGROUP_COUNT,
             chunk_size,
         )
@@ -598,6 +633,56 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
         self.with_buffer_strider(output_buffer, output_strider)
     }
 
+    fn clamp(v: usize, min: usize, max: usize) -> usize {
+        if v < min {
+            min
+        } else if v > max {
+            max
+        } else {
+            v
+        }
+    }
+
+    /// Return:
+    /// - workgroup size (the number of threads in each workgroup, x and y.),
+    /// - workgroup count (the number of workgroups to run)
+    /// - chunk size (the number of elements each thread will process)
+    fn counts_n_sizes_reduce(
+        input_tensor_size: usize,
+        output_tensor_size: usize,
+    ) -> (WorkgroupSize, usize, usize) {
+        if output_tensor_size <= Self::MAX_WORKGROUP_SIZE {
+            // Parallelize the reduction. e.g. reducing a tensor to a single scalar.
+
+            // First parallelize on the output size as much as possible.
+            let workgroup_size_x = output_tensor_size;
+            // while workgroup_size_x > output_tensor_size {
+            //     workgroup_size_x /= 2;
+            // }
+            // Then parallelize the reduction.
+            // This is the number of elements that need to be reduced to a single output element.
+            let reduce_size = input_tensor_size / output_tensor_size;
+            // We can only have MAX_WORKGROUP_SIZE threads total.
+            let max_workgroup_size_y = Self::MAX_WORKGROUP_SIZE / workgroup_size_x;
+            // Arbitrarily choose to reduce at least 64 elements per thread.
+            let workgroup_size_y = Self::clamp(reduce_size / 64, 1, max_workgroup_size_y);
+            let workgroup_size = (workgroup_size_x, workgroup_size_y);
+            let (workgroup_count, chunk_size) = (1, 1);
+            dbg!(
+                output_tensor_size,
+                workgroup_size,
+                workgroup_count,
+                chunk_size
+            );
+            return (workgroup_size, workgroup_count, chunk_size);
+        }
+
+        // if the output tensor is larger than the max workgroup size, we don't parallelize
+        // the reduce. I.e. each thread reduces one subtensor to a single element.
+        // (this will check MAX_WORKGROUP_SIZE again, but ok)
+        Self::counts_n_sizes(output_tensor_size)
+    }
+
     fn reduce(&self, axes: &[usize], operation: &'static str) -> Self {
         self.strider.validate_can_reduce(axes).unwrap();
 
@@ -610,7 +695,7 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
         let reduced_strider = ShapeStrider::contiguous(&reduced_shape);
 
         let (workgroup_size, workgroup_count, chunk_size) =
-            Self::counts_n_sizes(output_strider.size());
+            Self::counts_n_sizes_reduce(self.strider.size(), output_strider.size());
         let output_buffer = self.make_output_buffer(output_strider.size());
         let compute_pipeline = self.pipeline_for(operation, workgroup_size);
         let strides_and_shapes = self.get_strides_and_shapes_buffer(
@@ -1130,6 +1215,66 @@ mod tests {
         let s = t.sum(&[0, 1]);
         assert_eq!(s.shape(), &[1, 1]);
         assert_eq!(s.ravel(), vec![15.0]);
+    }
+
+    #[test]
+    fn test_reduce_ops_parallel() {
+        let t = WgpuRawTensor::new(&[2, 128], &make_vec(256), get_wgpu_device());
+        let s = t.sum(&[0]);
+        assert_eq!(s.shape(), &[1, 128]);
+        let expected: Vec<_> = (128i16..128 + 256)
+            .step_by(2)
+            .map(|i| f32::try_from(i).unwrap())
+            .collect();
+        assert_eq!(s.ravel(), expected);
+
+        let s = t.sum(&[1]);
+        assert_eq!(s.shape(), &[2, 1]);
+        assert_eq!(s.ravel(), vec![8128.0, 24512.0]);
+
+        let s = t.sum(&[0, 1]);
+        assert_eq!(s.shape(), &[1, 1]);
+        assert_eq!(s.ravel(), vec![8128.0 + 24512.0]);
+
+        // No powers of two
+        let t = WgpuRawTensor::new(&[60, 60], &make_vec(3600), get_wgpu_device());
+        let s = t.max(&[0]);
+        assert_eq!(s.shape(), &[1, 60]);
+        let expected: Vec<_> = (3540i16..3600).map(|i| f32::try_from(i).unwrap()).collect();
+        assert_eq!(s.ravel(), expected);
+
+        let s = t.max(&[1]);
+        assert_eq!(s.shape(), &[60, 1]);
+        let expected: Vec<_> = (59i16..3600)
+            .step_by(60)
+            .map(|i| f32::try_from(i).unwrap())
+            .collect();
+        assert_eq!(s.ravel(), expected);
+
+        let s = t.sum(&[0, 1]);
+        assert_eq!(s.shape(), &[1, 1]);
+        assert_eq!(s.ravel(), vec![6_478_200.0]);
+    }
+
+    #[test]
+    fn test_reduce_ops_non_contiguous_parallel() {
+        let t = WgpuRawTensor::new(&[2, 128], &make_vec(256), get_wgpu_device()).permute(&[1, 0]);
+        let s = t.sum(&[0]);
+        assert_eq!(s.shape(), &[1, 2]);
+        assert_eq!(s.ravel(), vec![8128.0, 24512.0]);
+
+        let s = t.sum(&[1]);
+        assert_eq!(s.shape(), &[128, 1]);
+
+        let expected: Vec<_> = (128i16..128 + 256)
+            .step_by(2)
+            .map(|i| f32::try_from(i).unwrap())
+            .collect();
+        assert_eq!(s.ravel(), expected);
+
+        let s = t.sum(&[0, 1]);
+        assert_eq!(s.shape(), &[1, 1]);
+        assert_eq!(s.ravel(), vec![8128.0 + 24512.0]);
     }
 
     #[test]

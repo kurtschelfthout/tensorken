@@ -9,6 +9,10 @@ var<storage, read_write> output_0: array<f32>;
 @group(0) @binding(2)
 var<storage, read> strides_and_shape: array<u32>;
 
+// this is replaced with the actual size at shader creation stage.
+const INTERMEDIATE_SIZE: u32 = 64u;
+var<workgroup> intermediate: array<f32, INTERMEDIATE_SIZE>;
+
 const preamble: u32 = 3u;
 
 fn input_strides(i: u32) -> u32 {
@@ -69,62 +73,85 @@ fn input_index_of(output_i: u32) -> u32 {
     return input_i;
 }
 
+fn reduce_index_of(offset: u32, reduce_i: u32) -> u32 {
+    var input_i = offset;
+
+    for (var i = 0u; i < strides_and_shape[0]; i = i + 1u) {
+        let len = reduced_shape(i);
+        let stride = reduced_strides(i);
+        let coord = reduce_i / stride % len;
+        input_i += coord * input_strides(i);
+    }
+
+    return input_i;
+}
+
+// this is replaced with the actual count at shader creation stage.
+const REDUCE_THREADS: u32 = 64u;
+
+// workgroup sizes will be sx,sy, 1, and are replaced at shader creation stage.
 @compute
 @workgroup_size(64)
-fn call(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    let fro = global_id.x * strides_and_shape[2];
-    let to = fro + strides_and_shape[2];
+fn call(@builtin(global_invocation_id) global_id: vec3<u32>, @builtin(local_invocation_id) local_id: vec3<u32>) {
+    // chunk_size is the number of output elements each thread reduces. It is only >1 if the output tensor's size
+    // is larger than the max total workgroup size, as defined in WebGPU limits.
+    let chunk_size = strides_and_shape[2];
+    let fro = global_id.x * chunk_size;
+    let to = fro + chunk_size;
+
+    // Calculate the number of elements that need to
+    // be reduced to the target element.
+    // So e.g.
+    // [2, 3].sum(0) --> reduce_size = 2
+    // [2, 3].sum(1) --> reduce_size = 3
+    let sizes = sizes();
+    let reduce_size = sizes.x / sizes.y;
+
+    let lidx = local_id.x;
+    let lidy = local_id.y;
+
+    // Loop over the chunk of output elements this thread is responsible for.
     for (var gidx = fro; gidx < to; gidx = gidx + 1u) {
         if(gidx >= arrayLength(&output_0)) {
             return;
         }
 
-        // Outline of approach - it's a bit awkward because we'd like to avoid synchronization, so
-        // each thread only writes to a single output location in the output buffer. Furthermore, we
-        // don't have a way to have an array to represent coordinates, so we need to inline all the calculations.
-        
-        // We should have multiple levels of parallelism here, but start with the first: each thread reduces to 
-        // one element in the output tensor. 
-        // The first step is to figure out which elements in the input buffer we're reducing.
-        // We'll start one thread in the 'x' global id dimension for each element in the output buffer.
-        // We translate that output index to corresponding indices in the input buffer.
-        let target_input_idx = input_index_of(gidx);
+        // To avoid synchronization, each thread writes to separate locations in the output buffer.
+        // The buffer index is given by gidx.
+        // First we figure out what the set of input elements are that need to be reduced to output_0[gidx].
+        // We do this by first calculating the offset in the input buffer of the first element that needs to be reduced to gidx:
+        let reduce_offset = input_index_of(gidx);
 
-        // We now have the target offset in the input tensor.
-        // Next, calculate the number of elements that need to
-        // be reduced to the target element.
-        // So e.g.
-        // [2, 3].sum(0) --> reduce_size = 2
-        // [2, 3].sum(1) --> reduce_size = 3
-        let sizes = sizes();
-        let reduce_size = sizes.x / sizes.y;
-
-        // Now we can actually reduce.
-        var acc = replace_me_with_actual_default();
-        for (var rec_i = 0u; rec_i < reduce_size; rec_i += 1u) {
+        // Now we can reduce. The reduction step itself is separately parallelized, in the y dimension.
+        // It's essentially a parallel prefix sum with just two levels. The result of the reduction is stored in the intermediate buffer.
+        intermediate[lidx * REDUCE_THREADS + lidy] = replace_me_with_actual_default();
+        for (var reduce_i = lidy; reduce_i < reduce_size; reduce_i += REDUCE_THREADS) {
 
             // The reduced shape and strides here represent the virtual tensor to be reduced.
-            // This reduced tensor contains a subset of the elements in the input tensor, and contains exactly
+            // This reduced tensor contains a subset of the elements, exactly
             // the elements that need to be reduced to output_0[gidx].
             // For example, if we're reducing [2, 3] to [2, 1], then the reduced tensor's shape is [1, 3].
             // The reduced strides are always the contiguous strides of the reduced tensor shape, i.e. [3, 1].
             // That's because we're only using it to figure out the tensor index from the buffer index in the reduced (vritual)
             // tensor. The multiplication with the input_strides will then give us the buffer index in the input tensor.
-            // The variable rec_i will count up to 3, which we
-            // interpret as a buffer index in the reduced virtual tensor. We calculate the tensor
+            // The variable reduce_i will count up to reduce_size (3 in the example). We
+            // interpret reduce_i as a buffer index in the reduced virtual tensor. We calculate the tensor
             // coordinate in the virtual reduced tensor from it, and then transform those coordinate
             // to the real buffer indices in the input tensor.
-            var input_i = target_input_idx;
-            for (var i = 0u; i < strides_and_shape[0]; i = i + 1u) {
-                let len = reduced_shape(i);
-                let stride = reduced_strides(i);
-                let coord = rec_i / stride % len;
-                input_i += coord * input_strides(i);
-            }
-
-            acc = replace_me_with_actual_operation(acc, input_0[input_i]);
+            var input_i = reduce_index_of(reduce_offset, reduce_i);
+            intermediate[lidx * REDUCE_THREADS + lidy] = replace_me_with_actual_operation(intermediate[lidx * REDUCE_THREADS + lidy], input_0[input_i]);
         }
 
-        output_0[gidx] = acc;
+        // make sure all threads finished writing to the intermediate buffer.
+        workgroupBarrier();
+
+        // first y thread does final reduction. Wasteful - could solve this with re-submit instead.
+        if (lidy == 0u) {
+            var acc = intermediate[lidx * REDUCE_THREADS];
+            for (var i = 1u; i < REDUCE_THREADS; i += 1u) {
+                acc = replace_me_with_actual_operation(acc, intermediate[lidx * REDUCE_THREADS + i]);
+            }
+            output_0[gidx] = acc;
+        }
     }
 }

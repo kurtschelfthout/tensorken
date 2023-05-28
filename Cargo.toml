@@ -34,5 +34,9 @@ name = "tensor_sum"
 harness = false
 
 [[bench]]
+name = "tensor_sum_to_scalar"
+harness = false
+
+[[bench]]
 name = "tensor_matmul"
 harness = false

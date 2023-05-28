@@ -165,6 +165,19 @@ fn reduce_ops<T: RawTensor<Elem = f32>>(t1: &Tensor<T>) {
 }
 
 #[test]
+fn test_reduce_ops_big() {
+    let t1_gpu = &Wgpu32::linspace(1., 120., 4800).reshape(&[150, 8, 4]);
+    let t1_cpu = t1_gpu.to_cpu();
+
+    let axes: [&[usize]; 7] = [&[0], &[1], &[2], &[0, 1], &[0, 2], &[1, 2], &[0, 1, 2]];
+    for axis in axes {
+        let r_gpu = t1_gpu.sum(axis);
+        let r_cpu = t1_cpu.sum(axis);
+        assert_vec_eq(&r_gpu.ravel(), &r_cpu.ravel());
+    }
+}
+
+#[test]
 fn test_movement_ops() {
     let shape = &[2, 3];
     let t1 = &Cpu32::linspace(1., 6., 6).reshape(shape);
@@ -251,21 +264,27 @@ fn do_3x2x2x3_dot_2x3x2<T: RawTensor<Elem = f32>>(t1: &Tensor<T>, t2: &Tensor<T>
     );
 }
 
-// #[test] //a bit slow to run every time
-// fn test_matmul_big() {
-//     fn init() {
-//         let _ = env_logger::builder().is_test(true).try_init();
-//     }
-//     init();
-//     let mut rng = StdRng::seed_from_u64(0u64);
-//     let t1 = &Wgpu32::randn(&[2048, 512, 1], &mut rng).reshape(&[2, 1, 256 * 2048]); //.expand(&[2048, 512, 1000]);
-//     let t2 = &Wgpu32::randn(&[2048, 512, 1], &mut rng).reshape(&[2, 1, 256 * 2048]); //.expand(&[2048, 512, 1000]);
+#[test]
+fn test_matmul_big() {
+    fn init() {
+        let _ = env_logger::builder().is_test(true).try_init();
+    }
+    init();
+    let mut rng = StdRng::seed_from_u64(42u64);
+    let t1_gpu = &Wgpu32::randn(&[2000, 500], &mut rng);
+    let t2_gpu = &Wgpu32::randn(&[500, 2000], &mut rng);
 
-//     for _ in 0..1 {
-//         let r = t1.matmul(t2);
-//         assert_eq!(r.shape(), &[2, 1, 1]);
-//     }
-// }
+    let r_gpu = t1_gpu.matmul(t2_gpu);
+
+    assert_eq!(r_gpu.shape(), &[2000, 2000]);
+
+    // just take one row and column, too slow otherwise!
+    let t1_cpu = &t1_gpu.to_cpu().crop(&[(0, 1), (0, 500)]);
+    let t2_cpu = &t2_gpu.to_cpu().crop(&[(0, 500), (0, 1)]);
+    let r_cpu = t1_cpu.matmul(t2_cpu);
+    assert_eq!(r_cpu.shape(), &[1, 1]);
+    assert_vec_eq(&r_cpu.ravel(), &r_gpu.to_cpu().ravel()[0..1]);
+}
 
 #[test]
 fn test_eye() {
