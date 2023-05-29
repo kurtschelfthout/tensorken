@@ -1,305 +1,37 @@
 use std::{
-    borrow::Cow,
-    collections::HashMap,
     fmt::{Debug, Formatter},
-    sync::{Arc, Once, RwLock},
+    sync::Arc,
 };
 
 use bytemuck::{NoUninit, Pod};
 use wgpu::util::DeviceExt;
 
 use crate::{
-    num::Num, raw_tensor::RawTensor, raw_tensor_cpu::CpuRawTensor, shape::Shape,
+    num::Num,
+    raw_tensor::RawTensor,
+    raw_tensor_cpu::CpuRawTensor,
+    shape::Shape,
     shape_strider::ShapeStrider,
+    wgpu_context::{get_wgpu_device, WgpuContext, WorkgroupSize},
 };
 
 // Misc WGSL notes/tips:
-// - WGSL seems to aggressively prune dead code. If you don't use a binding var in WGSL, it's like that
-//   binding isn't there. If you have declared it in the rust wgpu code as a binding group, there will
+// - WGSL aggressively prunes dead code. If you don't use a binding in WGSL, that binding gets removed.
+//   If you have declared it in the rust wgpu code as a binding group, there will
 //   be a failure at runtime, saying the number of bindings doesn't correspond.
 // - I've been told it's a good idea to cache compute pipelines, as this avoids recompiling WGSL.
-
-/// Size of a workgroup in X and Y dimensions. Z dimension is always 1 at the moment, it's not included.
-type WorkgroupSize = (usize, usize);
-
-/// An instantiated wgpu "device", or what I'm calling a device anyway. Not sure this corresponds to
-/// conventional terminology.
-/// In any case, it holds a `wgpu::Device` and a `wgpu::Queue`, and it also holds a cache of compute
-/// pipelines. The latter to avoid recompiling WGSL shaders.
-pub struct WgpuDevice {
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    pipelines: RwLock<HashMap<(&'static str, WorkgroupSize), Arc<wgpu::ComputePipeline>>>,
-}
-
-impl WgpuDevice {
-    const MAP_SHADER: &'static str = include_str!("shaders/map.wgsl");
-    const ZIP_SHADER: &'static str = include_str!("shaders/zip.wgsl");
-    const REDUCE_SHADER: &'static str = include_str!("shaders/reduce.wgsl");
-    const PAD_SHADER: &'static str = include_str!("shaders/pad.wgsl");
-    const FUSED_MUL_ADD_SHADER: &'static str = include_str!("shaders/fused_mul_add.wgsl");
-
-    const REPLACE_OP_NAME: &'static str = "replace_me_with_actual_operation";
-    const REPLACE_DEFAULT_NAME: &'static str = "replace_me_with_actual_default()";
-    const REPLACE_UNARY_OP_DEF: &'static str =
-        r"fn replace_me_with_actual_operation(in: f32) -> f32 { discard; }";
-    const REPLACE_BINARY_OP_DEF: &'static str =
-        r"fn replace_me_with_actual_operation(in_1: f32, in_2: f32) -> f32 { discard; }";
-    const REPLACE_REDUCE_DEFAULT_DEF: &'static str =
-        r"fn replace_me_with_actual_default() -> f32 { discard; }";
-    const REPLACE_REDUCE_THREAD_COUNT_CONST: &'static str = r"const REDUCE_THREADS: u32 = 64u;";
-    const REPLACE_REDUCE_INTERMEDIATE_BUFFER_SIZE_CONST: &'static str =
-        r"const INTERMEDIATE_SIZE: u32 = 64u;";
-
-    const REPLACE_WORKGROUP_SIZE: &'static str = "@workgroup_size(64)";
-
-    const MAP_OPS: [&str; 3] = ["exp", "log", "id"];
-    const ZIP_OPS: [&str; 6] = ["add", "sub", "mul", "div", "pow", "eq"];
-    const RED_OPS: [&str; 2] = ["sum", "max"];
-
-    pub(crate) fn new() -> Self {
-        let (device, queue) = Self::get_device().unwrap();
-        device.start_capture();
-        Self {
-            device,
-            queue,
-            pipelines: RwLock::new(HashMap::new()),
-        }
-    }
-
-    fn memo_compute_pipeline(
-        &self,
-        operation: &'static str,
-        module: &wgpu::ShaderModule,
-        entry_point: &str,
-        pipelines: &mut std::sync::RwLockWriteGuard<
-            HashMap<(&str, WorkgroupSize), Arc<wgpu::ComputePipeline>>,
-        >,
-        workgroup_size: WorkgroupSize,
-    ) {
-        let compute_pipeline = Arc::new(self.device.create_compute_pipeline(
-            &wgpu::ComputePipelineDescriptor {
-                label: Some(operation),
-                layout: None,
-                module,
-                entry_point,
-            },
-        ));
-        pipelines.insert((operation, workgroup_size), compute_pipeline);
-    }
-
-    #[allow(clippy::too_many_lines)]
-    fn pipeline_for(
-        &self,
-        operation: &'static str,
-        workgroup_size: WorkgroupSize,
-    ) -> Arc<wgpu::ComputePipeline> {
-        let entry_point = "call";
-
-        {
-            let pipelines = self.pipelines.read().unwrap();
-            if let Some(r) = pipelines.get(&(operation, workgroup_size)) {
-                return Arc::clone(r);
-            }
-        }
-
-        let mut pipelines = self.pipelines.write().unwrap();
-        // shaders with a single operation
-        if operation == "pad" {
-            let shader = Self::PAD_SHADER;
-            let module = &self
-                .device
-                .create_shader_module(wgpu::ShaderModuleDescriptor {
-                    label: Some(operation),
-                    source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(&shader.replace(
-                        Self::REPLACE_WORKGROUP_SIZE,
-                        &format!(
-                            "@workgroup_size({}, {})",
-                            workgroup_size.0, workgroup_size.1
-                        ),
-                    ))),
-                });
-            self.memo_compute_pipeline(
-                operation,
-                module,
-                entry_point,
-                &mut pipelines,
-                workgroup_size,
-            );
-        }
-
-        // shaders with a single operation
-        if operation == "fused_mul_add" {
-            let (shader, operation) = (Self::FUSED_MUL_ADD_SHADER, operation);
-            let module = &self
-                .device
-                .create_shader_module(wgpu::ShaderModuleDescriptor {
-                    label: Some(operation),
-                    source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(&shader.replace(
-                        Self::REPLACE_WORKGROUP_SIZE,
-                        &format!(
-                            "@workgroup_size({}, {})",
-                            workgroup_size.0, workgroup_size.1,
-                        ),
-                    ))),
-                });
-            self.memo_compute_pipeline(
-                operation,
-                module,
-                entry_point,
-                &mut pipelines,
-                workgroup_size,
-            );
-        }
-
-        if Self::MAP_OPS.contains(&operation) {
-            let shader = Self::MAP_SHADER;
-            let replace_op_def = Self::REPLACE_UNARY_OP_DEF;
-            let module = &self
-                .device
-                .create_shader_module(wgpu::ShaderModuleDescriptor {
-                    label: Some(operation),
-                    source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(
-                        &shader
-                            .replace(
-                                Self::REPLACE_WORKGROUP_SIZE,
-                                &format!(
-                                    "@workgroup_size({}, {})",
-                                    workgroup_size.0, workgroup_size.1
-                                ),
-                            )
-                            .replace(replace_op_def, "")
-                            .replace(Self::REPLACE_OP_NAME, operation),
-                    )),
-                });
-            self.memo_compute_pipeline(
-                operation,
-                module,
-                entry_point,
-                &mut pipelines,
-                workgroup_size,
-            );
-        }
-
-        if Self::ZIP_OPS.contains(&operation) {
-            let shader = Self::ZIP_SHADER;
-            let replace_op_def = Self::REPLACE_BINARY_OP_DEF;
-            let module = &self
-                .device
-                .create_shader_module(wgpu::ShaderModuleDescriptor {
-                    label: Some(operation),
-                    source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(
-                        &shader
-                            .replace(
-                                Self::REPLACE_WORKGROUP_SIZE,
-                                &format!(
-                                    "@workgroup_size({}, {})",
-                                    workgroup_size.0, workgroup_size.1
-                                ),
-                            )
-                            .replace(replace_op_def, "")
-                            .replace(Self::REPLACE_OP_NAME, operation),
-                    )),
-                });
-            self.memo_compute_pipeline(
-                operation,
-                module,
-                entry_point,
-                &mut pipelines,
-                workgroup_size,
-            );
-        }
-
-        if Self::RED_OPS.contains(&operation) {
-            let shader = Self::REDUCE_SHADER;
-            for operation in Self::RED_OPS {
-                let module = &self
-                    .device
-                    .create_shader_module(wgpu::ShaderModuleDescriptor {
-                        label: Some(operation),
-                        source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(
-                            &shader
-                                .replace(
-                                    Self::REPLACE_WORKGROUP_SIZE,
-                                    &format!(
-                                        "@workgroup_size({}, {})",
-                                        workgroup_size.0, workgroup_size.1
-                                    ),
-                                )
-                                .replace(Self::REPLACE_BINARY_OP_DEF, "")
-                                .replace(Self::REPLACE_OP_NAME, operation)
-                                .replace(Self::REPLACE_REDUCE_DEFAULT_DEF, "")
-                                .replace(Self::REPLACE_DEFAULT_NAME, &operation.to_uppercase())
-                                .replace(
-                                    Self::REPLACE_REDUCE_THREAD_COUNT_CONST,
-                                    &format!("const REDUCE_THREADS: u32 = {}u;", workgroup_size.1),
-                                )
-                                .replace(
-                                    Self::REPLACE_REDUCE_INTERMEDIATE_BUFFER_SIZE_CONST,
-                                    &format!(
-                                        "const INTERMEDIATE_SIZE: u32 = {}u;",
-                                        workgroup_size.0 * workgroup_size.1
-                                    ),
-                                ),
-                        )),
-                    });
-                self.memo_compute_pipeline(
-                    operation,
-                    module,
-                    entry_point,
-                    &mut pipelines,
-                    workgroup_size,
-                );
-            }
-        }
-        Arc::clone(pipelines.get(&(operation, workgroup_size)).unwrap())
-    }
-
-    async fn get_device_async() -> Option<(wgpu::Device, wgpu::Queue)> {
-        // Instantiates instance of WebGPU
-        let instance = wgpu::Instance::default();
-
-        // Use the util method to respect the env vars `WGPU_POWER_PREF` and `WGPU_ADAPTER_NAME`
-        // WGPU_POWER_PREF can be set to `low` or `high` to prefer integrated or discrete GPUs respectively.
-        // WGPU_ADAPTER_NAME can be set to a substring of the name of the adapter you wish to use.
-        let backends = wgpu::util::backend_bits_from_env().unwrap_or_else(wgpu::Backends::all);
-        // println!("backends: {backends:?}");
-        // let adapters = instance.enumerate_adapters(backends);
-
-        // for adapter in adapters {
-        //     let info = adapter.get_info();
-        //     println!("adapter: {:?}", info);
-        // }
-
-        let adapter = wgpu::util::initialize_adapter_from_env_or_default(&instance, backends, None)
-            .await
-            .expect("No suitable GPU adapters found on the system!");
-        let info = adapter.get_info();
-        println!(
-            "Using {:#?} {} with {:#?} backend (Env vars: WGPU_POWER_PREF (low|high), WGPU_ADAPTER_NAME, WGPU_BACKEND).",
-            info.device_type, info.name, info.backend
-        );
-
-        // `request_device` instantiates the feature specific connection to the GPU, defining some parameters,
-        //  `features` being the available features.
-        let r = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: None,
-                    features: wgpu::Features::empty(),
-                    limits: wgpu::Limits::downlevel_defaults(),
-                },
-                None, // Some(Path::new("./trace")),
-            )
-            .await
-            .unwrap();
-        Some(r)
-    }
-
-    fn get_device() -> Option<(wgpu::Device, wgpu::Queue)> {
-        pollster::block_on(Self::get_device_async())
-    }
-}
+// - It's necessary to poll the device after submission of a command buffer, otherwise the under high
+//   load the GPU will run out of memory.
+// - It's important to distinguish between the workgroup size, and the number of workgroups, which I've called `workgroup_count` in the code.
+//   - workgroup size: fixed in the shader using `@workgroup_size`. The number of threads that execute in parallel within a workgroup.
+//     These threads all execute the same code in sync (even with branches - if one of the threads doesn't need to take a branch, it'll still
+//     fake-execute the code, i.e. do nothing useful) and can access typically faster shared workgroup memory. The idea is that these threads
+//     all execute the same code, but on different data (SIMD) and are phyiscally close together on the GPU.
+//   - workgroup count: set at dispatch time. The number of workgroups that execute in parallel. Each workgroup has its own set of threads,
+//     so the total number of invocations of the shader is workgroup size * workgroup count. Workgroups may or may not be executed in parallel,
+//     this is decided by the GPU scheduler.
+// - There are limits in WebGPU on the number of workgroups that can be dispatched, the number of threads per workgroup.
+// - Both workgroup size and workgroup count can be specified separately in x,y, and z dimensions.
 
 /// Operations avoid copying the buffer if possible, but buffers are read-only,
 /// and can be shared between multiple tensors (e.g. with different shapes).
@@ -309,7 +41,7 @@ impl WgpuDevice {
 pub struct WgpuRawTensor<'a, T> {
     buffer: Arc<wgpu::Buffer>,
     strider: ShapeStrider,
-    device: &'a WgpuDevice,
+    context: &'a WgpuContext,
     phantom: std::marker::PhantomData<T>,
 }
 
@@ -326,7 +58,7 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
     /// The data is copied to the GPU.
     /// # Panics
     /// Panics if the shape and data size mismatch.
-    pub fn new(shape: &[usize], cpu_data: &[T], device: &'a WgpuDevice) -> Self {
+    fn new(shape: &[usize], cpu_data: &[T], device: &'a WgpuContext) -> Self {
         assert!(
             shape.size() == cpu_data.len(),
             "Shape and data size mismatch"
@@ -336,7 +68,7 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
         let buffer = device
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("data buffer"),
+                label: Some("Tensor (new)"),
                 contents: bytemuck::cast_slice(cpu_data),
                 usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             });
@@ -344,7 +76,7 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
         Self {
             buffer: Arc::new(buffer),
             strider,
-            device,
+            context: device,
             phantom: std::marker::PhantomData,
         }
     }
@@ -359,17 +91,17 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
         Self {
             buffer: Arc::clone(&self.buffer),
             strider,
-            device: self.device,
+            context: self.context,
             phantom: std::marker::PhantomData,
         }
     }
 
     fn device(&self) -> &wgpu::Device {
-        &self.device.device
+        &self.context.device
     }
 
     fn queue(&self) -> &wgpu::Queue {
-        &self.device.queue
+        &self.context.queue
     }
 
     #[allow(dead_code)]
@@ -377,16 +109,19 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
         self.strider.strides()
     }
 
-    fn make_output_buffer(&self, size: usize) -> wgpu::Buffer {
+    /// Make a new output buffer, to store the result of an operation,
+    /// and so a new tensor.
+    fn make_output_buffer(&self, size: usize, operation: &str) -> wgpu::Buffer {
         let size = Self::byte_size(size);
         self.device().create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Operation output"),
+            label: Some(&format!("Tensor ({operation})")),
             size,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         })
     }
 
+    /// Get a bind group for unary operations, i.e. that take one tensor as input.
     fn get_bind_group_unary(
         &self,
         pipeline: &wgpu::ComputePipeline,
@@ -414,6 +149,7 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
         })
     }
 
+    /// Get a bind group for zip operations.
     fn get_bind_group_zip(
         &self,
         other: &Self,
@@ -446,6 +182,7 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
         })
     }
 
+    /// Submit the compute pipeline for execution to the GPU, and wait for it to complete.
     fn encode_and_submit(
         &self,
         compute_pipeline: &wgpu::ComputePipeline,
@@ -484,17 +221,18 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
         operation: &'static str,
         workgroup_size: WorkgroupSize,
     ) -> Arc<wgpu::ComputePipeline> {
-        self.device.pipeline_for(operation, workgroup_size)
+        self.context.pipeline_for(operation, workgroup_size)
     }
 }
 
 impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
+    /// Get the buffer that encodes various strides and shapes of the inputs.
+    /// Is used for all operations, so is a mess of a signature.
     fn get_strides_and_shapes_buffer(
         &self,
         chunk_size: usize,
         other: Option<&ShapeStrider>,
         output_strider: &ShapeStrider,
-        // reduced_strides, reduced_shape, output_shape
         reduce: Option<(&[usize], &[usize], &[usize])>,
         padding: Option<&[(usize, usize)]>,
     ) -> wgpu::Buffer {
@@ -544,11 +282,12 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
         buffer
     }
 
+    /// Create a new tensor with given buffer and strider, passing self's context along.
     fn with_buffer_strider(&self, buffer: wgpu::Buffer, strider: ShapeStrider) -> Self {
         WgpuRawTensor {
             buffer: Arc::new(buffer),
             strider,
-            device: self.device,
+            context: self.context,
             phantom: self.phantom,
         }
     }
@@ -562,19 +301,23 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
     /// - workgroup size (the number of threads in each workgroup, x and y. y is always 1.),
     /// - workgroup count (the number of workgroups to run)
     /// - chunk size (the number of elements each thread will process)
-    fn counts_n_sizes(work_item_count: usize) -> ((usize, usize), usize, usize) {
-        if work_item_count <= Self::MAX_WORKGROUP_SIZE {
-            return ((work_item_count, 1), 1, 1);
+    /// This is based on the size of the output tensor, as for all operations except
+    /// reduce, that's the maximum amount of parallelism we can have.
+    /// The idea is to maximize workgroup size, then workgroup count, then chunk size -
+    /// this should maximize parallelism.
+    fn counts_n_sizes(output_tensor_size: usize) -> ((usize, usize), usize, usize) {
+        if output_tensor_size <= Self::MAX_WORKGROUP_SIZE {
+            return ((output_tensor_size, 1), 1, 1);
         }
 
         let workgroup_count =
-            (work_item_count + Self::MAX_WORKGROUP_SIZE - 1) / Self::MAX_WORKGROUP_SIZE;
+            (output_tensor_size + Self::MAX_WORKGROUP_SIZE - 1) / Self::MAX_WORKGROUP_SIZE;
         if workgroup_count <= Self::MAX_WORKGROUP_COUNT {
             return ((Self::MAX_WORKGROUP_SIZE, 1), workgroup_count, 1);
         }
 
         let chunk_size =
-            (work_item_count + Self::MAX_WORKGROUP_COUNT - 1) / Self::MAX_WORKGROUP_COUNT;
+            (output_tensor_size + Self::MAX_WORKGROUP_COUNT - 1) / Self::MAX_WORKGROUP_COUNT;
         (
             (Self::MAX_WORKGROUP_SIZE, 1),
             Self::MAX_WORKGROUP_COUNT,
@@ -583,14 +326,14 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
     }
 
     /// Return a new tensor with the same shape as self, after applying f to each element.
-    /// Allocates a new buffer, resulting tensor is contiguous.
+    /// Allocates a new buffer. Resulting tensor is contiguous.
     fn map(&self, operation: &'static str) -> Self {
         let output_strider = ShapeStrider::contiguous(self.shape());
 
         let (workgroup_size, workgroup_count, chunk_size) =
             Self::counts_n_sizes(output_strider.size());
 
-        let output_buffer = self.make_output_buffer(output_strider.size());
+        let output_buffer = self.make_output_buffer(output_strider.size(), operation);
         let compute_pipeline = self.pipeline_for(operation, workgroup_size);
         let strides_and_shapes =
             self.get_strides_and_shapes_buffer(chunk_size, None, &output_strider, None, None);
@@ -605,7 +348,7 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
     }
 
     /// Return a new tensor with the same shape as self and other, after applying f to each pair of elements.
-    /// Allocates a new buffer, resulting tensor is contiguous.
+    /// Allocates a new buffer. Resulting tensor is contiguous.
     fn zip(&self, other: &Self, operation: &'static str) -> Self {
         self.strider.validate_can_zip(&other.strider).unwrap();
 
@@ -613,7 +356,7 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
 
         let (workgroup_size, workgroup_count, chunk_size) =
             Self::counts_n_sizes(output_strider.size());
-        let output_buffer = self.make_output_buffer(output_strider.size());
+        let output_buffer = self.make_output_buffer(output_strider.size(), operation);
         let compute_pipeline = self.pipeline_for(operation, workgroup_size);
         let strides_and_shapes = self.get_strides_and_shapes_buffer(
             chunk_size,
@@ -647,6 +390,12 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
     /// - workgroup size (the number of threads in each workgroup, x and y.),
     /// - workgroup count (the number of workgroups to run)
     /// - chunk size (the number of elements each thread will process)
+    /// Specifically for the reduce operation.
+    /// Reduce is suboptimal if we'd only base it on the output tensor size: in the extreme,
+    /// reducing to a single element achieves no parallelism at all.
+    /// The idea here is to check if we have enough parallelism in the output tensor to
+    /// parallelize "the normal way". If the output tensor size is smaller than the max workgroup size,
+    /// we also parallelize the reduction itself.
     fn counts_n_sizes_reduce(
         input_tensor_size: usize,
         output_tensor_size: usize,
@@ -656,9 +405,7 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
 
             // First parallelize on the output size as much as possible.
             let workgroup_size_x = output_tensor_size;
-            // while workgroup_size_x > output_tensor_size {
-            //     workgroup_size_x /= 2;
-            // }
+
             // Then parallelize the reduction.
             // This is the number of elements that need to be reduced to a single output element.
             let reduce_size = input_tensor_size / output_tensor_size;
@@ -683,6 +430,8 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
         Self::counts_n_sizes(output_tensor_size)
     }
 
+    /// Return a new tensor with the given axes reduced.
+    /// Allocates a new buffer. Resulting tensor is contiguous.
     fn reduce(&self, axes: &[usize], operation: &'static str) -> Self {
         self.strider.validate_can_reduce(axes).unwrap();
 
@@ -696,7 +445,7 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
 
         let (workgroup_size, workgroup_count, chunk_size) =
             Self::counts_n_sizes_reduce(self.strider.size(), output_strider.size());
-        let output_buffer = self.make_output_buffer(output_strider.size());
+        let output_buffer = self.make_output_buffer(output_strider.size(), operation);
         let compute_pipeline = self.pipeline_for(operation, workgroup_size);
         let strides_and_shapes = self.get_strides_and_shapes_buffer(
             chunk_size,
@@ -719,13 +468,13 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
         self.with_buffer_strider(output_buffer, output_strider)
     }
 
+    /// Pad the tensor with the given padding.
+    /// Allocates a new buffer. Resulting tensor is contiguous.
     fn pad(&self, padding: &[(usize, usize)]) -> Self {
         self.strider.validate_can_pad(padding).unwrap();
 
         let output_strider = self.strider.pad(padding);
-
-        // unary ops can keep the same _buffer_ size, i.e. we don't expand the buffer
-        let output_buffer = self.make_output_buffer(output_strider.size());
+        let output_buffer = self.make_output_buffer(output_strider.size(), "pad");
 
         let (workgroup_size, workgroup_count, chunk_size) =
             Self::counts_n_sizes(output_strider.size());
@@ -747,6 +496,9 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
         self.with_buffer_strider(output_buffer, output_strider)
     }
 
+    /// Elementwise multiply of self with other, followed by summing along the given axes, in
+    /// a single operation.
+    /// Allocates a new buffer. Resulting tensor is contiguous.
     fn fused_multiply_add_impl(&self, other: &Self, axes: &[usize]) -> Self {
         self.strider.validate_can_zip(&other.strider).unwrap();
         self.strider.validate_can_reduce(axes).unwrap();
@@ -761,7 +513,7 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
 
         let (workgroup_size, workgroup_count, chunk_size) =
             Self::counts_n_sizes(output_strider.size());
-        let output_buffer = self.make_output_buffer(output_strider.size());
+        let output_buffer = self.make_output_buffer(output_strider.size(), "fma");
         let compute_pipeline = self.pipeline_for("fused_mul_add", workgroup_size);
         let strides_and_shapes = self.get_strides_and_shapes_buffer(
             chunk_size,
@@ -785,10 +537,12 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
         self.with_buffer_strider(output_buffer, output_strider)
     }
 
+    /// Returns a contiguous copy of the tensor.
     fn contiguous(&self) -> Self {
         self.map("id")
     }
 
+    /// Returns a contiguous vector of the tensor's elements, on the CPU.
     fn ravel(&self) -> Vec<T> {
         if !self.strider.is_contiguous() {
             let t = self.contiguous();
@@ -806,8 +560,7 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
         let mut encoder = self
             .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-        // Sets adds copy operation to command encoder.
-        // Will copy data from storage buffer on GPU to staging buffer on CPU.
+        // Add copy operation to command encoder - copy data from storage buffer on GPU to staging buffer on CPU.
         encoder.copy_buffer_to_buffer(&self.buffer, offset, &staging_buffer, 0, size);
 
         // Submits command encoder for processing
@@ -818,37 +571,22 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
         buffer_slice.map_async(wgpu::MapMode::Read, move |v| sender.send(v).unwrap());
 
         // Poll the device in a blocking manner so that our future resolves.
-        // In an actual application, `device.poll(...)` should
-        // be called in an event loop or on another thread.
         self.device()
             .poll(wgpu::Maintain::WaitForSubmissionIndex(index));
         let poll_result = pollster::block_on(receiver.receive());
 
         if let Some(Ok(())) = poll_result {
-            // Gets contents of buffer
             let data = buffer_slice.get_mapped_range();
-            // Since contents are got in bytes, this converts these bytes back to u32
             let result = bytemuck::cast_slice(&data).to_vec();
 
+            // Resource cleanup dance - apparently needs to happen in this order.
             drop(data);
             staging_buffer.unmap();
 
             result
         } else {
-            panic!("failed to read buffer from GPU")
+            panic!("Failed to read buffer from GPU")
         }
-    }
-}
-
-static mut WGPU_DEVICE: Option<WgpuDevice> = None;
-static INIT_WGPU_DEVICE: Once = Once::new();
-
-fn get_wgpu_device() -> &'static WgpuDevice {
-    unsafe {
-        INIT_WGPU_DEVICE.call_once(|| {
-            WGPU_DEVICE = Some(WgpuDevice::new());
-        });
-        return WGPU_DEVICE.as_ref().unwrap();
     }
 }
 
@@ -957,6 +695,8 @@ mod tests {
 
     use std::{f32::consts::E, iter::repeat};
 
+    use crate::wgpu_context::get_wgpu_device;
+
     use super::*;
 
     fn assert_vec_eq(a: &[f32], b: &[f32]) {
@@ -1031,7 +771,7 @@ mod tests {
         let t1 = WgpuRawTensor::new(&[3, 2], &i1, get_wgpu_device());
         let i2 = vec![6.0, 7.0, 8.0, -6.0, -7.0, -8.0];
         let t2 = WgpuRawTensor::new(&[3, 2], &i2, get_wgpu_device());
-        for op in WgpuDevice::ZIP_OPS {
+        for op in WgpuContext::ZIP_OPS {
             if op == "pow" {
                 continue; // see separate test
             }
@@ -1077,7 +817,7 @@ mod tests {
             get_wgpu_device(),
         );
         let t2 = t2.reshape(&[2, 3]);
-        for op in WgpuDevice::ZIP_OPS {
+        for op in WgpuContext::ZIP_OPS {
             if op == "pow" {
                 continue; // see separate test
             }
