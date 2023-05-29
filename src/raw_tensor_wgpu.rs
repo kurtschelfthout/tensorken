@@ -668,12 +668,12 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
             let workgroup_size_y = Self::clamp(reduce_size / 64, 1, max_workgroup_size_y);
             let workgroup_size = (workgroup_size_x, workgroup_size_y);
             let (workgroup_count, chunk_size) = (1, 1);
-            dbg!(
-                output_tensor_size,
-                workgroup_size,
-                workgroup_count,
-                chunk_size
-            );
+            // dbg!(
+            //     output_tensor_size,
+            //     workgroup_size,
+            //     workgroup_count,
+            //     chunk_size
+            // );
             return (workgroup_size, workgroup_count, chunk_size);
         }
 
