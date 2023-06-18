@@ -120,7 +120,7 @@ pub trait RawTensor {
     // fused operations
     // ----------------
 
-    /// Multiply self with other element-wise, and reduce via sum the given dimensions, in one fused
+    /// Multiply self with other element-wise, and sum-reduce the given dimensions, in one fused
     /// operation.
     /// This operation is in `RawTensor` for performance reasons, as clearly functionally it is equivalent to `mul` + `sum`.
     /// However, usually hardware have specialized instructions for vectorized fused multiply-accumulate,

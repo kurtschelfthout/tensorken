@@ -4,7 +4,7 @@ var<storage, read> input_0: array<f32>;
 @group(0) @binding(1)
 var<storage, read_write> output_0: array<f32>;
 
-// ndims, input_offset, chunk_size, input_strides, output_strides, output_shape
+// ndims, input_offset, chunk_size, input_strides, output_strides, shape
 @group(0) @binding(2)
 var<storage, read> strides_and_shape: array<u32>;
 
@@ -18,7 +18,7 @@ fn output_strides(i: u32) -> u32 {
     return strides_and_shape[i + preamble + strides_and_shape[0] ];
 }
 
-fn output_shape(i: u32) -> u32 {
+fn shape(i: u32) -> u32 {
     return strides_and_shape[i + preamble + strides_and_shape[0] * 2u];
 }
 
@@ -40,14 +40,16 @@ fn id(in: f32) -> f32 {
 
 // Find the index of the given output index in input_0.
 fn input_index_of(output_i: u32) -> u32 {
-    var input_i: u32 = strides_and_shape[1];
-    
+    let ndims = strides_and_shape[0];
+    let offset = strides_and_shape[1];
+
     // this works by transforming the output_i buffer index into a 
     // tensor coordinate. coord_i represents the i'th item in the tensor coordinate.
     // This is multiplied by the i'th stride of the input tensor, giving
     // us a buffer index in the input, input_i.
-    for (var i: u32 = 0u; i < strides_and_shape[0]; i = i + 1u) {
-        let len = output_shape(i);
+    var input_i: u32 = offset;
+    for (var i: u32 = 0u; i < ndims; i = i + 1u) {
+        let len = shape(i);
         let stride = output_strides(i);
         let coord_i: u32 = output_i / stride % len;
 

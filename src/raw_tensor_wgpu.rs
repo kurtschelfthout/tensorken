@@ -225,6 +225,8 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
     }
 }
 
+type ReduceInfo<'a> = (&'a [usize], &'a [usize], &'a [usize], usize);
+
 impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
     /// Get the buffer that encodes various strides and shapes of the inputs.
     /// Is used for all operations, so is a mess of a signature.
@@ -233,7 +235,7 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
         chunk_size: usize,
         other: Option<&ShapeStrider>,
         output_strider: &ShapeStrider,
-        reduce: Option<(&[usize], &[usize], &[usize])>,
+        reduce: Option<ReduceInfo>,
         padding: Option<&[(usize, usize)]>,
     ) -> wgpu::Buffer {
         let mut contents = Vec::with_capacity(8 * self.shape().ndims() + 3);
@@ -243,6 +245,9 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
             contents.push(other.offset());
         }
         contents.push(chunk_size);
+        if let Some((_, _, _, reduce_size)) = reduce {
+            contents.push(reduce_size);
+        }
 
         contents.extend(self.strider.strides());
         if let Some(other) = other {
@@ -252,7 +257,7 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
         contents.extend(output_strider.strides());
         contents.extend(self.shape());
 
-        if let Some((reduced_strides, reduced_shape, output_shape)) = reduce {
+        if let Some((reduced_strides, reduced_shape, output_shape, _)) = reduce {
             contents.extend(reduced_strides);
             contents.extend(reduced_shape);
             contents.extend(output_shape);
@@ -455,6 +460,7 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
                 reduced_strider.strides(),
                 reduced_strider.shape(),
                 output_strider.shape(),
+                reduced_strider.size(),
             )),
             None,
         );
@@ -523,6 +529,7 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
                 reduced_strider.strides(),
                 reduced_strider.shape(),
                 output_strider.shape(),
+                reduced_strider.size(),
             )),
             None,
         );

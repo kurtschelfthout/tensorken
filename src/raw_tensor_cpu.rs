@@ -131,7 +131,6 @@ impl<T: Copy> CpuRawTensor<T> {
         self.strider.validate_can_reduce(axes).unwrap();
 
         let (strider_0, reducer_0) = self.strider.reduce(axes);
-        // let (strider_1, reducer_1) = other.strider.reduce(axes);
 
         let mut result_buffer = vec![default; strider_0.size()];
 

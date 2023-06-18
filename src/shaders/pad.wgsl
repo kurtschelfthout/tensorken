@@ -34,20 +34,21 @@ fn padding_after(i: u32) -> u32 {
 // Find the value for the given output index - figure out whether to pad,
 // i.e. result is 0.0, or not, i.e. result is the value from the input.
 fn value_for(output_i: u32) -> f32 {
-    var input_i: u32 = strides_and_shape[1];
-    
-    for (var i: u32 = 0u; i < strides_and_shape[0]; i = i + 1u) {
+    let ndims = strides_and_shape[0];
+    let offset = strides_and_shape[1];
+
+    var input_i: u32 = offset;
+    for (var i: u32 = 0u; i < ndims; i = i + 1u) {
         let len = input_shape(i) + padding_after(i) + padding_before(i);
         let stride = output_strides(i);
         let output_coord: u32 = output_i / stride % len;
         if output_coord < padding_before(i) || output_coord >= padding_before(i) + input_shape(i) {
+            // This output coordinate is in the padding region, so the value is 0.0.
             return 0.0;
         }
         let input_coord = output_coord - padding_before(i);
-
         input_i += input_coord * input_strides(i);
     }
-
     return input_0[input_i];
 }
 

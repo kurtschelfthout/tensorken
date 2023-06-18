@@ -35,32 +35,32 @@ fn shape(i: u32) -> u32 {
 }
 
 // Find the indexes of the element in input 0 and input 1.
-fn input_index_of(index: u32) -> vec2<u32> {
-    var index_input: vec2<u32> = vec2(strides_and_shape[1],strides_and_shape[2]);
-    let ndims: u32 = strides_and_shape[0];
-
+fn input_index_of(output_i: u32) -> vec2<u32> {
+    let ndims = strides_and_shape[0];
+    let offset = vec2(strides_and_shape[1],strides_and_shape[2]);
+    
+    var input_i: vec2<u32> = offset;
     for (var i: u32 = 0u; i < ndims; i = i + 1u) {
         let len = shape(i);
         let stride = output_strides(i);
-        let coord: u32 = index / stride % len;
+        let coord: u32 = output_i / stride % len;
 
-        index_input += coord * vec2(input_0_strides(i), input_1_strides(i));
+        input_i += coord * vec2(input_0_strides(i), input_1_strides(i));
     }
-
-    return index_input;
+    return input_i;
 }
 
-// Same parlor trick as in unary_ops.wgsl.
+// Same parlor trick as in map.wgsl.
 fn replace_me_with_actual_operation(in_1: f32, in_2: f32) -> f32 { discard; }
 
 // extension to the parlor trick: infix operators are annoying to replace, 
 // so we define counterparts for them here.
-
 fn add(a: f32, b: f32) -> f32 { return a + b; }
 fn sub(a: f32, b: f32) -> f32 { return a - b; }
 fn mul(a: f32, b: f32) -> f32 { return a * b; }
 fn div(a: f32, b: f32) -> f32 { return a / b; }
 fn eq(a: f32, b: f32) -> f32 { return f32(a == b); }
+// pow is a builtin, no need to define it
 
 
 @compute
