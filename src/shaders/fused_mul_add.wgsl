@@ -56,7 +56,7 @@ fn input_index_of(output_i: u32) -> vec2<u32> {
     return input_i;
 }
 
-fn reduce_index_of(offset: vec2<u32>, reduce_i: u32) -> vec2<u32> {
+fn reduced_slice_index_of(offset: vec2<u32>, reduce_i: u32) -> vec2<u32> {
     var input_i = offset;
 
     for (var i = 0u; i < strides_and_shape[0]; i = i + 1u) {
@@ -73,7 +73,7 @@ fn reduce_index_of(offset: vec2<u32>, reduce_i: u32) -> vec2<u32> {
 @workgroup_size(64)
 fn call(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let chunk_size = strides_and_shape[3];
-    let reduce_size = strides_and_shape[4];
+    let reduced_slice_size = strides_and_shape[4];
     let fro = global_id.x * chunk_size;
     let to = fro + chunk_size;
     
@@ -82,10 +82,10 @@ fn call(@builtin(global_invocation_id) global_id: vec3<u32>) {
             return;
         }
 
-        let target_input_idx = input_index_of(gidx);
+        let reduced_slice_offset = input_index_of(gidx);
         var acc = 0.0;
-        for (var rec_i = 0u; rec_i < reduce_size; rec_i += 1u) {
-            var input_i = reduce_index_of(target_input_idx, rec_i);
+        for (var reduced_slice_i = 0u; reduced_slice_i < reduced_slice_size; reduced_slice_i += 1u) {
+            var input_i = reduced_slice_index_of(reduced_slice_offset, reduced_slice_i);
             acc = fma(input_0[input_i.x], input_1[input_i.y], acc);
         }
 
