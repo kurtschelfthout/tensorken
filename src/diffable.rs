@@ -77,12 +77,13 @@ pub(crate) fn broadcasted_apply<T: Diffable>(
             .zip(rhs.shape().iter())
             .map(|(a, b)| *a.max(b))
             .collect::<Vec<_>>();
-        let s_expanded = lhs.expand(&res_shape);
-        let o_expanded = rhs.expand(&res_shape);
-        if reverse {
-            return f(&o_expanded, &s_expanded);
-        }
-        return f(&s_expanded, &o_expanded);
+        let lhs_expanded = lhs.expand(&res_shape);
+        let rhs_expanded = rhs.expand(&res_shape);
+        return if reverse {
+            f(&rhs_expanded, &lhs_expanded)
+        } else {
+            f(&lhs_expanded, &rhs_expanded)
+        };
     }
 
     let num_ones_to_add = rhs.shape().len().saturating_sub(lhs.shape().len());
