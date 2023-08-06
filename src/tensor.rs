@@ -12,6 +12,8 @@ use crate::{
     num::Num,
     raw_tensor::RawTensor,
     raw_tensor_cpu::CpuRawTensor,
+    raw_tensor_fuse::Fuse,
+    raw_tensor_shape_tracker::ShapeTracker,
     raw_tensor_wgpu::WgpuRawTensor,
     shape::Shape,
     tensor_mut::TensorMut,
@@ -100,7 +102,7 @@ impl<T: Num, TTensor: RawTensor<Elem = T>> Diffable for TTensor {
 /// This is nice, because to implement a new type of accelerator, you only need to implement `RawTensor`.
 #[derive(Debug, Clone)]
 #[must_use]
-pub struct Tensor<TRawTensor>(TRawTensor);
+pub struct Tensor<T>(T);
 
 impl<T: Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
     /// Create a new tensor with the given shape and elements.
@@ -296,8 +298,8 @@ crate::math_macros::impl_bin_op!(Div, div, Tensor<T: Diffable>);
 
 crate::math_macros::impl_un_op!(Neg, neg, Tensor<T: Diffable>);
 
-pub type Cpu32 = Tensor<CpuRawTensor<f32>>;
-pub type Wgpu32<'d> = Tensor<WgpuRawTensor<'d, f32>>;
+pub type Cpu32 = Tensor<ShapeTracker<Fuse<CpuRawTensor<f32>>>>;
+pub type Wgpu32<'d> = Tensor<ShapeTracker<Fuse<WgpuRawTensor<'d, f32>>>>;
 
 fn create_table<T: Num + Display>(tensor: &Tensor<CpuRawTensor<T>>, table: &mut Table) {
     let shape = tensor.shape();
