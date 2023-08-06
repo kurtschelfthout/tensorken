@@ -9,13 +9,13 @@ edition = "2021"
 bytemuck = "1.13.1"
 futures-intrusive = "0.5.0"
 pollster = "0.3.0"
-wgpu = {version="0.16.0", features=["trace"] }
+wgpu = {version="0.17.0", features=["trace"] }
 prettytable-rs = "0.10.0"
 rand = "0.8.5"
 rand_distr = "0.4.3"
 
 [dev-dependencies]
-criterion = "0.4.0"
+criterion = "0.5.0"
 env_logger = "0.10.0"
 
 [lib]
