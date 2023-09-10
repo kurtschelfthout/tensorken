@@ -10,8 +10,7 @@ use crate::{
         AddOp, BinaryOp, BinaryRevOp, CropOp, DivOp, EqOp, ExpOp, ExpandOp, LogOp, MaxOp, MulOp,
         PadOp, PermuteOp, PowOp, ReshapeOp, SubOp, SumOp, UnaryOp, UnaryRevOp,
     },
-    diffable::DiffableExt,
-    Diffable,
+    Diffable, DiffableExt,
 };
 
 /// Reverse AD implementation.
@@ -152,6 +151,7 @@ impl<'t, T: Diffable> Reverse<'_, 't, T> {
     }
 }
 impl<T: Clone + Diffable> Diffable for Reverse<'_, '_, T> {
+    type Elem = T::Elem;
     fn log(&self) -> Self {
         self.unary::<LogOp<T>, _>(&())
     }
@@ -212,16 +212,12 @@ impl<T: Clone + Diffable> Diffable for Reverse<'_, '_, T> {
         self.unary::<CropOp, _>(limits)
     }
 
-    fn zeros_like(&self) -> Self {
-        Reverse::Lift(self.primal().zeros_like())
-    }
-
-    fn ones_like(&self) -> Self {
-        Reverse::Lift(self.primal().ones_like())
-    }
-
     fn shape(&self) -> &[usize] {
         self.primal().shape()
+    }
+
+    fn new(shape: &[usize], data: &[Self::Elem]) -> Self {
+        Reverse::Lift(T::new(shape, data))
     }
 }
 
@@ -322,9 +318,9 @@ impl<T: Diffable + Clone> PullBack<'_, T> {
             .collect()
     }
 
-    /// Takes a cotangent tensor with the same shape as the result of this `PullBack` originating vjp function,
+    /// Takes a cotangent tensor with the same shape as the result of this `PullBack`'s originating vjp function,
     /// and returns a `Vec` of cotangent vectors with the same number and shapes as vjp's primals,
-    ///  representing the vector-Jacobian product of vjp's function evaluated at primals.
+    /// representing the vector-Jacobian product of vjp's function evaluated at primals.
     pub fn call(&self, cotangent: &T) -> Vec<T>
     where
         T: Diffable + Clone,

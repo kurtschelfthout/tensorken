@@ -1,6 +1,6 @@
 use rand::{rngs::StdRng, SeedableRng};
 use tensorken::{
-    grad1, grad2, value_and_grad2, Cpu32, DiffableExt, Reverse, TensorLike, TensorLikeRef,
+    grad1, grad2, value_and_grad2, Cpu32, Diffable, DiffableExt, Reverse, TensorLike, TensorLikeRef,
 };
 
 type Tr = Cpu32;
@@ -14,13 +14,13 @@ fn main() {
 
     let s = Tr::scalar(2.0);
     let dr = grad1(|t| t.tanh(), &s);
-    println!("dr: {dr}");
+    print!("dr: {dr}");
 
     let ddr = grad1(|t| grad1(|t| t.tanh(), t), &s);
-    println!("ddr: {ddr}");
+    print!("ddr: {ddr}");
 
     let dddr = grad1(|t| grad1(|t| grad1(|t| t.tanh(), t), t), &s);
-    println!("dddr: {dddr}");
+    print!("dddr: {dddr}");
 
     // # Outputs probability of a label being true.
     fn predict<'t, T>(W: &'t T, b: &'t T, inputs: &T) -> T
@@ -73,7 +73,7 @@ fn main() {
         },
         &W,
     );
-    println!("W_grad: {W_grad}");
+    print!("W_grad: {W_grad}");
 
     // Differentiate loss wrt b
     let b_grad = grad1(
@@ -87,7 +87,7 @@ fn main() {
         },
         &b,
     );
-    println!("b_grad: {b_grad}");
+    print!("b_grad: {b_grad}");
 
     // Differentiate loss wrt W and b
     let (W_grad, b_grad) = grad2(
@@ -95,8 +95,8 @@ fn main() {
         &W,
         &b,
     );
-    println!("W_grad: {W_grad}");
-    println!("b_grad: {b_grad}");
+    print!("W_grad: {W_grad}");
+    print!("b_grad: {b_grad}");
 
     // ### Differentiating with respect to nested lists, tuples, and dicts
     // TODO no support for other container types in Tensorken atm
@@ -108,10 +108,18 @@ fn main() {
         &W,
         &b,
     );
-    println!("loss value: {loss_value}");
-    println!("loss value: {}", loss(&W, &b, &inputs, &targets));
+    print!("loss value: {loss_value}");
+    print!("loss value: {}", loss(&W, &b, &inputs, &targets));
 
     // ### Checking against numerical differences
+    let eps = Tr::scalar(1e-4);
+    let half_eps = &eps / Tr::scalar(2.);
+    let b_grad_numerical = (loss(&W, &(&b + &half_eps), &inputs, &targets)
+        - loss(&W, &(&b - &half_eps), &inputs, &targets))
+        / &eps;
+    print!("b_grad_numerical {}", b_grad_numerical);
+    print!("b_grad_autodiff {}", b_grad);
+
     // TODO implement a numerical gradient checker
 
     // ### Hessian-vector products with `grad`-of-`grad`

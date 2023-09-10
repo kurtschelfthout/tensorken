@@ -6,6 +6,7 @@
 mod ad_reverse;
 mod ad_reverse_ops;
 mod diffable;
+mod diffable_ext;
 mod math_macros;
 mod num;
 mod raw_tensor;
@@ -23,7 +24,8 @@ mod wgpu_context;
 pub use ad_reverse::{
     grad1, grad2, value_and_grad1, value_and_grad2, value_and_gradn, vjpn, PullBack, Reverse,
 };
-pub use diffable::{Diffable, DiffableExt};
+pub use diffable::Diffable;
+pub use diffable_ext::DiffableExt;
 pub use raw_tensor::RawTensor;
 pub use raw_tensor_cpu::CpuRawTensor;
 pub use raw_tensor_wgpu::WgpuRawTensor;

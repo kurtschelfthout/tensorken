@@ -1,4 +1,4 @@
-use crate::Diffable;
+use crate::{Diffable, DiffableExt};
 
 /// A trait that represents the operation on the primal value, and
 /// returns a `UnaryRevOp`, which is the operation on the adjoints in the
@@ -77,7 +77,7 @@ impl<TTensor: Clone + Diffable> BinaryOp<TTensor> for SubOp {
     }
 }
 
-impl<TTensor: Clone + Diffable> BinaryRevOp<TTensor> for SubOp {
+impl<TTensor: Clone + DiffableExt> BinaryRevOp<TTensor> for SubOp {
     fn df_dfda(&self, df: &TTensor) -> TTensor {
         df.clone()
     }

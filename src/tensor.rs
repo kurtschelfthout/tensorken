@@ -4,11 +4,8 @@ use std::{
 };
 
 use prettytable::{format, Cell, Table};
-use rand::Rng;
-use rand_distr::{Distribution, StandardNormal};
 
 use crate::{
-    diffable::{Diffable, DiffableExt},
     num::Num,
     raw_tensor::RawTensor,
     raw_tensor_cpu::CpuRawTensor,
@@ -17,10 +14,13 @@ use crate::{
     raw_tensor_wgpu::WgpuRawTensor,
     shape::Shape,
     tensor_mut::TensorMut,
+    {Diffable, DiffableExt},
 };
 
 // Blanket implementation to translate from diffable tensor ops (Diffable) to low-level tensor ops (RawTensor).
 impl<T: Num, TTensor: RawTensor<Elem = T>> Diffable for TTensor {
+    type Elem = T;
+
     fn log(&self) -> Self {
         self.log()
     }
@@ -80,16 +80,12 @@ impl<T: Num, TTensor: RawTensor<Elem = T>> Diffable for TTensor {
         self.crop(limits)
     }
 
-    fn zeros_like(&self) -> Self {
-        TTensor::new(&vec![1; self.shape().ndims()], &[T::ZERO]).expand(self.shape())
-    }
-
-    fn ones_like(&self) -> Self {
-        TTensor::new(&vec![1; self.shape().ndims()], &[T::ONE]).expand(self.shape())
-    }
-
     fn shape(&self) -> &[usize] {
         self.shape()
+    }
+
+    fn new(shape: &[usize], data: &[Self::Elem]) -> Self {
+        TTensor::new(shape, data)
     }
 }
 
@@ -105,72 +101,6 @@ impl<T: Num, TTensor: RawTensor<Elem = T>> Diffable for TTensor {
 pub struct Tensor<T>(T);
 
 impl<T: Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
-    /// Create a new tensor with the given shape and elements.
-    /// The order of the elements is in increasing order of the last axis, then the second last, etc.
-    pub fn new(shape: &[usize], data: &[T]) -> Self {
-        Tensor(TRawTensor::new(shape, data))
-    }
-
-    pub fn scalar(value: T) -> Self {
-        Tensor(TRawTensor::new(&[1], &[value]))
-    }
-
-    /// Create a new tensor with the given shape, and fill it with the given value.
-    pub fn full(shape: &[usize], value: T) -> Self {
-        Tensor(TRawTensor::new(&vec![1; shape.ndims()], &[value])).expand(shape)
-    }
-
-    /// Create a new tensor with the given shape, and fill it with zeros.
-    pub fn zeros(shape: &[usize]) -> Self {
-        Tensor::full(shape, T::ZERO)
-    }
-
-    /// Create a new 2-dimensional tensor with the ones the diagonal and zeros elsewhere.
-    pub fn eye(dim: usize) -> Self {
-        // kind of an pad/crop/expand/reshape stress test
-        Self::scalar(T::ONE)
-            .pad(&[(0, dim)])
-            .reshape(&[1, dim + 1])
-            .expand(&[dim, dim + 1])
-            .reshape(&[dim * (dim + 1)])
-            .crop(&[(0, dim * dim)])
-            .reshape(&[dim, dim])
-    }
-
-    pub fn linspace(start: T, end: T, num: usize) -> Self {
-        let mut data = Vec::with_capacity(num);
-        let step = if num > 1 {
-            let nf: T = T::from_usize(num);
-            (end - start) / (nf - T::ONE)
-        } else {
-            T::ZERO
-        };
-        for i in 0..num {
-            data.push(start + step * T::from_usize(i));
-        }
-        Self::new(&[num], &data)
-    }
-
-    /// Create a new tensor with the given shape, and fill it with random values from a standard normal distribution
-    pub fn randn<R>(shape: &[usize], rng: &mut R) -> Self
-    where
-        R: Rng + ?Sized,
-        rand_distr::StandardNormal: Distribution<T>,
-    {
-        // let normal = StandardNormal //.unwrap();
-        let mut data: Vec<T> = Vec::with_capacity(shape.size());
-        for _ in 0..shape.size() {
-            data.push(rng.sample(StandardNormal));
-        }
-
-        Self::new(shape, &data)
-    }
-
-    /// Create a new tensor with the same shape as self, but all elements equal to given value.
-    pub fn constant_like(&self, value: T) -> Self {
-        Tensor::full(self.0.shape(), value)
-    }
-
     /// Return the elements of the tensor as a Vec, i.e. on the CPU.
     /// The order of the elements is in increasing order of the last axis, then the second last, etc.
     pub fn ravel(&self) -> Vec<T> {
@@ -192,17 +122,11 @@ impl<T: Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
     pub fn to_cpu(&self) -> Tensor<CpuRawTensor<T>> {
         Tensor(self.0.to_cpu())
     }
-
-    // fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self {
-    //     self.broadcasted_apply(
-    //         other,
-    //         |a, b| Tensor(a.0.fused_multiply_add(&b.0, axes)),
-    //         false,
-    //     )
-    // }
 }
 
 impl<T: Diffable> Diffable for Tensor<T> {
+    type Elem = T::Elem;
+
     /// Apply the natural logarithm to each element.
     fn log(&self) -> Self {
         Tensor(self.0.log())
@@ -278,16 +202,12 @@ impl<T: Diffable> Diffable for Tensor<T> {
         Tensor(self.0.crop(limits))
     }
 
-    fn zeros_like(&self) -> Self {
-        Tensor(self.0.zeros_like())
-    }
-
-    fn ones_like(&self) -> Self {
-        Tensor(self.0.ones_like())
-    }
-
     fn shape(&self) -> &[usize] {
         self.0.shape()
+    }
+
+    fn new(shape: &[usize], data: &[Self::Elem]) -> Self {
+        Tensor(T::new(shape, data))
     }
 }
 

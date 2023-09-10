@@ -93,13 +93,13 @@ fn test_derivative_constant() {
 fn do_test_constant<RT: RawTensor<Elem = f32> + Clone + Debug>() {
     test_df::<RT, _, _, _>(
         |t| Reverse::lift(t.primal()),
-        Diffable::zeros_like,
+        DiffableExt::zeros_like,
         Clone::clone,
     );
     test_ddf::<RT, _, _, _>(
         |t| Reverse::lift(&Reverse::lift(t.primal().primal())),
-        Diffable::zeros_like,
-        Diffable::zeros_like,
+        DiffableExt::zeros_like,
+        DiffableExt::zeros_like,
     );
 }
 
@@ -118,8 +118,8 @@ fn test_derivative_id() {
 }
 
 fn do_test_id<RT: RawTensor<Elem = f32> + Clone + Debug>() {
-    test_df::<RT, _, _, _>(|a| f_id(a), Diffable::ones_like, |a| f_id(a));
-    test_ddf::<RT, _, _, _>(|a| f_id(a), Diffable::zeros_like, Diffable::ones_like);
+    test_df::<RT, _, _, _>(|a| f_id(a), DiffableExt::ones_like, |a| f_id(a));
+    test_ddf::<RT, _, _, _>(|a| f_id(a), DiffableExt::zeros_like, DiffableExt::ones_like);
 }
 
 fn f_add<'t, T>(a: &'t T) -> T
@@ -142,7 +142,7 @@ fn do_test_add<RT: RawTensor<Elem = f32> + Clone + Debug>() {
     test_df::<RT, _, _, _>(|a| f_add(a), |a| a.constant_like(2.0), |a| f_add(a));
     test_ddf::<RT, _, _, _>(
         |a| a + a + a,
-        Diffable::zeros_like,
+        DiffableExt::zeros_like,
         |a| a.constant_like(3.0),
     );
     test_df_2::<RT, _, _, _, _>(
@@ -199,8 +199,8 @@ fn test_derivative_sub() {
 
 #[allow(clippy::eq_op)]
 fn do_test_sub<RT: RawTensor<Elem = f32> + Clone + Debug>() {
-    test_df::<RT, _, _, _>(|a| f_sub(a), Diffable::zeros_like, |a| f_sub(a));
-    test_ddf::<RT, _, _, _>(|a| a - a - a, Diffable::zeros_like, |a| -a.ones_like());
+    test_df::<RT, _, _, _>(|a| f_sub(a), DiffableExt::zeros_like, |a| f_sub(a));
+    test_ddf::<RT, _, _, _>(|a| a - a - a, DiffableExt::zeros_like, |a| -a.ones_like());
     test_df_2::<RT, _, _, _, _>(
         |a, b| a - b,
         |a, b| a - b,
@@ -319,11 +319,11 @@ fn test_derivative_sum() {
 }
 
 fn do_test_sum<RT: RawTensor<Elem = f32> + Clone + Debug>() {
-    test_df::<RT, _, _, _>(|a| f_sum(a), Diffable::ones_like, |a| f_sum(a));
+    test_df::<RT, _, _, _>(|a| f_sum(a), DiffableExt::ones_like, |a| f_sum(a));
     test_ddf::<RT, _, _, _>(
         |a| a.sum(&all_axes(a.shape())),
-        Diffable::zeros_like,
-        Diffable::ones_like,
+        DiffableExt::zeros_like,
+        DiffableExt::ones_like,
     );
 }
 
@@ -369,11 +369,11 @@ fn test_reshape() {
 }
 
 fn do_test_reshape<RT: RawTensor<Elem = f32> + Clone + Debug>() {
-    test_df::<RT, _, _, _>(|a| f_reshape(a), Diffable::ones_like, |a| f_reshape(a));
+    test_df::<RT, _, _, _>(|a| f_reshape(a), DiffableExt::ones_like, |a| f_reshape(a));
     test_ddf::<RT, _, _, _>(
         |a| a.reshape(&[a.shape().size()]),
-        Diffable::zeros_like,
-        Diffable::ones_like,
+        DiffableExt::zeros_like,
+        DiffableExt::ones_like,
     );
 }
 
@@ -393,11 +393,11 @@ fn test_permute() {
 
 fn do_test_permute<RT: RawTensor<Elem = f32> + Clone + Debug>() {
     // bit iffy - assumes at least 2 dimensions
-    test_df::<RT, _, _, _>(|a| f_permute(a), Diffable::ones_like, |a| f_permute(a));
+    test_df::<RT, _, _, _>(|a| f_permute(a), DiffableExt::ones_like, |a| f_permute(a));
     test_ddf::<RT, _, _, _>(
         |a| a.permute(&[1, 0]),
-        Diffable::zeros_like,
-        Diffable::ones_like,
+        DiffableExt::zeros_like,
+        DiffableExt::ones_like,
     );
 }
 
@@ -419,7 +419,7 @@ fn do_test_expand<RT: RawTensor<Elem = f32> + Clone + Debug>() {
     test_df::<RT, _, _, _>(|a| f_expand(a), |a| a.constant_like(4.0), |a| f_expand(a));
     test_ddf::<RT, _, _, _>(
         |a| a.reshape(&[1, 2, 2]).expand(&[4, 2, 2]),
-        Diffable::zeros_like,
+        DiffableExt::zeros_like,
         |a| a.constant_like(4.0),
     );
 }
@@ -446,7 +446,7 @@ fn do_test_crop<RT: RawTensor<Elem = f32> + Clone + Debug>() {
     );
     test_ddf::<RT, _, _, _>(
         |a| f_crop(a),
-        Diffable::zeros_like,
+        DiffableExt::zeros_like,
         // note: padding is different here from test_df, because test_ddf
         // tests with a [2,2] tensor only.
         |a| a.ones_like().crop(&[(0, 1), (1, 2)]).pad(&[(0, 1), (1, 0)]),
@@ -468,8 +468,12 @@ fn test_pad() {
 }
 
 fn do_test_pad<RT: RawTensor<Elem = f32> + Clone + Debug>() {
-    test_df::<RT, _, _, _>(|a| f_pad(a), Diffable::ones_like, |a| f_pad(a));
-    test_ddf::<RT, _, _, _>(|a| f_pad(a), Diffable::zeros_like, Diffable::ones_like);
+    test_df::<RT, _, _, _>(|a| f_pad(a), DiffableExt::ones_like, |a| f_pad(a));
+    test_ddf::<RT, _, _, _>(
+        |a| f_pad(a),
+        DiffableExt::zeros_like,
+        DiffableExt::ones_like,
+    );
 }
 
 fn f_matmul<'t, T>(a: &'t T, b: &'t T) -> T
