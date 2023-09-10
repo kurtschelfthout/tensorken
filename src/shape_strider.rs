@@ -66,7 +66,9 @@ impl ShapeStrider {
     }
 
     fn is_valid_index(&self, index: &[usize]) -> bool {
-        !self.shape.is_empty() && index.iter().zip(self.shape.iter()).all(|(i, s)| i < s)
+        !self.shape.is_empty() // can't index into empty shape at all
+            && self.shape.ndims() == index.len()
+            && index.iter().zip(self.shape.iter()).all(|(i, s)| i < s)
     }
 
     /// Iterate over tensor indexes, in increasing order.

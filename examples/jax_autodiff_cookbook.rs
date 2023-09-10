@@ -1,3 +1,4 @@
+use rand::{rngs::StdRng, SeedableRng};
 use tensorken::{
     grad1, grad2, value_and_grad2, Cpu32, DiffableExt, Reverse, TensorLike, TensorLikeRef,
 };
@@ -53,10 +54,12 @@ fn main() {
         -label_probs.log().sum(&[0, 1])
     }
 
+    let key = 0;
+    let mut rng = StdRng::seed_from_u64(key);
     // TODO since we use matmul, not dot, we have to make this a matrix explicitly.
-    // TODO random initialization
-    let W = Tr::new(&[3, 1], &[0.5; 3]);
-    let b = Tr::scalar(0.1);
+    let W = Tr::randn(&[3, 1], &mut rng);
+    // TODO in JAX, the shape of a scalar is &[] not &[1].
+    let b = Tr::randn(&[1], &mut rng);
 
     // Differentiate loss wrt W
     let W_grad = grad1(

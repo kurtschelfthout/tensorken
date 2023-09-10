@@ -204,35 +204,35 @@ fn movement_ops<T: RawTensor<Elem = f32>>(t1: &Tensor<T>) {
 }
 
 #[test]
-fn test_2x3_dot_3x2() {
+fn test_2x3_matmul_3x2() {
     let t1 = &Cpu32::linspace(1., 6., 6).reshape(&[2, 3]);
     let t2 = &Cpu32::linspace(6., 1., 6).reshape(&[3, 2]);
 
-    do_2x3_dot_3x2(t1, t2);
+    do_2x3_matmul_3x2(t1, t2);
 
     let t1 = &Wgpu32::linspace(1., 6., 6).reshape(&[2, 3]);
     let t2 = &Wgpu32::linspace(6., 1., 6).reshape(&[3, 2]);
-    do_2x3_dot_3x2(t1, t2)
+    do_2x3_matmul_3x2(t1, t2)
 }
 
-fn do_2x3_dot_3x2<T: RawTensor<Elem = f32>>(t1: &Tensor<T>, t2: &Tensor<T>) {
+fn do_2x3_matmul_3x2<T: RawTensor<Elem = f32>>(t1: &Tensor<T>, t2: &Tensor<T>) {
     let r1 = t1.matmul(t2);
     assert_eq!(r1.shape(), &[2, 2]);
     assert_eq!(r1.ravel(), vec![20.0, 14.0, 56.0, 41.0]);
 }
 
 #[test]
-fn test_2x3x5_dot_2x5x2() {
+fn test_2x3x5_matmul_2x5x2() {
     let t1 = &Cpu32::linspace(0., 29., 30).reshape(&[2, 3, 5]);
     let t2 = &Cpu32::linspace(0., 19., 20).reshape(&[2, 5, 2]);
-    do_2x3x5_dot_2x5x2(t1, t2);
+    do_2x3x5_matmul_2x5x2(t1, t2);
 
     let t1 = &Wgpu32::linspace(0., 29., 30).reshape(&[2, 3, 5]);
     let t2 = &Wgpu32::linspace(0., 19., 20).reshape(&[2, 5, 2]);
-    do_2x3x5_dot_2x5x2(t1, t2);
+    do_2x3x5_matmul_2x5x2(t1, t2);
 }
 
-fn do_2x3x5_dot_2x5x2<T: RawTensor<Elem = f32>>(t1: &Tensor<T>, t2: &Tensor<T>) {
+fn do_2x3x5_matmul_2x5x2<T: RawTensor<Elem = f32>>(t1: &Tensor<T>, t2: &Tensor<T>) {
     let r1 = t1.matmul(t2);
     assert_eq!(r1.shape(), &[2, 3, 2]);
     assert_eq!(
@@ -244,18 +244,18 @@ fn do_2x3x5_dot_2x5x2<T: RawTensor<Elem = f32>>(t1: &Tensor<T>, t2: &Tensor<T>) 
 }
 
 #[test]
-fn test_3x2x2x3_dot_2x3x2() {
+fn test_3x2x2x3_matmul_2x3x2() {
     // checked vs numpy
     let t1 = &Cpu32::linspace(1.0, 36.0, 36).reshape(&[3, 2, 2, 3]);
     let t2 = &Cpu32::linspace(39.0, 72.0, 12).reshape(&[2, 3, 2]);
-    do_3x2x2x3_dot_2x3x2(t1, t2);
+    do_3x2x2x3_matmul_2x3x2(t1, t2);
 
     let t1 = &Wgpu32::linspace(1.0, 36.0, 36).reshape(&[3, 2, 2, 3]);
     let t2 = &Wgpu32::linspace(39.0, 72.0, 12).reshape(&[2, 3, 2]);
-    do_3x2x2x3_dot_2x3x2(t1, t2);
+    do_3x2x2x3_matmul_2x3x2(t1, t2);
 }
 
-fn do_3x2x2x3_dot_2x3x2<T: RawTensor<Elem = f32>>(t1: &Tensor<T>, t2: &Tensor<T>) {
+fn do_3x2x2x3_matmul_2x3x2<T: RawTensor<Elem = f32>>(t1: &Tensor<T>, t2: &Tensor<T>) {
     let r = t1.matmul(t2);
     assert_eq!(r.shape(), &[3, 2, 2, 2]);
     assert_eq!(
@@ -265,6 +265,21 @@ fn do_3x2x2x3_dot_2x3x2<T: RawTensor<Elem = f32>>(t1: &Tensor<T>, t2: &Tensor<T>
             3972., 4359., 4566., 3522., 3756., 3927., 4188., 6060., 6348., 6627., 6942.
         ]
     );
+}
+
+#[test]
+fn test_matmul_1d() {
+    // test multiplying with 1d tensors works on the left and right
+    let t1 = &Cpu32::new(&[3, 3], &[1., 2., 3., 4., 5., 6., 7., 8., 9.]);
+    let t2 = &Cpu32::new(&[3], &[1.0, 2.0, 3.0]);
+
+    let r = t1.matmul(t2);
+    assert_eq!(vec![14., 32., 50.], r.ravel());
+    assert_eq!(r.shape(), &[3]);
+
+    let r = t2.matmul(t1);
+    assert_eq!(vec![30., 36., 42.], r.ravel());
+    assert_eq!(r.shape(), &[3]);
 }
 
 #[test]
@@ -286,6 +301,7 @@ fn test_matmul_big() {
     let t2_cpu = &t2_gpu.to_cpu().crop(&[(0, 500), (0, 1)]);
     let r_cpu = t1_cpu.matmul(t2_cpu);
     assert_eq!(r_cpu.shape(), &[1, 1]);
+
     assert_vec_eq(&r_cpu.ravel(), &r_gpu.to_cpu().ravel()[0..1]);
 }
 

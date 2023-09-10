@@ -153,31 +153,65 @@ where
     }
 
     /// Matrix multiplication, generalized to tensors.
-    /// i.e. multiply [..., m, n] with [..., n, o] to [..., m, o]
+    /// i.e. multiply [..., m, n] with [..., n, o] to [..., m, o].
+    ///
+    /// Like in numpy's matmul:
+    /// - If both arguments are 2-D they are multiplied like conventional matrices.
+    /// - If either argument is N-D, N > 2, it is treated as a stack of matrices residing in the last two indexes and broadcast accordingly.
+    /// - If the first argument is 1-D, it is promoted to a matrix by prepending a 1 to its dimensions. After matrix multiplication the prepended 1 is removed.
+    /// - If the second argument is 1-D, it is promoted to a matrix by appending a 1 to its dimensions. After matrix multiplication the appended 1 is removed.
+    ///
+    /// # Panics
+    /// If one of the dimensions is 0 or if the inner dimensions don't match.
     #[must_use]
     fn matmul(&self, other: &Self) -> Self {
-        // self's shape from [..., m, n] to [..., m, 1, n]
-        // using just reshape.
-        let s = self.shape();
-        let self_shape = [&s[..s.ndims() - 1], &[1, s[s.ndims() - 1]]].concat();
-        let l = self.reshape(&self_shape);
+        let (l_nd, r_nd) = (self.shape().ndims(), other.shape().ndims());
 
-        // other's shape from [..., n, o] to [..., 1, o, n]
-        // using reshape + transpose.
-        let s = other.shape();
-        let other_shape = [&s[..s.ndims() - 2], &[1], &s[s.ndims() - 2..]].concat();
-        let r = other
-            .reshape(&other_shape)
-            .transpose(other_shape.ndims() - 1, other_shape.ndims() - 2);
+        assert!(l_nd != 0, "matmul: lhs has no dimensions");
+        assert!(r_nd != 0, "matmul: rhs has no dimensions");
 
-        // // after multiply: [..., m, o, n]
-        let prod = &l.mul(&r);
+        // the indices of the dimensions we're multiplying.
+        let (l_n, r_n) = (l_nd - 1, r_nd.saturating_sub(2));
+        {
+            let l = self.shape()[l_n];
+            let r = other.shape()[r_n];
+            assert!(l == r, "matmul: inner dimensions don't match: {l} != {r}");
+        }
+
+        let prod = if l_nd == 1 {
+            // if either of the dimensions is 1, we can just use elementwise mul.
+            let s = self.shape();
+            let l_shape = [s, &[1]].concat();
+            let l = self.reshape(&l_shape);
+            // .transpose(l_shape.ndims() - 1, l_shape.ndims() - 2);
+            l.mul(other)
+                .transpose(l_shape.ndims() - 1, l_shape.ndims() - 2)
+        } else if r_nd == 1 {
+            self.mul(other)
+        } else {
+            // self's shape from [..., m, n] to [..., m, 1, n]
+            // using just reshape.
+            let s = self.shape();
+            let l_shape = [&s[..l_n], &[1, s[l_n]]].concat();
+            let l = self.reshape(&l_shape);
+
+            // other's shape from [..., n, o] to [..., 1, o, n]
+            // using reshape + transpose.
+            let s = other.shape();
+            let r_shape = [&s[..r_n], &[1], &s[r_n..]].concat();
+            let r = other
+                .reshape(&r_shape)
+                .transpose(r_shape.ndims() - 1, r_shape.ndims() - 2);
+
+            // after multiply: [..., m, o, n]
+            l.mul(&r)
+        };
+
         // after sum:      [..., m, o, 1]
         let sum = prod.sum(&[prod.shape().ndims() - 1]);
 
-        // TODO fused multiply + sum
-        // let last_dim = max(l.shape().ndims(), r.shape().ndims()) - 1;
-        // let sum = l.fused_multiply_add(&r, &[last_dim]);
+        // note: counting on raw_tensor_fuse to make the mul and sum into a single operation.
+        // otherwise, we'll blow up memory and time.
 
         // after reshape:  [..., m, o]
         let s = sum.shape();
