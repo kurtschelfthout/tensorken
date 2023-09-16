@@ -236,6 +236,14 @@ where
         sum.reshape(&s[..s.ndims() - 1])
     }
 
+    /// If the tensor has only one element, return it.
+    /// # Panics
+    /// If the tensor does not have exactly one element.
+    fn to_scalar(&self) -> Self::Elem {
+        assert!(self.shape().size() == 1);
+        self.ravel()[0]
+    }
+
     // activation functions
     #[must_use]
     fn sigmoid(&self) -> Self {

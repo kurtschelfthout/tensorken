@@ -57,4 +57,5 @@ pub trait Diffable {
     /// The order of the elements is in increasing order of the last axis, then the second last, etc.
     fn new(shape: &[usize], data: &[Self::Elem]) -> Self;
     fn shape(&self) -> &[usize];
+    fn ravel(&self) -> Vec<Self::Elem>;
 }

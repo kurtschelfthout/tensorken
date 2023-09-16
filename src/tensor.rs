@@ -12,7 +12,6 @@ use crate::{
     raw_tensor_fuse::Fuse,
     raw_tensor_shape_tracker::ShapeTracker,
     raw_tensor_wgpu::WgpuRawTensor,
-    shape::Shape,
     tensor_mut::TensorMut,
     {Diffable, DiffableExt},
 };
@@ -87,6 +86,10 @@ impl<T: Num, TTensor: RawTensor<Elem = T>> Diffable for TTensor {
     fn new(shape: &[usize], data: &[Self::Elem]) -> Self {
         TTensor::new(shape, data)
     }
+
+    fn ravel(&self) -> Vec<Self::Elem> {
+        self.ravel()
+    }
 }
 
 /// The "high-level" tensor type - the face of the library.
@@ -101,22 +104,8 @@ impl<T: Num, TTensor: RawTensor<Elem = T>> Diffable for TTensor {
 pub struct Tensor<T>(T);
 
 impl<T: Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
-    /// Return the elements of the tensor as a Vec, i.e. on the CPU.
-    /// The order of the elements is in increasing order of the last axis, then the second last, etc.
-    pub fn ravel(&self) -> Vec<T> {
-        self.0.ravel()
-    }
-
     pub fn to_tensor_mut(&self) -> TensorMut<T> {
         TensorMut::new(self)
-    }
-
-    /// If the tensor has only one element, return it.
-    /// # Panics
-    /// If the tensor does not have exactly one element.
-    pub fn to_scalar(&self) -> T {
-        assert!(self.0.shape().size() == 1);
-        self.0.ravel()[0]
     }
 
     pub fn to_cpu(&self) -> Tensor<CpuRawTensor<T>> {
@@ -209,6 +198,10 @@ impl<T: Diffable> Diffable for Tensor<T> {
     fn new(shape: &[usize], data: &[Self::Elem]) -> Self {
         Tensor(T::new(shape, data))
     }
+
+    fn ravel(&self) -> Vec<Self::Elem> {
+        self.0.ravel()
+    }
 }
 
 crate::math_macros::impl_bin_op!(Add, add, Tensor<T: Diffable>);
@@ -288,8 +281,7 @@ pub trait IndexValue<Idx> {
     fn at(&self, index: Idx) -> Self::Output;
 }
 
-// TODO: this at should go to DiffableExt, as it can and should work for any Diffable.
-impl<RT: RawTensor> IndexValue<usize> for Tensor<RT> {
+impl<T: Diffable> IndexValue<usize> for T {
     type Output = Self;
 
     /// Slices the tensor at the given index, in the first dimension.
@@ -306,9 +298,8 @@ impl<RT: RawTensor> IndexValue<usize> for Tensor<RT> {
     }
 }
 
-// This at can only work for RawTensors, because it returns a scalar using to_scalar.
-impl<RT: RawTensor, const N: usize> IndexValue<&[usize; N]> for Tensor<RT> {
-    type Output = RT::Elem;
+impl<T: Diffable, const N: usize> IndexValue<&[usize; N]> for Tensor<T> {
+    type Output = T::Elem;
 
     /// Returns the value at the given index. There must be as many indices as there are dimensions.
     fn at(&self, index: &[usize; N]) -> Self::Output {
