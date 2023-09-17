@@ -10,7 +10,7 @@ use crate::{
         AddOp, BinaryOp, BinaryRevOp, CropOp, DivOp, EqOp, ExpOp, ExpandOp, LogOp, MaxOp, MulOp,
         PadOp, PermuteOp, PowOp, ReshapeOp, SubOp, SumOp, UnaryOp, UnaryRevOp,
     },
-    Diffable, DiffableExt,
+    Diffable, DiffableExt, IndexValue, Shape,
 };
 
 /// Reverse AD implementation.
@@ -366,8 +366,8 @@ pub fn value_and_gradn<'t, T: Diffable + Clone + 't, F>(f: F, at: &[&T]) -> (T, 
 where
     for<'a> F: Fn(&'a [Reverse<'a, 't, T>]) -> Reverse<'a, 't, T>,
 {
-    let (primal, pb) = vjpn(f, at);
-    let tangents = pb.call(&primal.ones_like());
+    let (primal, pullback) = vjpn(f, at);
+    let tangents = pullback.call(&primal.ones_like());
     (primal, tangents)
 }
 
@@ -408,4 +408,45 @@ where
     for<'a> F: Fn(&'a Reverse<'a, 't, T>, &'a Reverse<'a, 't, T>) -> Reverse<'a, 't, T>,
 {
     value_and_grad2(f, at0, at1).1
+}
+
+/// Jacobian of `f` evaluated row-by-row at `at` using reverse-mode AD.
+#[allow(clippy::missing_panics_doc)]
+pub fn jacrevn<'b, 't, T: Diffable + Clone + 't, F>(f: F, at: &[&T]) -> T
+where
+    for<'a> F: Fn(&'a [Reverse<'a, 't, T>]) -> Reverse<'a, 't, T>,
+{
+    let (primal, pullback) = vjpn(f, at);
+    let mut s = vec![primal
+        .shape()
+        .iter()
+        .copied()
+        .reduce(|acc, e| acc * e)
+        .unwrap()];
+    s.extend(primal.shape());
+    let i = T::eye(primal.shape().size()).reshape(&s);
+    let mut tangents: Vec<T> = Vec::with_capacity(i.shape()[0]);
+    for row_idx in 0..i.shape()[0] {
+        let row = i.at(row_idx);
+        let row_tangent = pullback.call(&row).into_iter().next().unwrap();
+        tangents.push(row_tangent);
+    }
+    let t_refs = tangents.iter().collect::<Vec<_>>();
+    T::stack(&t_refs, 1)
+}
+
+/// Jacobian of `f` evaluated row-by-row at `at` using reverse-mode AD.
+pub fn jacrev1<'t, T: Diffable + Clone + 't, F>(f: F, at: &T) -> T
+where
+    for<'a> F: Fn(&'a Reverse<'a, 't, T>) -> Reverse<'a, 't, T>,
+{
+    jacrevn(|s| f(&s[0]), &[at])
+}
+
+/// Jacobian of `f` evaluated row-by-row at `at0, at1` using reverse-mode AD.
+pub fn jacrev2<'t, T: Diffable + Clone + 't, F>(f: F, at0: &T, at1: &T) -> T
+where
+    for<'a> F: Fn(&'a Reverse<'a, 't, T>, &'a Reverse<'a, 't, T>) -> Reverse<'a, 't, T>,
+{
+    jacrevn(|s| f(&s[0], &s[1]), &[at0, at1])
 }

@@ -129,6 +129,68 @@ where
         self.permute(&axes)
     }
 
+    /// Remove all axes with size 1, or a specific axis if given.
+    /// # Panics
+    /// If the given axis is not 1.
+    #[must_use]
+    fn squeeze(&self, dim: Option<usize>) -> Self {
+        let mut shape = self.shape().to_vec();
+        if let Some(dim) = dim {
+            assert_eq!(shape[dim], 1);
+            shape.remove(dim);
+        } else {
+            shape.retain(|&x| x != 1);
+        };
+        self.reshape(&shape)
+    }
+
+    /// Insert a new axis of length 1.
+    /// # Panics
+    /// If the given axis is > self.shape().ndims.
+    #[must_use]
+    fn expand_dims(&self, dim: usize) -> Self {
+        let mut shape = self.shape().to_vec();
+        shape.insert(dim, 1);
+        self.reshape(&shape)
+    }
+
+    /// Join a sequence of tensors along an existing axis.
+    fn concatenate(tensors: &[&Self], axis: usize) -> Self {
+        assert!(!tensors.is_empty(), "concatenate: no tensors given");
+        let mut shape = tensors[0].shape().to_vec();
+
+        for tensor in &tensors[1..] {
+            (0..tensors[0].shape().ndims()).for_each(|a| {
+                if a != axis {
+                    assert_eq!(
+                        shape[a],
+                        tensor.shape()[a],
+                        "concatenate: shapes don't match"
+                    );
+                }
+            });
+            shape[axis] += tensor.shape()[axis];
+        }
+        let mut result = Self::zeros(&shape);
+        let mut padding = vec![(0, 0); shape.len()];
+        let mut cumsum = 0;
+        for tensor in tensors {
+            padding[axis] = (cumsum, shape[axis] - tensor.shape()[axis] - cumsum);
+            cumsum += tensor.shape()[axis];
+            result = result.add(&tensor.pad(&padding));
+        }
+        result
+    }
+
+    fn stack(tensors: &[&Self], axis: usize) -> Self {
+        assert!(!tensors.is_empty(), "stack: no tensors given");
+        let ts = tensors
+            .iter()
+            .map(|t| t.expand_dims(axis))
+            .collect::<Vec<_>>();
+        Self::concatenate(&ts.iter().collect::<Vec<_>>(), axis)
+    }
+
     // math
     #[must_use]
     fn add(&self, other: &Self) -> Self {

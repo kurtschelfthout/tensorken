@@ -359,3 +359,36 @@ fn test_randn() {
         [0.712813, 0.85833144, -2.4362438, 0.16334426, -1.2750102, 1.287171]
     );
 }
+
+#[test]
+fn test_concatenate() {
+    let t1 = Cpu32::new(&[2, 3], &[1., 2., 3., 4., 5., 6.]);
+    let t2 = Cpu32::new(&[3, 3], &[1., 2., 3., 4., 5., 6., 7., 8., 9.]);
+    let r = Cpu32::concatenate(&[&t1, &t2], 0);
+    assert_eq!(r.shape(), &[5, 3]);
+    assert_eq!(r.ravel(), [t1.ravel(), t2.ravel()].concat());
+
+    let t1t = t1.transpose(1, 0);
+    let t2t = t2.transpose(1, 0);
+    let r = Cpu32::concatenate(&[&t1t, &t2t], 1);
+    assert_eq!(r.shape(), &[3, 5]);
+    assert_eq!(
+        r.ravel(),
+        [1.0, 4.0, 1.0, 4.0, 7.0, 2.0, 5.0, 2.0, 5.0, 8.0, 3.0, 6.0, 3.0, 6.0, 9.0]
+    );
+}
+
+#[test]
+fn test_squeeze_expand_dims() {
+    let t1 = Cpu32::new(&[2, 3], &[1., 2., 3., 4., 5., 6.]);
+    let t2 = Cpu32::new(&[3, 3], &[1., 2., 3., 4., 5., 6., 7., 8., 9.]);
+    let r1 = t1.expand_dims(0);
+    let r2 = t2.expand_dims(1);
+    assert_eq!(r1.shape(), &[1, 2, 3]);
+    assert_eq!(r2.shape(), &[3, 1, 3]);
+
+    let r3 = r1.squeeze(None);
+    let r4 = r1.squeeze(Some(0));
+    assert_eq!(r3.shape(), &[2, 3]);
+    assert_eq!(r4.shape(), &[2, 3]);
+}

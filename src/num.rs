@@ -22,10 +22,13 @@ pub trait Num:
     /// This is really only so Tensor can implement linspace.
     fn from_usize(n: usize) -> Self;
     /// Apply exponential function.
+    #[must_use]
     fn exp(self) -> Self;
     /// Apply the natural logarithm.
+    #[must_use]
     fn log(self) -> Self;
     /// Raise self to the power of given exponent.
+    #[must_use]
     fn powf(self, exponent: Self) -> Self;
 }
 

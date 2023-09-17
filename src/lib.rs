@@ -8,7 +8,7 @@ mod ad_reverse_ops;
 mod diffable;
 mod diffable_ext;
 mod math_macros;
-mod num;
+pub mod num;
 mod raw_tensor;
 mod raw_tensor_cpu;
 mod raw_tensor_fuse;
@@ -22,7 +22,8 @@ pub mod tensor_mut;
 mod wgpu_context;
 
 pub use ad_reverse::{
-    grad1, grad2, value_and_grad1, value_and_grad2, value_and_gradn, vjpn, PullBack, Reverse,
+    grad1, grad2, jacrev1, jacrev2, jacrevn, value_and_grad1, value_and_grad2, value_and_gradn,
+    vjpn, PullBack, Reverse,
 };
 pub use diffable::Diffable;
 pub use diffable_ext::DiffableExt;

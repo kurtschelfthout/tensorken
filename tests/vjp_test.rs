@@ -1,4 +1,6 @@
 use tensorken::{
+    jacrev1, jacrevn,
+    num::Num,
     CpuRawTensor, Diffable, DiffableExt, RawTensor, Shape, WgpuRawTensor,
     {value_and_grad1, value_and_grad2, vjpn, Reverse}, {Tensor, TensorLike, TensorLikeRef},
 };
@@ -505,4 +507,43 @@ fn do_test_matmul<RT: RawTensor<Elem = f32> + Clone + Debug>() {
     assert_eq!(grads[1].shape(), b.shape());
     assert_eq!(grads[0].ravel(), [23.0, 29.0, 35.0, 53.0, 67.0, 81.0,]);
     assert_eq!(grads[1].ravel(), [13.0, 18.0, 17.0, 24.0, 21.0, 30.0,]);
+}
+
+#[test]
+fn test_jacrev() {
+    do_test_jacrev::<CpuRawTensor<f32>>();
+    do_test_jacrev::<WgpuRawTensor<f32>>();
+}
+
+fn f_pow2<'t, T>(a: &'t T) -> T
+where
+    T: TensorLike<'t>,
+    for<'s> &'s T: TensorLikeRef<T>,
+{
+    a.pow(&a.constant_like(T::Elem::from_usize(2)))
+}
+
+fn do_test_jacrev<RT: RawTensor<Elem = f32> + Clone + Debug>() {
+    let a: Tensor<RT> = Tensor::new(&[3], &[1.0, 2.0, 3.0]);
+    let r = jacrevn(|x| f_pow2(&x[0]), &[&a]);
+    assert_eq!(r.shape(), &[3, 3]);
+    assert_vec_eq(
+        &r.ravel(),
+        &[
+            2.0, 0.0, 0.0, //
+            0.0, 4.0, 0.0, //
+            0.0, 0.0, 6.0, //
+        ],
+    );
+
+    let r = jacrev1(|x| f_pow2(x), &a);
+    assert_eq!(r.shape(), &[3, 3]);
+    assert_vec_eq(
+        &r.ravel(),
+        &[
+            2.0, 0.0, 0.0, //
+            0.0, 4.0, 0.0, //
+            0.0, 0.0, 6.0, //
+        ],
+    );
 }
