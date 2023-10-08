@@ -273,8 +273,7 @@ where
 /// they can be returned from the index method.
 /// This means we also can't use the actual [] syntax :( I made the name
 /// as short as I could think of.
-/// TODO: use a macro to generate the implementations for
-/// ranges etc, + variadic versions for more dimensions.
+/// TODO: use a macro to generate the implementations for ranges etc, + variadic versions for more dimensions.
 pub trait IndexValue<Idx> {
     type Output;
 

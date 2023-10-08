@@ -855,7 +855,7 @@ mod tests {
         let expected = t1
             .ravel()
             .into_iter()
-            .zip(t2.ravel().into_iter())
+            .zip(t2.ravel())
             .map(|(a, b)| apply_binary_op(op, a, b))
             .collect::<Vec<f32>>();
         assert_vec_eq(&actual, &expected);

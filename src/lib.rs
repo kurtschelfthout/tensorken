@@ -3,8 +3,12 @@
 // Doesn't realize that those need a closure for the HRTB.
 #![allow(clippy::redundant_closure_for_method_calls)]
 
+mod ad_forward;
+mod ad_forward_ops;
+mod ad_ops;
 mod ad_reverse;
 mod ad_reverse_ops;
+mod ad_trace;
 mod diffable;
 mod diffable_ext;
 mod math_macros;
@@ -20,7 +24,10 @@ mod shape_strider;
 pub mod tensor;
 pub mod tensor_mut;
 mod wgpu_context;
-
+pub use ad_forward::{
+    diff1, diff2, jvpn, value_and_diff_forward1, value_and_diff_forward2, value_and_diff_forwardn,
+    Forward, PushForward,
+};
 pub use ad_reverse::{
     grad1, grad2, jacrev1, jacrev2, jacrevn, value_and_grad1, value_and_grad2, value_and_gradn,
     vjpn, PullBack, Reverse,
@@ -32,3 +39,9 @@ pub use raw_tensor_cpu::CpuRawTensor;
 pub use raw_tensor_wgpu::WgpuRawTensor;
 pub use shape::Shape;
 pub use tensor::{Cpu32, IndexValue, Tensor, TensorLike, TensorLikeRef, Wgpu32};
+
+// TODO of general interest
+// - Treat zero and one as a special case for efficiency (also avoids NaNs, see jvp_test for pow). Maybe as a RawTensor implementation like Fuse.
+// - RawTensor.eq should return a bool tensor, and not be part of differentiable operations, i.e. be more like shape() or ravel()
+// - Move shape, ravel, to_cpu and maybe others from RawTensor to somewhere else? They are more like "run" operations, i.e. realizing the tensor.
+//   See raw_tensor_fuse and raw_tensor_string for some of the problems these cause.

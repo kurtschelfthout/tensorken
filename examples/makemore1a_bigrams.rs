@@ -66,7 +66,7 @@ fn dict_bigram(names: &[String]) {
     // Tokens are letters, with added start < and end > tokens.
     // Karpathy uses <S> and <E>, which is a bit awkward since Rust splits strings into chars.
     let mut bigram_counts = std::collections::HashMap::new();
-    for name in names.iter() {
+    for name in names {
         let name = format!("<{name}>");
         for bigram in name.chars().collect::<Vec<_>>().windows(2) {
             let bigram = bigram.iter().collect::<String>();

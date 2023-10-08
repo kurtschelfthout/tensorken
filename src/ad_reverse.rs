@@ -1,70 +1,20 @@
 use std::{
-    cell::RefCell,
     fmt::Debug,
     ops::{Add, Div, Index, Mul, Neg, Sub},
     ptr,
 };
 
 use crate::{
-    ad_reverse_ops::{
-        AddOp, BinaryOp, BinaryRevOp, CropOp, DivOp, EqOp, ExpOp, ExpandOp, LogOp, MaxOp, MulOp,
-        PadOp, PermuteOp, PowOp, ReshapeOp, SubOp, SumOp, UnaryOp, UnaryRevOp,
+    ad_ops::{
+        AddOp, BinaryDiffOp, BinaryOp, DivOp, EqOp, ExpOp, LogOp, MulOp, PowOp, SubOp, UnaryDiffOp,
+        UnaryOp,
     },
+    ad_reverse_ops::{CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
+    ad_trace::{Trace, TracedOp},
     Diffable, DiffableExt, IndexValue, Shape,
 };
 
 /// Reverse AD implementation.
-
-enum TracedOp<'t, TTensor: 't> {
-    Var,
-    Unary(Box<dyn UnaryRevOp<TTensor> + 't>, usize),
-    BinaryDA(Box<dyn BinaryRevOp<TTensor> + 't>, usize),
-    BinaryDB(Box<dyn BinaryRevOp<TTensor> + 't>, usize),
-    Binary(Box<dyn BinaryRevOp<TTensor> + 't>, usize, usize),
-}
-
-impl<T> Debug for TracedOp<'_, T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TracedOp::Var => write!(f, "Var"),
-            TracedOp::Unary(_, i) => write!(f, "Unary(_, {i})"),
-            TracedOp::Binary(_, i, j) => write!(f, "Binary(_, {i}, {j})"),
-            TracedOp::BinaryDA(_, i) => write!(f, "BinaryL(_, {i})"),
-            TracedOp::BinaryDB(_, i) => write!(f, "BinaryR(_, {i})"),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct Trace<'t, TTensor> {
-    trace: RefCell<Vec<TracedOp<'t, TTensor>>>,
-}
-
-impl<'t, TTensor> Trace<'t, TTensor> {
-    #[must_use]
-    pub fn new() -> Self {
-        Trace {
-            trace: RefCell::new(vec![]),
-        }
-    }
-
-    fn push_op(&self, primal: TTensor, node: TracedOp<'t, TTensor>) -> Reverse<'_, 't, TTensor> {
-        let mut trace = self.trace.borrow_mut();
-        let index = trace.len();
-        trace.push(node);
-        Reverse::Reverse(self, primal, index)
-    }
-
-    pub fn var(&self, primal: TTensor) -> Reverse<'_, 't, TTensor> {
-        self.push_op(primal, TracedOp::Var)
-    }
-}
-
-impl<T: Default> Default for Trace<'_, T> {
-    fn default() -> Self {
-        Trace::new()
-    }
-}
 
 #[derive(Clone)] //needed for higher order derivatives
 pub enum Reverse<'a, 't, T> {
@@ -110,46 +60,51 @@ impl<T: Debug> Debug for Reverse<'_, '_, T> {
 
 impl<T: PartialEq> PartialEq for Reverse<'_, '_, T> {
     fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Lift(l0), Self::Lift(r0)) => l0 == r0,
-            (Self::Reverse(_, l1, _), Self::Reverse(_, r1, _)) => l1 == r1,
-            _ => false,
-        }
+        self.primal() == other.primal()
     }
 }
 
-impl<'t, T: Diffable> Reverse<'_, 't, T> {
-    fn unary<O: UnaryOp<T, Args = TArgs> + 't, TArgs: ?Sized>(&self, args: &TArgs) -> Self {
-        let (op, primal) = O::f(self.primal(), args);
+impl<'a, 't, T: Diffable> Reverse<'a, 't, T> {
+    fn push_op(trace: &'a Trace<'t, T>, primal: T, op: TracedOp<'t, T>) -> Reverse<'a, 't, T> {
+        let idx = trace.push_op(op);
+        Reverse::Reverse(trace, primal, idx)
+    }
+
+    fn unary<Op: UnaryOp<T, Args = TArgs> + UnaryDiffOp<T> + 't, TArgs: ?Sized>(
+        &self,
+        args: &TArgs,
+    ) -> Self {
+        let (op, primal) = Op::f(self.primal(), args);
         match self {
             Reverse::Lift(_) => Reverse::Lift(primal),
             Reverse::Reverse(trace, _, tan) => {
                 let op = TracedOp::Unary(Box::new(op), *tan);
-                trace.push_op(primal, op)
+                Self::push_op(trace, primal, op)
             }
         }
     }
 
-    fn binary<O: BinaryOp<T> + 't>(&self, rhs: &Self) -> Self {
-        let (op, primal) = O::f(self.primal(), rhs.primal());
+    fn binary<Op: BinaryOp<T> + BinaryDiffOp<T> + 't>(&self, rhs: &Self) -> Self {
+        let (op, primal) = Op::f(self.primal(), rhs.primal());
         match (self, rhs) {
             (Reverse::Lift(_), Reverse::Lift(_)) => Reverse::Lift(primal),
             (Reverse::Lift(_), Reverse::Reverse(trace, _, idx)) => {
                 let op = TracedOp::BinaryDB(Box::new(op), *idx);
-                trace.push_op(primal, op)
+                Self::push_op(trace, primal, op)
             }
             (Reverse::Reverse(trace, _, idx), Reverse::Lift(_)) => {
                 let op = TracedOp::BinaryDA(Box::new(op), *idx);
-                trace.push_op(primal, op)
+                Self::push_op(trace, primal, op)
             }
             (Reverse::Reverse(left_trace, _, left), Reverse::Reverse(right_trace, _, right)) => {
                 assert!(ptr::eq(*left_trace, *right_trace), "traces must be the same - likely perturbation confusion. Are lifts in the right place?");
                 let op = TracedOp::Binary(Box::new(op), *left, *right);
-                left_trace.push_op(primal, op)
+                Self::push_op(left_trace, primal, op)
             }
         }
     }
 }
+
 impl<T: Clone + Diffable> Diffable for Reverse<'_, '_, T> {
     type Elem = T::Elem;
     fn log(&self) -> Self {
@@ -244,11 +199,11 @@ impl<T: Diffable + Clone> Adjoints<T> {
             adjoints: vec![None; len],
         }
     }
-    fn update(&mut self, idx: usize, dfda: T) {
+    fn update(&mut self, idx: usize, df: T) {
         self.adjoints[idx] = self.adjoints[idx]
             .as_ref()
-            .map(|c| c.elementwise_add(&dfda))
-            .or(Some(dfda));
+            .map(|c| c.elementwise_add(&df))
+            .or(Some(df));
     }
     fn pop(&mut self) {
         self.adjoints.pop();
@@ -278,7 +233,7 @@ impl<T: Diffable + Clone> PullBack<'_, T> {
             self.primal_out_shape == cotangent.shape(),
             "cotangent shape must match primal shape"
         );
-        let trace = self.trace.trace.borrow();
+        let trace = self.trace.borrow();
         let mut adjoints = Adjoints::new(var + 1);
         adjoints.adjoints[var] = Some(cotangent.clone());
 
@@ -344,7 +299,13 @@ where
     for<'a> F: Fn(&'a [Reverse<'a, 't, T>]) -> Reverse<'a, 't, T>,
 {
     let trace = Trace::new();
-    let vars: Vec<_> = at.iter().map(|&ati| trace.var(ati.clone())).collect();
+    let vars: Vec<_> = at
+        .iter()
+        .map(|&ati| {
+            let index = trace.var();
+            Reverse::Reverse(&trace, ati.clone(), index)
+        })
+        .collect();
     let result = f(&vars);
 
     let index_result = result.try_get_adjoint_index();
