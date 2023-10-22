@@ -1,5 +1,5 @@
 use tensorken::{
-    jacrev1, jacrevn,
+    jacrev,
     num::Num,
     CpuRawTensor, Diffable, DiffableExt, RawTensor, Shape, WgpuRawTensor,
     {value_and_grad1, value_and_grad2, vjpn, Reverse}, {Tensor, TensorLike, TensorLikeRef},
@@ -525,18 +525,7 @@ where
 
 fn do_test_jacrev<RT: RawTensor<Elem = f32> + Clone + Debug>() {
     let a: Tensor<RT> = Tensor::new(&[3], &[1.0, 2.0, 3.0]);
-    let r = jacrevn(|x| f_pow2(&x[0]), &[&a]);
-    assert_eq!(r.shape(), &[3, 3]);
-    assert_vec_eq(
-        &r.ravel(),
-        &[
-            2.0, 0.0, 0.0, //
-            0.0, 4.0, 0.0, //
-            0.0, 0.0, 6.0, //
-        ],
-    );
-
-    let r = jacrev1(|x| f_pow2(x), &a);
+    let r = jacrev(|x| f_pow2(x), &a);
     assert_eq!(r.shape(), &[3, 3]);
     assert_vec_eq(
         &r.ravel(),

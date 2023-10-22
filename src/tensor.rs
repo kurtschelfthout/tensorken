@@ -1,6 +1,7 @@
 use std::{
-    fmt::{Debug, Display, Formatter},
-    ops::{Add, Div, Mul, Neg, Sub},
+    fmt::{Display, Formatter},
+    iter,
+    ops::{Add, Div, Mul, Neg, Range, RangeFrom, RangeFull, RangeTo, Sub},
 };
 
 use prettytable::{format, Cell, Table};
@@ -298,12 +299,141 @@ impl<T: Diffable> IndexValue<usize> for T {
 }
 
 impl<T: Diffable, const N: usize> IndexValue<&[usize; N]> for Tensor<T> {
-    type Output = T::Elem;
+    type Output = Self;
 
-    /// Returns the value at the given index. There must be as many indices as there are dimensions.
+    /// Returns a tensor containing a single value at the given index. There must be at most as many indices as dimensions.
     fn at(&self, index: &[usize; N]) -> Self::Output {
-        let limits = index.iter().map(|&i| (i, i + 1)).collect::<Vec<_>>();
-        self.crop(&limits).to_scalar()
+        let mut limits = index.iter().map(|&i| (i, i + 1)).collect::<Vec<_>>();
+        limits.extend(iter::repeat((0, 0)).take(self.shape().len() - limits.len()));
+        self.crop(&limits)
+    }
+}
+
+/// Specifies where to slice from - the start of the axis, or the end.
+/// In Python, the end is specified as a negative number, i.e. -1 means the last element.
+/// -1 would be End(0) in this notation, which gives it a more pleasing symmetry.
+#[derive(Clone, Copy, Debug)]
+enum SliceFrom {
+    Start(usize),
+    End(usize),
+}
+
+/// Specifies what to slice along each axis. Any axes at the end that are
+/// omitted, are not sliced.
+#[derive(Default)]
+pub struct Slice {
+    axes: Vec<(SliceFrom, SliceFrom)>,
+}
+
+/// Overload for supported `Range`-likes.
+pub trait SliceIdx<SliceArg> {
+    #[must_use]
+    fn idx(self, index: SliceArg) -> Self;
+}
+
+impl SliceIdx<Range<usize>> for Slice {
+    fn idx(mut self, index: Range<usize>) -> Self {
+        self.axes
+            .push((SliceFrom::Start(index.start), SliceFrom::Start(index.end)));
+        self
+    }
+}
+
+impl SliceIdx<RangeFrom<usize>> for Slice {
+    fn idx(mut self, index: RangeFrom<usize>) -> Self {
+        self.axes
+            .push((SliceFrom::Start(index.start), SliceFrom::End(0)));
+        self
+    }
+}
+
+impl SliceIdx<RangeTo<usize>> for Slice {
+    fn idx(mut self, index: RangeTo<usize>) -> Self {
+        self.axes
+            .push((SliceFrom::Start(0), SliceFrom::Start(index.end)));
+        self
+    }
+}
+
+impl SliceIdx<RangeFull> for Slice {
+    fn idx(mut self, _: RangeFull) -> Self {
+        self.axes.push((SliceFrom::Start(0), SliceFrom::End(0)));
+        self
+    }
+}
+
+impl SliceIdx<usize> for Slice {
+    fn idx(mut self, index: usize) -> Self {
+        self.axes
+            .push((SliceFrom::Start(index), SliceFrom::Start(index + 1)));
+        self
+    }
+}
+
+impl Slice {
+    fn crop_limits(&self, shape: &[usize]) -> Vec<(usize, usize)> {
+        let mut limits = Vec::with_capacity(shape.len());
+        for (i, size) in shape.iter().enumerate() {
+            match self.axes.get(i) {
+                None => limits.push((0, *size)),
+                Some((start, end)) => {
+                    let s = match start {
+                        SliceFrom::Start(start) => *std::cmp::min(start, size),
+                        SliceFrom::End(start) => size.saturating_sub(*start),
+                    };
+                    let e = match end {
+                        SliceFrom::Start(end) => *std::cmp::min(end, size),
+                        SliceFrom::End(end) => size.saturating_sub(*end),
+                    };
+                    limits.push((s, e));
+                }
+            }
+        }
+        limits
+    }
+}
+
+#[must_use]
+pub fn sl() -> Slice {
+    Slice::default()
+}
+
+pub fn sl1<T>(index: T) -> Slice
+where
+    Slice: SliceIdx<T>,
+{
+    sl().idx(index)
+}
+
+pub fn sl2<T1, T2>(index1: T1, index2: T2) -> Slice
+where
+    Slice: SliceIdx<T1> + SliceIdx<T2>,
+{
+    sl1(index1).idx(index2)
+}
+
+pub fn sl3<T1, T2, T3>(index1: T1, index2: T2, index3: T3) -> Slice
+where
+    Slice: SliceIdx<T1> + SliceIdx<T2> + SliceIdx<T3>,
+{
+    sl2(index1, index2).idx(index3)
+}
+
+pub fn sl4<T1, T2, T3, T4>(index1: T1, index2: T2, index3: T3, index4: T4) -> Slice
+where
+    Slice: SliceIdx<T1> + SliceIdx<T2> + SliceIdx<T3> + SliceIdx<T4>,
+{
+    sl3(index1, index2, index3).idx(index4)
+}
+
+impl<T: Diffable> IndexValue<Slice> for T {
+    type Output = Self;
+
+    /// Slice the tensor.
+    fn at(&self, index: Slice) -> Self::Output {
+        let mut limits = index.crop_limits(self.shape());
+        limits.extend(iter::repeat((0, 0)).take(self.shape().len() - limits.len()));
+        self.crop(&limits)
     }
 }
 
@@ -370,4 +500,58 @@ impl<'a, T> TensorLikeRef<T> for &'a T where
         + Div<T, Output = T>
         + Mul<T, Output = T>
 {
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn test_at_index() {
+        let t = Cpu32::new(&[2, 3], &[1., 2., 3., 4., 5., 6.]);
+        assert_eq!(t.at(&[0, 0]).to_scalar(), 1.);
+        assert_eq!(t.at(&[0, 1]).to_scalar(), 2.);
+        assert_eq!(t.at(&[0, 2]).to_scalar(), 3.);
+        assert_eq!(t.at(&[1, 0]).to_scalar(), 4.);
+        assert_eq!(t.at(&[1, 1]).to_scalar(), 5.);
+        assert_eq!(t.at(&[1, 2]).to_scalar(), 6.);
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn test_at_slice() {
+        let t = Cpu32::new(
+            &[2, 3],
+            &[
+                1., 2., 3., //
+                4., 5., 6.,
+            ],
+        );
+
+        let r = t.at(sl2(0, ..));
+        assert_eq!(r.shape(), &[1, 3]);
+        assert_eq!(r.ravel(), &[1., 2., 3.]);
+
+        let r = t.at(sl2(1, ..));
+        assert_eq!(r.shape(), &[1, 3]);
+        assert_eq!(r.ravel(), &[4., 5., 6.]);
+
+        let r = t.at(sl2(.., 0));
+        assert_eq!(r.shape(), &[2, 1]);
+        assert_eq!(r.ravel(), &[1., 4.]);
+
+        let r = t.at(sl2(0..1, ..));
+        assert_eq!(r.shape(), &[1, 3]);
+        assert_eq!(r.ravel(), &[1., 2., 3.]);
+
+        let r = t.at(sl1(1..2));
+        assert_eq!(r.shape(), &[1, 3]);
+        assert_eq!(r.ravel(), &[4., 5., 6.]);
+
+        let r = t.at(sl2(.., 1..2));
+        assert_eq!(r.shape(), &[2, 1]);
+        assert_eq!(r.ravel(), &[2., 5.]);
+    }
 }

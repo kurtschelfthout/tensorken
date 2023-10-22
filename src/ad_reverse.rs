@@ -373,11 +373,11 @@ where
 
 /// Jacobian of `f` evaluated row-by-row at `at` using reverse-mode AD.
 #[allow(clippy::missing_panics_doc)]
-pub fn jacrevn<'b, 't, T: Diffable + Clone + 't, F>(f: F, at: &[&T]) -> T
+pub fn jacrev<'b, 't, T: Diffable + Clone + 't, F>(f: F, at: &T) -> T
 where
-    for<'a> F: Fn(&'a [Reverse<'a, 't, T>]) -> Reverse<'a, 't, T>,
+    for<'a> F: Fn(&'a Reverse<'a, 't, T>) -> Reverse<'a, 't, T>,
 {
-    let (primal, pullback) = vjpn(f, at);
+    let (primal, pullback) = vjpn(|s| f(&s[0]), &[at]);
     let mut s = vec![primal
         .shape()
         .iter()
@@ -394,20 +394,4 @@ where
     }
     let t_refs = tangents.iter().collect::<Vec<_>>();
     T::stack(&t_refs, 1)
-}
-
-/// Jacobian of `f` evaluated row-by-row at `at` using reverse-mode AD.
-pub fn jacrev1<'t, T: Diffable + Clone + 't, F>(f: F, at: &T) -> T
-where
-    for<'a> F: Fn(&'a Reverse<'a, 't, T>) -> Reverse<'a, 't, T>,
-{
-    jacrevn(|s| f(&s[0]), &[at])
-}
-
-/// Jacobian of `f` evaluated row-by-row at `at0, at1` using reverse-mode AD.
-pub fn jacrev2<'t, T: Diffable + Clone + 't, F>(f: F, at0: &T, at1: &T) -> T
-where
-    for<'a> F: Fn(&'a Reverse<'a, 't, T>, &'a Reverse<'a, 't, T>) -> Reverse<'a, 't, T>,
-{
-    jacrevn(|s| f(&s[0], &s[1]), &[at0, at1])
 }

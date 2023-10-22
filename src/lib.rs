@@ -25,12 +25,12 @@ pub mod tensor;
 pub mod tensor_mut;
 mod wgpu_context;
 pub use ad_forward::{
-    diff1, diff2, jvpn, value_and_diff_forward1, value_and_diff_forward2, value_and_diff_forwardn,
-    Forward, PushForward,
+    diff1, diff2, jacfwd, jvpn, value_and_diff_forward1, value_and_diff_forward2,
+    value_and_diff_forwardn, Forward, PushForward,
 };
 pub use ad_reverse::{
-    grad1, grad2, jacrev1, jacrev2, jacrevn, value_and_grad1, value_and_grad2, value_and_gradn,
-    vjpn, PullBack, Reverse,
+    grad1, grad2, jacrev, value_and_grad1, value_and_grad2, value_and_gradn, vjpn, PullBack,
+    Reverse,
 };
 pub use diffable::Diffable;
 pub use diffable_ext::DiffableExt;
@@ -38,9 +38,13 @@ pub use raw_tensor::RawTensor;
 pub use raw_tensor_cpu::CpuRawTensor;
 pub use raw_tensor_wgpu::WgpuRawTensor;
 pub use shape::Shape;
-pub use tensor::{Cpu32, IndexValue, Tensor, TensorLike, TensorLikeRef, Wgpu32};
+pub use tensor::{
+    sl, sl1, sl2, sl3, sl4, Cpu32, IndexValue, Slice, SliceIdx, Tensor, TensorLike, TensorLikeRef,
+    Wgpu32,
+};
 
 // TODO of general interest
+// - Make vjp and jvp and friends all be N-to-N arguments instead of N-to-1.
 // - Treat zero and one as a special case for efficiency (also avoids NaNs, see jvp_test for pow). Maybe as a RawTensor implementation like Fuse.
 // - RawTensor.eq should return a bool tensor, and not be part of differentiable operations, i.e. be more like shape() or ravel()
 // - Move shape, ravel, to_cpu and maybe others from RawTensor to somewhere else? They are more like "run" operations, i.e. realizing the tensor.

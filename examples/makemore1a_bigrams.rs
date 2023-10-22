@@ -190,7 +190,7 @@ fn tensor_bigram(names: &[String]) {
         for bigram in chars.windows(2) {
             let i = stoi[&bigram[0]];
             let j = stoi[&bigram[1]];
-            let prob = bigrams.at(&[i, j]);
+            let prob = bigrams.at(&[i, j]).to_scalar();
             let log_prob = prob.log(E);
             log_likelihood += log_prob;
             n += 1;

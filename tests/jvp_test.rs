@@ -1,6 +1,8 @@
 use tensorken::{
-    jvpn, value_and_diff_forward2, CpuRawTensor, Diffable, DiffableExt, RawTensor, Shape,
-    WgpuRawTensor, {value_and_diff_forward1, Forward}, {Tensor, TensorLike, TensorLikeRef},
+    jacfwd, jvpn,
+    num::Num,
+    value_and_diff_forward2, CpuRawTensor, Diffable, DiffableExt, RawTensor, Shape, WgpuRawTensor,
+    {value_and_diff_forward1, Forward}, {Tensor, TensorLike, TensorLikeRef},
 };
 
 use std::{fmt::Debug, ops::Add};
@@ -540,41 +542,30 @@ fn do_test_matmul<RT: RawTensor<Elem = f32> + Clone + Debug>() {
     assert_eq!(df.ravel(), a.matmul(&tangent_b).ravel());
 }
 
-// #[test]
-// fn test_jacrev() {
-//     do_test_jacrev::<CpuRawTensor<f32>>();
-//     do_test_jacrev::<WgpuRawTensor<f32>>();
-// }
+#[test]
+fn test_jacfwd() {
+    do_test_jacfwd::<CpuRawTensor<f32>>();
+    do_test_jacfwd::<WgpuRawTensor<f32>>();
+}
 
-// fn f_pow2<'t, T>(a: &'t T) -> T
-// where
-//     T: TensorLike<'t>,
-//     for<'s> &'s T: TensorLikeRef<T>,
-// {
-//     a.pow(&a.constant_like(T::Elem::from_usize(2)))
-// }
+fn f_pow2<'t, T>(a: &'t T) -> T
+where
+    T: TensorLike<'t>,
+    for<'s> &'s T: TensorLikeRef<T>,
+{
+    a.pow(&a.constant_like(T::Elem::from_usize(2)))
+}
 
-// fn do_test_jacrev<RT: RawTensor<Elem = f32> + Clone + Debug>() {
-//     let a: Tensor<RT> = Tensor::new(&[3], &[1.0, 2.0, 3.0]);
-//     let r = jacrevn(|x| f_pow2(&x[0]), &[&a]);
-//     assert_eq!(r.shape(), &[3, 3]);
-//     assert_vec_eq(
-//         &r.ravel(),
-//         &[
-//             2.0, 0.0, 0.0, //
-//             0.0, 4.0, 0.0, //
-//             0.0, 0.0, 6.0, //
-//         ],
-//     );
-
-//     let r = jacrev1(|x| f_pow2(x), &a);
-//     assert_eq!(r.shape(), &[3, 3]);
-//     assert_vec_eq(
-//         &r.ravel(),
-//         &[
-//             2.0, 0.0, 0.0, //
-//             0.0, 4.0, 0.0, //
-//             0.0, 0.0, 6.0, //
-//         ],
-//     );
-// }
+fn do_test_jacfwd<RT: RawTensor<Elem = f32> + Clone + Debug>() {
+    let a: Tensor<RT> = Tensor::new(&[3], &[1.0, 2.0, 3.0]);
+    let r = jacfwd(|x| f_pow2(x), &a);
+    assert_eq!(r.shape(), &[3, 3]);
+    assert_vec_eq(
+        &r.ravel(),
+        &[
+            2.0, 0.0, 0.0, //
+            0.0, 4.0, 0.0, //
+            0.0, 0.0, 6.0, //
+        ],
+    );
+}

@@ -11,7 +11,7 @@ use crate::{
         UnaryOp,
     },
     ad_trace::{Trace, TracedOp},
-    Diffable, DiffableExt,
+    sl2, Diffable, DiffableExt, IndexValue, Shape,
 };
 
 /// Forward AD implementation.
@@ -226,10 +226,6 @@ pub struct PushForward<'t, T> {
 
 impl<T: Diffable + Clone> PushForward<'_, T> {
     fn forward(&self, var: usize, tangents: &[&T]) -> T {
-        // assert!(
-        //     self.primal_shape == tangent.shape(),
-        //     "tangent shape must match primal shape"
-        // );
         let trace = self.trace.borrow();
         let mut adjoints = Adjoints::new(var + 1);
         for (i, tangent) in tangents.iter().enumerate() {
@@ -305,7 +301,6 @@ where
             trace,
             index_result,
             zero_primal,
-            // primal_shape,
         },
     )
 }
@@ -373,43 +368,27 @@ where
     value_and_diff_forward2(f, at0, at1).1
 }
 
-// /// Jacobian of `f` evaluated row-by-row at `at` using reverse-mode AD.
-// #[allow(clippy::missing_panics_doc)]
-// pub fn jacrevn<'b, 't, T: Diffable + Clone + 't, F>(f: F, at: &[&T]) -> T
-// where
-//     for<'a> F: Fn(&'a [Reverse<'a, 't, T>]) -> Reverse<'a, 't, T>,
-// {
-//     let (primal, pullback) = vjpn(f, at);
-//     let mut s = vec![primal
-//         .shape()
-//         .iter()
-//         .copied()
-//         .reduce(|acc, e| acc * e)
-//         .unwrap()];
-//     s.extend(primal.shape());
-//     let i = T::eye(primal.shape().size()).reshape(&s);
-//     let mut tangents: Vec<T> = Vec::with_capacity(i.shape()[0]);
-//     for row_idx in 0..i.shape()[0] {
-//         let row = i.at(row_idx);
-//         let row_tangent = pullback.call(&row).into_iter().next().unwrap();
-//         tangents.push(row_tangent);
-//     }
-//     let t_refs = tangents.iter().collect::<Vec<_>>();
-//     T::stack(&t_refs, 1)
-// }
-
-// /// Jacobian of `f` evaluated row-by-row at `at` using reverse-mode AD.
-// pub fn jacrev1<'t, T: Diffable + Clone + 't, F>(f: F, at: &T) -> T
-// where
-//     for<'a> F: Fn(&'a Reverse<'a, 't, T>) -> Reverse<'a, 't, T>,
-// {
-//     jacrevn(|s| f(&s[0]), &[at])
-// }
-
-// /// Jacobian of `f` evaluated row-by-row at `at0, at1` using reverse-mode AD.
-// pub fn jacrev2<'t, T: Diffable + Clone + 't, F>(f: F, at0: &T, at1: &T) -> T
-// where
-//     for<'a> F: Fn(&'a Reverse<'a, 't, T>, &'a Reverse<'a, 't, T>) -> Reverse<'a, 't, T>,
-// {
-//     jacrevn(|s| f(&s[0], &s[1]), &[at0, at1])
-// }
+/// Jacobian of `f` evaluated column-by-column at `at` using forward-mode AD.
+#[allow(clippy::missing_panics_doc)]
+pub fn jacfwd<'b, 't, T: Diffable + Clone + 't, F>(f: F, at: &T) -> T
+where
+    for<'a> F: Fn(&'a Forward<'a, 't, T>) -> Forward<'a, 't, T>,
+{
+    let (primal, pushforward) = jvpn(|s| f(&s[0]), &[at]);
+    let mut s = vec![primal
+        .shape()
+        .iter()
+        .copied()
+        .reduce(|acc, e| acc * e)
+        .unwrap()];
+    s.extend(primal.shape());
+    let i = T::eye(primal.shape().size()).reshape(&s);
+    let mut tangents: Vec<T> = Vec::with_capacity(i.shape()[1]);
+    for col_idx in 0..i.shape()[1] {
+        let col = i.at(sl2(.., col_idx)).squeeze(None);
+        let col_tangent = pushforward.call(&[&col]);
+        tangents.push(col_tangent);
+    }
+    let t_refs = tangents.iter().collect::<Vec<_>>();
+    T::stack(&t_refs, 0)
+}
