@@ -129,24 +129,6 @@ impl<TTensor: Clone + Diffable> BinaryDiffOp<TTensor> for PowOp<TTensor> {
     }
 }
 
-pub(crate) struct EqOp;
-
-impl<TTensor: Diffable> BinaryOp<TTensor> for EqOp {
-    fn f(a: &TTensor, b: &TTensor) -> (Self, TTensor) {
-        (EqOp, a.elementwise_eq(b))
-    }
-}
-
-impl<TTensor: Diffable> BinaryDiffOp<TTensor> for EqOp {
-    fn df_dfda(&self, _: &TTensor) -> TTensor {
-        panic!("Equality is not differentiable");
-    }
-
-    fn df_dfdb(&self, _: &TTensor) -> TTensor {
-        panic!("Equality is not differentiable");
-    }
-}
-
 pub(crate) struct LogOp<TTensor>(TTensor);
 
 impl<TTensor: Clone + Diffable> UnaryOp<TTensor> for LogOp<TTensor> {

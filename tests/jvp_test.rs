@@ -275,7 +275,7 @@ fn do_test_pow<RT: RawTensor<Elem = f32> + Clone + Debug>() {
         },
         |a| a.pow(a) * (a.log() + a.ones_like()),
     );
-    // TODO: because in forward both, both PowOp dfda and dfdb get calculated,
+    // TODO: because in forward mode both PowOp dfda and dfdb get calculated,
     // dfdb causes NaN. This could be solved by treating zero derivatives as
     // a special case (which would also be more efficient)
     // test_df_2::<RT, _, _, _, _>(
@@ -374,11 +374,11 @@ fn do_test_max<RT: RawTensor<Elem = f32> + Clone + Debug>() {
         |a| a.max(&all_axes(a.shape())).expand(a.shape()).eq(a),
         |a| f_max(a),
     );
-    // "Equality is not differentiable" because MaxOp uses eq...
-    // test_ddf::<RT, _, _, _>(
-    //     |a| a.max(&all_axes(a.shape())),
-    //     |a| a.max(&all_axes(a.shape())).expand(a.shape()).eq(a),
-    // );
+    test_ddf::<RT, _, _, _>(
+        |a| f_max(a),
+        |a| a.zeros_like(),
+        |a| a.max(&all_axes(a.shape())).expand(a.shape()).eq(a),
+    );
 }
 
 fn f_reshape<'t, T>(a: &'t T) -> T

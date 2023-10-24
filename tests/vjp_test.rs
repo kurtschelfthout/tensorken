@@ -38,7 +38,7 @@ where
 /// Test that the second derivative of a function with a single input tensor is correct,
 /// given the function to derive using vjp and the expected derivative function (symbolically derived).
 #[allow(clippy::similar_names)]
-fn test_ddf<RT: RawTensor<Elem = f32> + Clone + Debug, F, G, H>(f: F, ddf: G, dft: H)
+fn test_ddf<RT: RawTensor<Elem = f32> + Clone + Debug, F, G, H>(f: F, ddf: G, df: H)
 where
     for<'a, 't, 'b, 'tt> F: Fn(
         &'a Reverse<'a, 't, Reverse<'b, 'tt, Tensor<RT>>>,
@@ -48,7 +48,7 @@ where
 {
     let at: Tensor<RT> = Tensor::new(&[2, 2], &(1u8..5).map(f32::from).collect::<Vec<_>>());
     let (df_actual, ddf_actual) = value_and_grad1(|r| value_and_grad1(&f, r).1, &at);
-    let df_expected = dft(&at);
+    let df_expected = df(&at);
     let ddf_expected = ddf(&at);
     assert_eq!(df_actual.shape(), df_expected.shape());
     assert_vec_eq(&df_actual.ravel(), &df_expected.ravel());
@@ -349,11 +349,11 @@ fn do_test_max<RT: RawTensor<Elem = f32> + Clone + Debug>() {
         |a| a.max(&all_axes(a.shape())).expand(a.shape()).eq(a),
         |a| f_max(a),
     );
-    // "Equality is not differentiable" because MaxOp uses eq...
-    // test_ddf::<RT, _, _, _>(
-    //     |a| a.max(&all_axes(a.shape())),
-    //     |a| a.max(&all_axes(a.shape())).expand(a.shape()).eq(a),
-    // );
+    test_ddf::<RT, _, _, _>(
+        |a| f_max(a),
+        |a| a.zeros_like(),
+        |a| a.max(&all_axes(a.shape())).expand(a.shape()).eq(a),
+    );
 }
 
 fn f_reshape<'t, T>(a: &'t T) -> T

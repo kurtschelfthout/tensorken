@@ -7,7 +7,7 @@ use std::{
 use crate::{
     ad_forward_ops::{CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
     ad_ops::{
-        AddOp, BinaryDiffOp, BinaryOp, DivOp, EqOp, ExpOp, LogOp, MulOp, PowOp, SubOp, UnaryDiffOp,
+        AddOp, BinaryDiffOp, BinaryOp, DivOp, ExpOp, LogOp, MulOp, PowOp, SubOp, UnaryDiffOp,
         UnaryOp,
     },
     ad_trace::{Trace, TracedOp},
@@ -136,7 +136,7 @@ impl<T: Clone + Diffable> Diffable for Forward<'_, '_, T> {
     }
 
     fn elementwise_eq(&self, other: &Self) -> Self {
-        self.binary::<EqOp>(other)
+        Forward::Lift(self.primal().elementwise_eq(other.primal()))
     }
 
     fn sum(&self, axes: &[usize]) -> Self {

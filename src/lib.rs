@@ -46,6 +46,5 @@ pub use tensor::{
 // TODO of general interest
 // - Make vjp and jvp and friends all be N-to-N arguments instead of N-to-1.
 // - Treat zero and one as a special case for efficiency (also avoids NaNs, see jvp_test for pow). Maybe as a RawTensor implementation like Fuse.
-// - RawTensor.eq should return a bool tensor, and not be part of differentiable operations, i.e. be more like shape() or ravel()
 // - Move shape, ravel, to_cpu and maybe others from RawTensor to somewhere else? They are more like "run" operations, i.e. realizing the tensor.
 //   See raw_tensor_fuse and raw_tensor_string for some of the problems these cause.
