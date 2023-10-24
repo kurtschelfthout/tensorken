@@ -187,30 +187,30 @@ crate::math_macros::impl_bin_op!(Div, div, Forward<'a, 't, T: Diffable + Clone>)
 
 crate::math_macros::impl_un_op!(Neg, neg, Forward<'a, 't, T: Diffable + Clone>);
 
-// somewhat wonky helper type to deal with optional adjoints
+// somewhat wonky helper type to deal with tangents
 #[derive(Debug)]
-struct Adjoints<T> {
-    adjoints: Vec<Option<T>>,
+struct Tangents<T> {
+    tangents: Vec<Option<T>>,
 }
 
-impl<T: Diffable + Clone> Adjoints<T> {
+impl<T: Diffable + Clone> Tangents<T> {
     fn new(len: usize) -> Self {
-        Adjoints {
-            adjoints: vec![None; len],
+        Tangents {
+            tangents: vec![None; len],
         }
     }
     fn update(&mut self, idx: usize, df: T) {
-        self.adjoints[idx] = self.adjoints[idx]
+        self.tangents[idx] = self.tangents[idx]
             .as_ref()
             .map(|c| c.elementwise_add(&df))
             .or(Some(df));
     }
 }
 
-impl<T> Index<usize> for Adjoints<T> {
+impl<T> Index<usize> for Tangents<T> {
     type Output = T;
     fn index(&self, idx: usize) -> &Self::Output {
-        self.adjoints[idx].as_ref().unwrap()
+        self.tangents[idx].as_ref().unwrap()
     }
 }
 
@@ -227,15 +227,13 @@ pub struct PushForward<'t, T> {
 impl<T: Diffable + Clone> PushForward<'_, T> {
     fn forward(&self, var: usize, tangents: &[&T]) -> T {
         let trace = self.trace.borrow();
-        let mut adjoints = Adjoints::new(var + 1);
+        let mut tangents_acc = Tangents::new(var + 1);
         for (i, tangent) in tangents.iter().enumerate() {
-            adjoints.adjoints[i] = Some((*tangent).clone());
+            tangents_acc.tangents[i] = Some((*tangent).clone());
         }
 
         // propagate
         for i in 0..=var {
-            // if none, there's no gradient to propagate - this node makes no contribution.
-            // if adjoints.adjoints[i].is_some() {
             let node = &trace[i];
             match node {
                 TracedOp::Var => {
@@ -243,21 +241,21 @@ impl<T: Diffable + Clone> PushForward<'_, T> {
                     // and don't contribute to each other. We can continue.
                     continue;
                 }
-                TracedOp::Unary(op, a) => adjoints.update(i, op.df_dfda(&adjoints[*a])),
+                TracedOp::Unary(op, a) => tangents_acc.update(i, op.df_dfda(&tangents_acc[*a])),
                 TracedOp::Binary(op, a, b) => {
-                    adjoints.update(i, op.df_dfda(&adjoints[*a]));
-                    adjoints.update(i, op.df_dfdb(&adjoints[*b]));
+                    tangents_acc.update(i, op.df_dfda(&tangents_acc[*a]));
+                    tangents_acc.update(i, op.df_dfdb(&tangents_acc[*b]));
                 }
                 TracedOp::BinaryDA(op, a) => {
-                    adjoints.update(i, op.df_dfda(&adjoints[*a]));
+                    tangents_acc.update(i, op.df_dfda(&tangents_acc[*a]));
                 }
                 TracedOp::BinaryDB(op, b) => {
-                    adjoints.update(i, op.df_dfdb(&adjoints[*b]));
-                } // }
+                    tangents_acc.update(i, op.df_dfdb(&tangents_acc[*b]));
+                }
             }
         }
-        adjoints
-            .adjoints
+        tangents_acc
+            .tangents
             .swap_remove(var)
             .unwrap_or(self.zero_primal.clone())
     }

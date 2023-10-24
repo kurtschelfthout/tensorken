@@ -228,19 +228,19 @@ pub struct PullBack<'t, T> {
 }
 
 impl<T: Diffable + Clone> PullBack<'_, T> {
-    fn reverse(&self, var: usize, cotangent: &T) -> Vec<T> {
+    fn reverse(&self, var: usize, adjoint: &T) -> Vec<T> {
         assert!(
-            self.primal_out_shape == cotangent.shape(),
+            self.primal_out_shape == adjoint.shape(),
             "cotangent shape must match primal shape"
         );
         let trace = self.trace.borrow();
-        let mut adjoints = Adjoints::new(var + 1);
-        adjoints.adjoints[var] = Some(cotangent.clone());
+        let mut adjoints_acc = Adjoints::new(var + 1);
+        adjoints_acc.adjoints[var] = Some(adjoint.clone());
 
         // backpropagate
         for i in (0..=var).rev() {
             // if none, there's no gradient to propagate - this node makes no contribution.
-            if adjoints.adjoints[i].is_some() {
+            if adjoints_acc.adjoints[i].is_some() {
                 let node = &trace[i];
                 match node {
                     TracedOp::Var => {
@@ -249,27 +249,27 @@ impl<T: Diffable + Clone> PullBack<'_, T> {
                         // We can't pop this adjoint, so we must break.
                         break;
                     }
-                    TracedOp::Unary(op, a) => adjoints.update(*a, op.df_dfda(&adjoints[i])),
+                    TracedOp::Unary(op, a) => adjoints_acc.update(*a, op.df_dfda(&adjoints_acc[i])),
                     TracedOp::Binary(op, a, b) => {
-                        adjoints.update(*a, op.df_dfda(&adjoints[i]));
-                        adjoints.update(*b, op.df_dfdb(&adjoints[i]));
+                        adjoints_acc.update(*a, op.df_dfda(&adjoints_acc[i]));
+                        adjoints_acc.update(*b, op.df_dfdb(&adjoints_acc[i]));
                     }
                     TracedOp::BinaryDA(op, a) => {
-                        adjoints.update(*a, op.df_dfda(&adjoints[i]));
+                        adjoints_acc.update(*a, op.df_dfda(&adjoints_acc[i]));
                     }
                     TracedOp::BinaryDB(op, b) => {
-                        adjoints.update(*b, op.df_dfdb(&adjoints[i]));
+                        adjoints_acc.update(*b, op.df_dfdb(&adjoints_acc[i]));
                     }
                 }
             }
-            adjoints.pop();
+            adjoints_acc.pop();
         }
         assert_eq!(
-            adjoints.adjoints.len(),
+            adjoints_acc.adjoints.len(),
             self.zero_primals.len(),
             "adjoints length after propagation must match length of given zero primals"
         );
-        adjoints
+        adjoints_acc
             .adjoints
             .into_iter()
             .zip(self.zero_primals.iter())
@@ -280,13 +280,13 @@ impl<T: Diffable + Clone> PullBack<'_, T> {
     /// Takes a cotangent tensor with the same shape as the result of this `PullBack`'s originating vjp function,
     /// and returns a `Vec` of cotangent vectors with the same number and shapes as vjp's primals,
     /// representing the vector-Jacobian product of vjp's function evaluated at primals.
-    pub fn call(&self, cotangent: &T) -> Vec<T>
+    pub fn call(&self, adjoint: &T) -> Vec<T>
     where
         T: Diffable + Clone,
     {
         match self.index_result {
             None => self.zero_primals.clone(),
-            Some(var) => self.reverse(var, cotangent),
+            Some(var) => self.reverse(var, adjoint),
         }
     }
 }
