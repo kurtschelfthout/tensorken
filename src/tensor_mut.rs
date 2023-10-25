@@ -8,7 +8,6 @@ use crate::{
 // Implementation note:
 // In as much as possible, TensorMut is conceptually a client of Tensor.
 // Tensor only calls TensorMut::new from its to_tensor_mut.
-// This informs choices like ""
 
 /// A mutable tensor, which owns its buffer.
 /// This is useful for implementing algorithms that mutate tensors in-place,

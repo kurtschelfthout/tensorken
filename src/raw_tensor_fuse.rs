@@ -59,8 +59,6 @@ fn combine_axes(lhs: &[usize], rhs: &[usize]) -> Vec<usize> {
 impl<TRaw: RawTensor + Clone + 'static> RawTensor for Fuse<TRaw> {
     type Elem = TRaw::Elem;
 
-    // TODO: shape, ravel, to_cpu don't belong here. Split RawTensor.
-
     fn exp(&self) -> Self {
         unary_no_fuse(self, TRaw::exp)
     }
@@ -152,7 +150,7 @@ impl<TRaw: RawTensor + Clone + 'static> RawTensor for Fuse<TRaw> {
     }
 
     fn to_cpu(&self) -> crate::CpuRawTensor<Self::Elem> {
-        self.0(&FuseCtx::NotSum).to_cpu()
+        self.run().to_cpu()
     }
 
     fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self {

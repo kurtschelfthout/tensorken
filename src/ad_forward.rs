@@ -304,7 +304,7 @@ where
 }
 
 /// Compute the result and the gradient of a function at the given primals.
-pub fn value_and_diff_forwardn<'t, T: Diffable + Clone + 't, F>(f: F, at: &[&T]) -> (T, Vec<T>)
+pub fn value_and_diffn<'t, T: Diffable + Clone + 't, F>(f: F, at: &[&T]) -> (T, Vec<T>)
 where
     for<'a> F: Fn(&'a [Forward<'a, 't, T>]) -> Forward<'a, 't, T>,
 {
@@ -325,25 +325,21 @@ where
 
 /// Compute the result and the gradient of a function at the given primal.
 #[allow(clippy::missing_panics_doc)]
-pub fn value_and_diff_forward1<'t, T: Diffable + Clone + 't, F>(f: F, at: &T) -> (T, T)
+pub fn value_and_diff1<'t, T: Diffable + Clone + 't, F>(f: F, at: &T) -> (T, T)
 where
     for<'a> F: Fn(&'a Forward<'a, 't, T>) -> Forward<'a, 't, T>,
 {
-    let (primal, tangents) = value_and_diff_forwardn(|s| f(&s[0]), &[at]);
+    let (primal, tangents) = value_and_diffn(|s| f(&s[0]), &[at]);
     (primal, tangents.into_iter().next().unwrap())
 }
 
 /// Compute the result and the gradient of a function at the given primals.
 #[allow(clippy::missing_panics_doc)]
-pub fn value_and_diff_forward2<'t, T: Diffable + Clone + 't, F>(
-    f: F,
-    at0: &T,
-    at1: &T,
-) -> (T, (T, T))
+pub fn value_and_diff2<'t, T: Diffable + Clone + 't, F>(f: F, at0: &T, at1: &T) -> (T, (T, T))
 where
     for<'a> F: Fn(&'a Forward<'a, 't, T>, &'a Forward<'a, 't, T>) -> Forward<'a, 't, T>,
 {
-    let (primal, tangents) = value_and_diff_forwardn(|s| f(&s[0], &s[1]), &[at0, at1]);
+    let (primal, tangents) = value_and_diffn(|s| f(&s[0], &s[1]), &[at0, at1]);
     let mut dr_iter = tangents.into_iter();
     (primal, (dr_iter.next().unwrap(), dr_iter.next().unwrap()))
 }
@@ -354,7 +350,7 @@ pub fn diff1<'t, T: Diffable + Clone + 't, F>(f: F, at: &T) -> T
 where
     for<'a> F: Fn(&'a Forward<'a, 't, T>) -> Forward<'a, 't, T>,
 {
-    value_and_diff_forward1(f, at).1
+    value_and_diff1(f, at).1
 }
 
 /// Compute the gradient of a function at the given primals.
@@ -363,7 +359,7 @@ pub fn diff2<'t, T: Diffable + Clone + 't, F>(f: F, at0: &T, at1: &T) -> (T, T)
 where
     for<'a> F: Fn(&'a Forward<'a, 't, T>, &'a Forward<'a, 't, T>) -> Forward<'a, 't, T>,
 {
-    value_and_diff_forward2(f, at0, at1).1
+    value_and_diff2(f, at0, at1).1
 }
 
 /// Jacobian of `f` evaluated column-by-column at `at` using forward-mode AD.

@@ -95,11 +95,11 @@ impl<T: Num, TTensor: RawTensor<Elem = T>> Diffable for TTensor {
 
 /// The "high-level" tensor type - the face of the library.
 /// Tensors support arithmetic traits like Add, Sub, Neg to overload mathematical operators.
-/// Unlike on `RawTensor`, all operations are broadcasted for convenience.
+/// Unlike on [`RawTensor`], all operations are broadcasted for convenience.
 /// Also, we add higher-level operators to it like `matmul`.
-/// All operations are ultimately implemented in terms of the `Diffable` trait, which due
-/// to the blanket implementation above, get translated ultimately to `RawTensor` operations.
-/// This is nice, because to implement a new type of accelerator, you only need to implement `RawTensor`.
+/// All operations are ultimately implemented in terms of the [`Diffable`] trait, which due
+/// to the blanket implementation above, get translated ultimately to [`RawTensor`] operations.
+/// This is nice, because to implement a new type of accelerator, you only need to implement [`RawTensor`].
 #[derive(Debug, Clone)]
 #[must_use]
 pub struct Tensor<T>(T);
@@ -274,7 +274,6 @@ where
 /// they can be returned from the index method.
 /// This means we also can't use the actual [] syntax :( I made the name
 /// as short as I could think of.
-/// TODO: use a macro to generate the implementations for ranges etc, + variadic versions for more dimensions.
 pub trait IndexValue<Idx> {
     type Output;
 
@@ -284,7 +283,7 @@ pub trait IndexValue<Idx> {
 impl<T: Diffable> IndexValue<usize> for T {
     type Output = Self;
 
-    /// Slices the tensor at the given index, in the first dimension.
+    /// Slices the tensor at the given index, in the first dimension, and removes the dimension.
     /// E.g. if the tensor's shape is [2, 3, 4], then at(1) will return a tensor of shape [3, 4].
     fn at(&self, index: usize) -> Self::Output {
         let mut limits = self.shape().iter().map(|&n| (0, n)).collect::<Vec<_>>();
@@ -301,11 +300,26 @@ impl<T: Diffable> IndexValue<usize> for T {
 impl<T: Diffable, const N: usize> IndexValue<&[usize; N]> for Tensor<T> {
     type Output = Self;
 
-    /// Returns a tensor containing a single value at the given index. There must be at most as many indices as dimensions.
+    /// Returns the tensor at the given index. There must be at most as many indices as dimensions.
     fn at(&self, index: &[usize; N]) -> Self::Output {
         let mut limits = index.iter().map(|&i| (i, i + 1)).collect::<Vec<_>>();
-        limits.extend(iter::repeat((0, 0)).take(self.shape().len() - limits.len()));
-        self.crop(&limits)
+        let mut new_shape = self
+            .shape()
+            .iter()
+            .copied()
+            .skip(limits.len())
+            .collect::<Vec<_>>();
+        if new_shape.is_empty() {
+            new_shape.push(1);
+        };
+        limits.extend(
+            self.shape()
+                .iter()
+                .skip(limits.len())
+                .map(|s| (0, *s))
+                .collect::<Vec<_>>(),
+        );
+        self.crop(&limits).reshape(&new_shape)
     }
 }
 
@@ -318,8 +332,7 @@ enum SliceFrom {
     End(usize),
 }
 
-/// Specifies what to slice along each axis. Any axes at the end that are
-/// omitted, are not sliced.
+/// Specifies what to slice along each axis. Any omitted axes at the end are not sliced.
 #[derive(Default)]
 pub struct Slice {
     axes: Vec<(SliceFrom, SliceFrom)>,
@@ -393,11 +406,13 @@ impl Slice {
     }
 }
 
+/// Create a new slice, which returns the whole tensor.
 #[must_use]
 pub fn sl() -> Slice {
     Slice::default()
 }
 
+/// Create a new slice along the first axis.
 pub fn sl1<T>(index: T) -> Slice
 where
     Slice: SliceIdx<T>,
@@ -405,6 +420,7 @@ where
     sl().idx(index)
 }
 
+/// Create a new slice along the first two axes.
 pub fn sl2<T1, T2>(index1: T1, index2: T2) -> Slice
 where
     Slice: SliceIdx<T1> + SliceIdx<T2>,
@@ -412,6 +428,7 @@ where
     sl1(index1).idx(index2)
 }
 
+/// Create a new slice along the first three axes.
 pub fn sl3<T1, T2, T3>(index1: T1, index2: T2, index3: T3) -> Slice
 where
     Slice: SliceIdx<T1> + SliceIdx<T2> + SliceIdx<T3>,
@@ -419,6 +436,7 @@ where
     sl2(index1, index2).idx(index3)
 }
 
+/// Create a new slice along the first four axes.
 pub fn sl4<T1, T2, T3, T4>(index1: T1, index2: T2, index3: T3, index4: T4) -> Slice
 where
     Slice: SliceIdx<T1> + SliceIdx<T2> + SliceIdx<T3> + SliceIdx<T4>,
@@ -437,8 +455,8 @@ impl<T: Diffable> IndexValue<Slice> for T {
     }
 }
 
-/// One of two traits to make it easy to write generic functions over tensors.
-// TODO: find a better name?
+/// One of two traits to make it easy to write differentiable functions.
+/// The other one is [`TensorLikeRef`].
 #[allow(clippy::module_name_repetitions)]
 pub trait TensorLike<'a>:
     'a
@@ -472,8 +490,8 @@ impl<'a, T> TensorLike<'a> for T where
 {
 }
 
-/// One of two traits to make it easy to write generic functions over tensors,
-/// that can be differentiated.
+/// One of two traits to make it easy to write differentiable functions.
+/// The other one is [`TensorLike`].
 #[allow(clippy::module_name_repetitions)]
 pub trait TensorLikeRef<T>:
     Sized

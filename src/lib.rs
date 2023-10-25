@@ -25,8 +25,8 @@ pub mod tensor;
 pub mod tensor_mut;
 mod wgpu_context;
 pub use ad_forward::{
-    diff1, diff2, jacfwd, jvpn, value_and_diff_forward1, value_and_diff_forward2,
-    value_and_diff_forwardn, Forward, PushForward,
+    diff1, diff2, jacfwd, jvpn, value_and_diff1, value_and_diff2, value_and_diffn, Forward,
+    PushForward,
 };
 pub use ad_reverse::{
     grad1, grad2, jacrev, value_and_grad1, value_and_grad2, value_and_gradn, vjpn, PullBack,
@@ -46,6 +46,3 @@ pub use tensor::{
 // TODO of general interest
 // - Make vjp and jvp and friends all be N-to-N arguments instead of N-to-1.
 // - Treat zero and one as a special case for efficiency (also avoids NaNs, see jvp_test for pow). Maybe as a RawTensor implementation like Fuse.
-// - Move shape, ravel, to_cpu and maybe others from RawTensor to somewhere else? They are more like "run" operations, i.e. realizing the tensor.
-//   See raw_tensor_fuse and raw_tensor_string for some of the problems these cause.
-//   => This doesn't work out so well. Maybe shape, ravel, to_cpu are instead particular interpretations of a tensor...sort of like ShapeTracker for shape().

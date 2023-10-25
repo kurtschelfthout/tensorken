@@ -1,8 +1,8 @@
 use tensorken::{
     jacfwd, jvpn,
     num::Num,
-    value_and_diff_forward2, CpuRawTensor, Diffable, DiffableExt, RawTensor, Shape, WgpuRawTensor,
-    {value_and_diff_forward1, Forward}, {Tensor, TensorLike, TensorLikeRef},
+    value_and_diff2, CpuRawTensor, Diffable, DiffableExt, RawTensor, Shape, WgpuRawTensor,
+    {value_and_diff1, Forward}, {Tensor, TensorLike, TensorLikeRef},
 };
 
 use std::{fmt::Debug, ops::Add};
@@ -26,7 +26,7 @@ where
     for<'a> H: Fn(&'a Tensor<RT>) -> Tensor<RT>, // we need to use two different types.
 {
     let at: Tensor<RT> = Tensor::new(&[2, 4], &(1u8..9).map(f32::from).collect::<Vec<_>>());
-    let (f_actual, df_actual) = value_and_diff_forward1(f, &at);
+    let (f_actual, df_actual) = value_and_diff1(f, &at);
     let f_expected = ft(&at);
     let df_expected = df(&at);
     assert_eq!(f_actual.shape(), f_expected.shape(), "f shapes don't match");
@@ -53,8 +53,7 @@ where
     for<'a> H: Fn(&'a Tensor<RT>) -> Tensor<RT>,
 {
     let at: Tensor<RT> = Tensor::new(&[2, 2], &(1u8..5).map(f32::from).collect::<Vec<_>>());
-    let (df_actual, ddf_actual) =
-        value_and_diff_forward1(|r| value_and_diff_forward1(&f, r).1, &at);
+    let (df_actual, ddf_actual) = value_and_diff1(|r| value_and_diff1(&f, r).1, &at);
     let df_expected = dft(&at);
     let ddf_expected = ddf(&at);
     assert_eq!(df_actual.shape(), df_expected.shape());
@@ -81,7 +80,7 @@ fn test_df_2<RT: RawTensor<Elem = f32> + Clone + Debug, F, H, GA, GB>(
 {
     let a = &Tensor::new(&[2, 3], &[1.0, 2.0, 3.0, 4.0, -3.0, -2.0]);
     let b = &Tensor::new(&[2, 3], &[4.0, 5.0, 6.0, 7.0, -6.0, -5.0]);
-    let (f_actual, (dfda_actual, dfdb_actual)) = value_and_diff_forward2(f, a, b);
+    let (f_actual, (dfda_actual, dfdb_actual)) = value_and_diff2(f, a, b);
     let f_expected = ft(a, b);
     let dfda_expected = dfda(a, b);
     let dfdb_expected = dfdb(a, b);
@@ -286,7 +285,7 @@ fn do_test_pow<RT: RawTensor<Elem = f32> + Clone + Debug>() {
     // );
     let a: &Tensor<RT> = &Tensor::new(&[2, 2], &[1.0, 2.0, 3.0, 4.0]);
     let b: &Tensor<RT> = &Tensor::new(&[2, 2], &[4.0, 5.0, 6.0, 7.0]);
-    let (f_actual, (dfda_actual, dfdb_actual)) = value_and_diff_forward2(|a, b| a.pow(b), a, b);
+    let (f_actual, (dfda_actual, dfdb_actual)) = value_and_diff2(|a, b| a.pow(b), a, b);
     let f_expected = a.pow(b);
     let dfda_expected = b * a.pow(&(b - b.ones_like()));
     let dfdb_expected = a.pow(b) * a.log();
