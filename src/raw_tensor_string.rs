@@ -72,10 +72,6 @@ impl RawTensor for String {
         panic!("shape() not implemented for String. Try ShapeTracker<String> instead.")
     }
 
-    fn ravel(&self) -> Vec<Self::Elem> {
-        panic!("ravel() not implemented for String.")
-    }
-
     fn to_cpu(&self) -> crate::CpuRawTensor<Self::Elem> {
         panic!("to_cpu() not implemented for String.")
     }

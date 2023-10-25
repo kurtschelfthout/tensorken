@@ -88,10 +88,6 @@ impl<TRaw: RawTensor> RawTensor for ShapeTracker<TRaw> {
         self.0.shape()
     }
 
-    fn ravel(&self) -> Vec<Self::Elem> {
-        self.1.ravel()
-    }
-
     fn to_cpu(&self) -> crate::CpuRawTensor<Self::Elem> {
         self.1.to_cpu()
     }

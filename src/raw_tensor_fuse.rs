@@ -151,10 +151,6 @@ impl<TRaw: RawTensor + Clone + 'static> RawTensor for Fuse<TRaw> {
         panic!("shape() can't be implemented for Fuse. Wrap it in ShapeTracker.")
     }
 
-    fn ravel(&self) -> Vec<Self::Elem> {
-        self.0(&FuseCtx::NotSum).ravel()
-    }
-
     fn to_cpu(&self) -> crate::CpuRawTensor<Self::Elem> {
         self.0(&FuseCtx::NotSum).to_cpu()
     }

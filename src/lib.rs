@@ -48,3 +48,4 @@ pub use tensor::{
 // - Treat zero and one as a special case for efficiency (also avoids NaNs, see jvp_test for pow). Maybe as a RawTensor implementation like Fuse.
 // - Move shape, ravel, to_cpu and maybe others from RawTensor to somewhere else? They are more like "run" operations, i.e. realizing the tensor.
 //   See raw_tensor_fuse and raw_tensor_string for some of the problems these cause.
+//   => This doesn't work out so well. Maybe shape, ravel, to_cpu are instead particular interpretations of a tensor...sort of like ShapeTracker for shape().

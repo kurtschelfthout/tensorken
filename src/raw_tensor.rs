@@ -110,10 +110,6 @@ pub trait RawTensor {
     /// Return the shape of the tensor.
     fn shape(&self) -> &[usize];
 
-    /// Return the elements of the tensor as a Vec, i.e. on the CPU.
-    /// The order of the elements is in increasing order of the last axis, then the second last, etc.
-    fn ravel(&self) -> Vec<Self::Elem>;
-
     /// Return the tensor on the CPU.
     fn to_cpu(&self) -> CpuRawTensor<Self::Elem>;
 

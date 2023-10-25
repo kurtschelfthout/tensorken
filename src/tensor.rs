@@ -89,7 +89,7 @@ impl<T: Num, TTensor: RawTensor<Elem = T>> Diffable for TTensor {
     }
 
     fn ravel(&self) -> Vec<Self::Elem> {
-        self.ravel()
+        self.to_cpu().ravel()
     }
 }
 

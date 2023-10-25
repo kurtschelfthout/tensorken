@@ -162,7 +162,8 @@ impl<T: Copy> CpuRawTensor<T> {
         self.strider.strides()
     }
 
-    fn ravel(&self) -> Vec<T> {
+    #[must_use]
+    pub fn ravel(&self) -> Vec<T> {
         self.into_iter().collect()
     }
 }
@@ -296,10 +297,6 @@ impl<T: Num> RawTensor for CpuRawTensor<T> {
 
     fn shape(&self) -> &[usize] {
         self.strider.shape()
-    }
-
-    fn ravel(&self) -> Vec<Self::Elem> {
-        self.ravel()
     }
 
     fn to_cpu(&self) -> CpuRawTensor<Self::Elem> {
