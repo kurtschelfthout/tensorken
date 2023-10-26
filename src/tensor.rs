@@ -237,7 +237,7 @@ fn create_table<T: Num + Display>(tensor: &Tensor<CpuRawTensor<T>>, table: &mut 
         for r in 0..shape[0] {
             let row = table.add_empty_row();
             for c in 0..shape[1] {
-                row.add_cell(Cell::new(&format!("{}", tensor.at(&[r, c]))));
+                row.add_cell(Cell::new(&format!("{}", tensor.at(&[r, c]).to_scalar())));
             }
         }
     } else {
