@@ -40,6 +40,11 @@ pub(crate) fn broadcasted_apply<T: Diffable>(
     broadcasted_apply(&lhs.reshape(&new_shape), rhs, f, reverse)
 }
 
+pub enum Axes {
+    All,
+    One(usize),
+}
+
 /// These are operations that are based on the core Diffable operations.
 /// Could have added those to Diffable itself, but this seems a bit tidier.
 /// They can optionally be further split out by category.
@@ -133,9 +138,9 @@ where
     /// # Panics
     /// If the given axis is not 1.
     #[must_use]
-    fn squeeze(&self, dim: Option<usize>) -> Self {
+    fn squeeze(&self, dim: Axes) -> Self {
         let mut shape = self.shape().to_vec();
-        if let Some(dim) = dim {
+        if let Axes::One(dim) = dim {
             assert_eq!(shape[dim], 1);
             shape.remove(dim);
         } else {

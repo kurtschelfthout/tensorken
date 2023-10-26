@@ -11,7 +11,7 @@ use crate::{
         UnaryOp,
     },
     ad_trace::{Trace, TracedOp},
-    sl2, Diffable, DiffableExt, IndexValue, Shape,
+    sl2, Axes, Diffable, DiffableExt, IndexValue, Shape,
 };
 
 /// Forward AD implementation.
@@ -375,7 +375,7 @@ where
     let i = T::eye(primal.shape().size()).reshape(&s);
     let mut tangents: Vec<T> = Vec::with_capacity(i.shape()[1]);
     for col_idx in 0..i.shape()[1] {
-        let col = i.at(sl2(.., col_idx)).squeeze(None);
+        let col = i.at(sl2(.., col_idx)).squeeze(Axes::All);
         let col_tangent = pushforward.call(&[&col]);
         tangents.push(col_tangent);
     }

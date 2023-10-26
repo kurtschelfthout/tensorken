@@ -1,6 +1,6 @@
 use rand::{rngs::StdRng, SeedableRng};
 use tensorken::{
-    CpuRawTensor, Diffable, DiffableExt, RawTensor, WgpuRawTensor,
+    Axes, CpuRawTensor, Diffable, DiffableExt, RawTensor, WgpuRawTensor,
     {Cpu32, IndexValue, Tensor, TensorLike, TensorLikeRef, Wgpu32},
 };
 
@@ -394,8 +394,8 @@ fn test_squeeze_expand_dims() {
     assert_eq!(r1.shape(), &[1, 2, 3]);
     assert_eq!(r2.shape(), &[3, 1, 3]);
 
-    let r3 = r1.squeeze(None);
-    let r4 = r1.squeeze(Some(0));
+    let r3 = r1.squeeze(Axes::All);
+    let r4 = r1.squeeze(Axes::One(0));
     assert_eq!(r3.shape(), &[2, 3]);
     assert_eq!(r4.shape(), &[2, 3]);
 }

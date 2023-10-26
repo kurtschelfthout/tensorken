@@ -33,7 +33,7 @@ pub use ad_reverse::{
     Reverse,
 };
 pub use diffable::Diffable;
-pub use diffable_ext::DiffableExt;
+pub use diffable_ext::{Axes, DiffableExt};
 pub use raw_tensor::RawTensor;
 pub use raw_tensor_cpu::CpuRawTensor;
 pub use raw_tensor_wgpu::WgpuRawTensor;
