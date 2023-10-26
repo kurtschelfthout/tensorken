@@ -174,10 +174,6 @@ impl<T: Clone + Diffable> Diffable for Forward<'_, '_, T> {
     fn new(shape: &[usize], data: &[Self::Elem]) -> Self {
         Forward::Lift(T::new(shape, data))
     }
-
-    fn ravel(&self) -> Vec<Self::Elem> {
-        self.primal().ravel()
-    }
 }
 
 crate::math_macros::impl_bin_op!(Add, add, Forward<'a, 't, T: Diffable + Clone>);

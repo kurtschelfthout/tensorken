@@ -174,10 +174,6 @@ impl<T: Clone + Diffable> Diffable for Reverse<'_, '_, T> {
     fn new(shape: &[usize], data: &[Self::Elem]) -> Self {
         Reverse::Lift(T::new(shape, data))
     }
-
-    fn ravel(&self) -> Vec<Self::Elem> {
-        self.primal().ravel()
-    }
 }
 
 crate::math_macros::impl_bin_op!(Add, add, Reverse<'a, 't, T: Diffable + Clone>);

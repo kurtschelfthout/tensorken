@@ -14,7 +14,7 @@ use crate::{
     raw_tensor_shape_tracker::ShapeTracker,
     raw_tensor_wgpu::WgpuRawTensor,
     tensor_mut::TensorMut,
-    {Diffable, DiffableExt},
+    Shape, {Diffable, DiffableExt},
 };
 
 // Blanket implementation to translate from diffable tensor ops (Diffable) to low-level tensor ops (RawTensor).
@@ -87,10 +87,6 @@ impl<T: Num, TTensor: RawTensor<Elem = T>> Diffable for TTensor {
     fn new(shape: &[usize], data: &[Self::Elem]) -> Self {
         TTensor::new(shape, data)
     }
-
-    fn ravel(&self) -> Vec<Self::Elem> {
-        self.to_cpu().ravel()
-    }
 }
 
 /// The "high-level" tensor type - the face of the library.
@@ -111,6 +107,18 @@ impl<T: Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
 
     pub fn to_cpu(&self) -> Tensor<CpuRawTensor<T>> {
         Tensor(self.0.to_cpu())
+    }
+
+    pub fn ravel(&self) -> Vec<T> {
+        self.0.to_cpu().ravel()
+    }
+
+    /// If the tensor has only one element, return it.
+    /// # Panics
+    /// If the tensor does not have exactly one element.
+    pub fn to_scalar(&self) -> T {
+        assert!(self.shape().size() == 1);
+        self.ravel()[0]
     }
 }
 
@@ -198,10 +206,6 @@ impl<T: Diffable> Diffable for Tensor<T> {
 
     fn new(shape: &[usize], data: &[Self::Elem]) -> Self {
         Tensor(T::new(shape, data))
-    }
-
-    fn ravel(&self) -> Vec<Self::Elem> {
-        self.0.ravel()
     }
 }
 
