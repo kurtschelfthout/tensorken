@@ -1,3 +1,5 @@
+use std::vec;
+
 use rand::Rng;
 use rand_distr::{Distribution, StandardNormal};
 
@@ -65,6 +67,11 @@ where
     /// Create a new tensor with the given shape, and fill it with zeros.
     fn zeros(shape: &[usize]) -> Self {
         Self::full(shape, Self::Elem::ZERO)
+    }
+
+    /// Create a new tensor with the given shape, and fill it with ones.
+    fn ones(shape: &[usize]) -> Self {
+        Self::full(shape, Self::Elem::ONE)
     }
 
     /// Create a new 2-dimensional tensor with the ones the diagonal and zeros elsewhere.
@@ -268,7 +275,6 @@ where
             let s = self.shape();
             let l_shape = [s, &[1]].concat();
             let l = self.reshape(&l_shape);
-            // .transpose(l_shape.ndims() - 1, l_shape.ndims() - 2);
             l.mul(other)
                 .transpose(l_shape.ndims() - 1, l_shape.ndims() - 2)
         } else if r_nd == 1 {
@@ -299,6 +305,59 @@ where
         // otherwise, we'll blow up memory and time.
 
         // after reshape:  [..., m, o]
+        let s = sum.shape();
+        sum.reshape(&s[..s.ndims() - 1])
+    }
+
+    #[must_use]
+    fn dot(&self, other: &Self) -> Self {
+        let (l_nd, r_nd) = (self.shape().ndims(), other.shape().ndims());
+
+        assert!(l_nd != 0, "dot: lhs has no dimensions");
+        assert!(r_nd != 0, "dot: rhs has no dimensions");
+
+        if l_nd == 1 && r_nd == 1 {
+            return self.mul(other).sum(&[0]);
+        } else if l_nd == 2 && r_nd == 2 {
+            return self.matmul(other);
+        }
+
+        // sum product over l_n and r_n
+        let (l_n, r_n) = (l_nd - 1, r_nd.saturating_sub(2));
+        {
+            let l = self.shape()[l_n];
+            let r = other.shape()[r_n];
+            assert!(l == r, "dot: inner dimensions don't match: {l} != {r}");
+        }
+
+        // self reshape from [..., m, n] to [..., m, 1, ..., 1, n]
+        // number of 1s = r_nd - 1
+        let s = self.shape();
+        let ones = vec![1; r_nd - 1];
+        let l_shape = [&s[..l_n], &ones, &[s[l_n]]].concat();
+        let l = self.reshape(&l_shape);
+
+        // other transpose + reshape from [..., n, o] to [1, ..., 1, ..., o, n]
+        let s = other.shape();
+        // transpose first - this does nothing if other is 1d
+        let other = other.transpose(s.ndims() - 1, s.ndims().saturating_sub(2));
+        // shape s has likely changed
+        let s = other.shape();
+        let ones = vec![1; l_nd - 1];
+        let r_shape = [&ones, s].concat();
+        let r = other
+            //.transpose(r_shape.ndims() - 1, r_shape.ndims() - 2)
+            .reshape(&r_shape);
+
+        let prod = l.mul(&r);
+
+        // after sum:      [..., m, ..., o, 1]
+        let sum = prod.sum(&[prod.shape().ndims() - 1]);
+
+        // note: counting on raw_tensor_fuse to make the mul and sum into a single operation.
+        // otherwise, we'll blow up memory and time.
+
+        // after reshape:  [..., m, ..., o]
         let s = sum.shape();
         sum.reshape(&s[..s.ndims() - 1])
     }

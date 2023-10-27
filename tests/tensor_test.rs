@@ -270,16 +270,121 @@ fn do_3x2x2x3_matmul_2x3x2<T: RawTensor<Elem = f32>>(t1: &Tensor<T>, t2: &Tensor
 #[test]
 fn test_matmul_1d() {
     // test multiplying with 1d tensors works on the left and right
-    let t1 = &Cpu32::new(&[3, 3], &[1., 2., 3., 4., 5., 6., 7., 8., 9.]);
+    let t1 = &Cpu32::new(
+        &[4, 3],
+        &[
+            1., 2., 3., //
+            4., 5., 6., //
+            7., 8., 9., //
+            10., 11., 12.,
+        ],
+    );
     let t2 = &Cpu32::new(&[3], &[1.0, 2.0, 3.0]);
+    let t3 = &Cpu32::new(&[4], &[1.0, 2.0, 3.0, 4.0]);
 
+    // 4x3 matmul 3x1 = 4x1
     let r = t1.matmul(t2);
-    assert_eq!(vec![14., 32., 50.], r.ravel());
-    assert_eq!(r.shape(), &[3]);
+    assert_eq!(vec![14., 32., 50., 68.], r.ravel());
+    assert_eq!(r.shape(), &[4]);
 
-    let r = t2.matmul(t1);
-    assert_eq!(vec![30., 36., 42.], r.ravel());
+    // 1x4 matmul 4x3 = 1x3
+    let r = t3.matmul(t1);
+    assert_eq!(vec![70.0, 80.0, 90.0], r.ravel());
     assert_eq!(r.shape(), &[3]);
+}
+
+#[test]
+fn test_dot_1d() {
+    let t1 = &Cpu32::new(&[3], &[1.0, 2.0, 3.0]);
+    let t2 = &Cpu32::new(&[3], &[-1.0, -2.0, -3.0]);
+
+    let r = t1.dot(t2);
+    assert_eq!(vec![-14.0], r.ravel());
+    assert_eq!(r.shape(), &[1]);
+
+    let r = t2.dot(t1);
+    assert_eq!(vec![-14.0], r.ravel());
+    assert_eq!(r.shape(), &[1]);
+}
+
+#[test]
+fn test_dot_2d() {
+    let t1 = &Cpu32::eye(2);
+    let t2 = &Cpu32::new(&[2, 2], &[4.0, -2.0, -3.0, 10.0]);
+
+    let r = t1.dot(t2);
+    assert_eq!(vec![4.0, -2.0, -3.0, 10.0], r.ravel());
+    assert_eq!(r.shape(), &[2, 2]);
+
+    let r = t2.dot(t1);
+    assert_eq!(vec![4.0, -2.0, -3.0, 10.0], r.ravel());
+    assert_eq!(r.shape(), &[2, 2]);
+}
+
+#[test]
+fn test_dot_2dx1d() {
+    let t1 = &Cpu32::linspace(1.0, 12.0, 12).reshape(&[4, 3]);
+    let t2 = &Cpu32::new(&[3], &[4.0, -2.0, -3.0]);
+
+    // re: 4, 3
+    // re: 1, 3
+    // *:  4, 3
+    // su: 4, 1
+    let r = t1.dot(t2);
+    assert_eq!(vec![-9.0, -12.0, -15.0, -18.0], r.ravel());
+    assert_eq!(r.shape(), &[4]);
+}
+
+#[test]
+fn test_dot_vs_matmul_nd_shape() {
+    let a = Cpu32::ones(&[9, 5, 7, 4]);
+    let c = Cpu32::ones(&[9, 5, 4, 3]);
+
+    // re: 9, 5, 7, 1, 1, 1, 4
+    // t :          9, 5, 3, 4
+    // re: 1, 1, 1, 9, 5, 3, 4
+    // * : 9, 5, 7, 9, 5, 3, 4
+    // su: 9, 5, 7, 9, 5, 3, 1
+    // re: 9, 5, 7, 9, 5, 3
+    let r_dot = &a.dot(&c);
+    assert_eq!(r_dot.shape(), &[9, 5, 7, 9, 5, 3]);
+
+    let r = &a.matmul(&c);
+    assert_eq!(r.shape(), &[9, 5, 7, 3]);
+}
+
+#[test]
+fn test_dot_nd() {
+    let fourbyfour = Cpu32::new(
+        &[4, 4],
+        &[
+            1., 2., 3., 4., //
+            3., 2., 1., 4., //
+            5., 4., 6., 7., //
+            11., 12., 13., 14.,
+        ],
+    );
+    let threebyfourbytwo = Cpu32::new(
+        &[3, 4, 2],
+        &[
+            2., 3., 11., 9., 32., 21., 28., 17., //
+            2., 3., 1., 9., 3., 21., 28., 7., //
+            2., 3., 1., 9., 3., 21., 28., 7.,
+        ],
+    );
+
+    let matmul = fourbyfour.matmul(&threebyfourbytwo);
+    assert_eq!(matmul.shape(), &[3, 4, 2]);
+
+    let dot = fourbyfour.dot(&threebyfourbytwo);
+    assert_eq!(dot.shape(), &[4, 3, 2]);
+    assert_eq!(
+        dot.ravel(),
+        vec![
+            232., 152., 125., 112., 125., 112., 172., 116., 123., 76., 123., 76., 442., 296., 228.,
+            226., 228., 226., 962., 652., 465., 512., 465., 512.
+        ]
+    );
 }
 
 #[test]
@@ -352,8 +457,8 @@ fn do_test_at<T: RawTensor<Elem = f32>>(t: &Tensor<T>) {
     assert_eq!(s.shape(), &[4]);
     assert_eq!(s.ravel(), vec![0.0, 1.0, 0.0, 0.0]);
 
-    // let s = t.at(&[1, 1]);
-    // assert_eq!(s.shape(), &[1]);
+    let s = t.at(&[1, 1]);
+    assert_eq!(s.shape(), &[1]);
 }
 
 #[test]
