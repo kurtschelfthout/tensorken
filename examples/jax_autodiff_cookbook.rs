@@ -134,14 +134,14 @@ fn main() {
         |W| predict(W, &Forward::lift(&b), &Forward::lift(&inputs)),
         &W,
     );
-    print!("jacfwd result, with shape {:?}", J.shape());
+    println!("jacfwd result, with shape {:?}", J.shape());
     print!("{}", &J);
 
     let J = jacrev(
         |W| predict(W, &Reverse::lift(&b), &Reverse::lift(&inputs)),
         &W,
     );
-    print!("jacrev result, with shape {:?}", J.shape());
+    println!("jacrev result, with shape {:?}", J.shape());
     print!("{}", &J);
 
     let hessian = jacfwd(
