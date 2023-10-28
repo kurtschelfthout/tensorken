@@ -364,21 +364,18 @@ pub fn jacfwd<'b, 't, T: Diffable + Clone + 't, F>(f: F, at: &T) -> T
 where
     for<'a> F: Fn(&'a Forward<'a, 't, T>) -> Forward<'a, 't, T>,
 {
-    let (primal, pushforward) = jvpn(|s| f(&s[0]), &[at]);
-    let mut s = vec![primal
-        .shape()
-        .iter()
-        .copied()
-        .reduce(|acc, e| acc * e)
-        .unwrap()];
-    s.extend(primal.shape());
-    let i = T::eye(primal.shape().size()).reshape(&s);
+    let (_, pushforward) = jvpn(|s| f(&s[0]), &[at]);
+
+    let mut s = vec![at.shape().size()];
+    s.extend(at.shape());
+    let i = T::eye(at.shape().size()).reshape(&s);
+
     let mut tangents: Vec<T> = Vec::with_capacity(i.shape()[1]);
     for col_idx in 0..i.shape()[1] {
-        let col = i.at(sl2(.., col_idx)).squeeze(Axes::All);
+        let col = i.at(sl2(.., col_idx)).squeeze(Axes::One(1));
         let col_tangent = pushforward.call(&[&col]);
         tangents.push(col_tangent);
     }
     let t_refs = tangents.iter().collect::<Vec<_>>();
-    T::stack(&t_refs, 0)
+    T::stack(&t_refs, 1)
 }

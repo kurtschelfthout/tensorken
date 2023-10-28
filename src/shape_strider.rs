@@ -151,6 +151,14 @@ impl ShapeStrider {
 
     /// Attempt to reshape to the given new shape. Returns Ok if the reshape is possible without copying the buffer, Err otherwise.
     pub(crate) fn reshape(&self, new_shape: &[usize]) -> Result<Self, String> {
+        assert!(
+            self.size() == new_shape.size(),
+            "cannot reshape tensor of shape {:?} to shape {:?} - size must be the same. {} != {}",
+            self.shape(),
+            new_shape,
+            self.shape().size(),
+            new_shape.size()
+        );
         let newnd = new_shape.ndims();
         let mut new_strides = vec![0; newnd];
 

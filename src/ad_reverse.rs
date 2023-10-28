@@ -374,14 +374,11 @@ where
     for<'a> F: Fn(&'a Reverse<'a, 't, T>) -> Reverse<'a, 't, T>,
 {
     let (primal, pullback) = vjpn(|s| f(&s[0]), &[at]);
-    let mut s = vec![primal
-        .shape()
-        .iter()
-        .copied()
-        .reduce(|acc, e| acc * e)
-        .unwrap()];
+
+    let mut s = vec![primal.shape().size()];
     s.extend(primal.shape());
     let i = T::eye(primal.shape().size()).reshape(&s);
+
     let mut tangents: Vec<T> = Vec::with_capacity(i.shape()[0]);
     for row_idx in 0..i.shape()[0] {
         let row = i.at(row_idx);
@@ -389,5 +386,5 @@ where
         tangents.push(row_tangent);
     }
     let t_refs = tangents.iter().collect::<Vec<_>>();
-    T::stack(&t_refs, 1)
+    T::stack(&t_refs[..], 0)
 }
