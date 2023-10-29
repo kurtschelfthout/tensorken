@@ -32,7 +32,7 @@ impl<T: Debug> Debug for CpuRawTensor<T> {
     }
 }
 
-impl<T: Copy> CpuRawTensor<T> {
+impl<T> CpuRawTensor<T> {
     /// Return a new tensor with the given shape and data.
     /// Panics if the shape and data are not compatible.
     /// Assumes the data is laid out contiguously, in row-major order.
@@ -61,22 +61,22 @@ impl<T: Copy> CpuRawTensor<T> {
     fn with_contiguous_data(&self, data: Vec<T>) -> Self {
         Self::new_into(self.strider.shape(), data)
     }
+}
 
+impl<T: Copy> CpuRawTensor<T> {
     /// Return a new tensor with the same shape as this one, but
     /// copied into a new buffer contiguously.
     fn contiguous(&self) -> Self {
         let data = self.ravel();
         self.with_contiguous_data(data)
     }
-
     /// Return a new tensor with the same shape as self, after applying f to each element.
     /// Allocates a new buffer, resulting tensor is contiguous.
     fn map(&self, f: impl Fn(T) -> T) -> Self {
-        let mut result = Vec::with_capacity(self.strider.size());
-        for &x in &self.buffer.data {
-            result.push(f(x));
+        let mut result = self.ravel();
+        for elem in &mut result {
+            *elem = f(*elem);
         }
-
         self.with_contiguous_data(result)
     }
 
