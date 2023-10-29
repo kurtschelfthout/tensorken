@@ -21,6 +21,11 @@ pub trait Num:
     /// Convert from usize.
     /// This is really only so Tensor can implement linspace.
     fn from_usize(n: usize) -> Self;
+
+    /// Convert to usize.
+    /// This is really only so Tensor can implement `one_hot`.
+    fn to_usize(self) -> usize;
+
     /// Apply exponential function.
     #[must_use]
     fn exp(self) -> Self;
@@ -52,5 +57,10 @@ impl Num for f32 {
     #[allow(clippy::cast_precision_loss)]
     fn from_usize(n: usize) -> Self {
         n as f32
+    }
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    fn to_usize(self) -> usize {
+        self as usize
     }
 }

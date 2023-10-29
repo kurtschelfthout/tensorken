@@ -74,7 +74,7 @@ where
         Self::full(shape, Self::Elem::ONE)
     }
 
-    /// Create a new 2-dimensional tensor with the ones the diagonal and zeros elsewhere.
+    /// Create a new 2-dimensional tensor with ones on the diagonal and zeros elsewhere.
     fn eye(dim: usize) -> Self {
         // kind of an pad/crop/expand/reshape stress test
         Self::scalar(Self::Elem::ONE)
@@ -86,6 +86,7 @@ where
             .reshape(&[dim, dim])
     }
 
+    /// Create a new 1D tensor with `num` values linearly spaced between `start` and `end`.
     fn linspace(start: Self::Elem, end: Self::Elem, num: usize) -> Self {
         let mut data = Vec::with_capacity(num);
         let step = if num > 1 {

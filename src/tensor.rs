@@ -102,10 +102,12 @@ impl<T: Num, TTensor: RawTensor<Elem = T>> Diffable for TTensor {
 pub struct Tensor<T>(T);
 
 impl<T: Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
+    /// Create a new mutable tensor with self's shape and elements.
     pub fn to_tensor_mut(&self) -> TensorMut<T> {
         TensorMut::new(self)
     }
 
+    /// Create a new [`CpuRawTensor`] with self's shape and elements.
     pub fn to_cpu(&self) -> Tensor<CpuRawTensor<T>> {
         Tensor(self.0.to_cpu())
     }
@@ -120,6 +122,20 @@ impl<T: Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
     pub fn to_scalar(&self) -> T {
         assert!(self.shape().size() == 1);
         self.ravel()[0]
+    }
+
+    /// Returns a new tensor with a new axis inserted at the front of size `num_classes`.
+    /// All elements are assumed to be integers in the range [0, `num_classes`).
+    /// The new axis is used as a one-hot encoding of the elements.
+    pub fn one_hot(&self, num_classes: usize) -> Self {
+        let mut data = vec![T::ZERO; self.shape().size() * num_classes];
+        for (i, &x) in self.ravel().iter().enumerate() {
+            data[i * num_classes + x.to_usize()] = T::ONE;
+        }
+        let mut new_shape = Vec::new();
+        new_shape.extend(self.shape());
+        new_shape.push(num_classes);
+        Self::new(&new_shape, &data)
     }
 }
 
@@ -289,7 +305,11 @@ fn get_single_line_format() -> &'static format::TableFormat {
 //     }
 // }
 
-fn create_table<T: Num + Display>(tensor: &Tensor<CpuRawTensor<T>>, table: &mut Table) {
+fn create_table<T: Num + Display>(
+    tensor: &Tensor<CpuRawTensor<T>>,
+    table: &mut Table,
+    precision: Option<usize>,
+) {
     let shape = tensor.shape();
 
     if shape.len() == 2 {
@@ -301,7 +321,15 @@ fn create_table<T: Num + Display>(tensor: &Tensor<CpuRawTensor<T>>, table: &mut 
         for r in 0..shape[0] {
             let row = table.add_empty_row();
             for c in 0..shape[1] {
-                row.add_cell(Cell::new(&format!("{}", tensor.at(&[r, c]).to_scalar())));
+                if precision.is_some() {
+                    row.add_cell(Cell::new(&format!(
+                        "{:.precision$}",
+                        tensor.at(&[r, c]).to_scalar(),
+                        precision = precision.unwrap()
+                    )));
+                } else {
+                    row.add_cell(Cell::new(&format!("{}", tensor.at(&[r, c]).to_scalar(),)));
+                }
             }
         }
     } else {
@@ -311,7 +339,7 @@ fn create_table<T: Num + Display>(tensor: &Tensor<CpuRawTensor<T>>, table: &mut 
             for c in 0..shape[1] {
                 let mut table = Table::new();
                 let tensor = tensor.at(&[r, c]);
-                create_table(&tensor, &mut table);
+                create_table(&tensor, &mut table, precision);
                 row.add_cell(Cell::new(&format!("{table}")));
             }
         }
@@ -330,7 +358,7 @@ where
         };
 
         let mut table = Table::new();
-        create_table(&cpu, &mut table);
+        create_table(&cpu, &mut table, f.precision());
         write!(f, "{table}")
     }
 }

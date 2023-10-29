@@ -16,7 +16,6 @@ impl<T> Fuse<T> {
         Self(Rc::new(f))
     }
 
-    #[allow(dead_code)]
     fn run(&self) -> T {
         (self.0)(&FuseCtx::NotSum)
     }
