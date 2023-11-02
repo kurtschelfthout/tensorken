@@ -1,13 +1,21 @@
 use std::ops::{Index, IndexMut};
 
 use crate::{
-    diffable::Diffable, num::Num, raw_tensor::RawTensor, shape::Shape, shape_strider::ShapeStrider,
+    diffable::Diffable,
+    num::Num,
+    raw_tensor::{RawTensor, RealizedRawTensor},
+    shape::Shape,
+    shape_strider::ShapeStrider,
     tensor::Tensor,
 };
 
 // Implementation note:
 // In as much as possible, TensorMut is conceptually a client of Tensor.
 // Tensor only calls TensorMut::new from its to_tensor_mut.
+
+// TODO: rename to TensorDirect or something - this is useful for fast
+// (maybe mutable) access to an underlying buffer, which does not use lazy, fused or derivable operations.
+// e.g. for display or debug purposes.
 
 /// A mutable tensor, which owns its buffer.
 /// This is useful for implementing algorithms that mutate tensors in-place,
@@ -20,7 +28,7 @@ pub struct TensorMut<T> {
 impl<T: Num> TensorMut<T> {
     /// Create a new tensor with the same shape and elements as the given tensor.
     /// Copies all the `Tensor`'s data.
-    pub fn new<RT: RawTensor<Elem = T>>(from: &Tensor<RT>) -> Self {
+    pub fn new<RT: RealizedRawTensor<Elem = T>>(from: &Tensor<RT>) -> Self {
         let buffer = from.ravel();
         let strider = ShapeStrider::contiguous(from.shape());
         TensorMut { buffer, strider }

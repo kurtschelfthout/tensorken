@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use rand::{rngs::StdRng, SeedableRng};
-use tensorken::{tensor::Wgpu32, Diffable, DiffableExt};
+use tensorken::{tensor::Wgpu32, Cpu32, Diffable, DiffableExt};
 
 // general results for map operations on GPU:
 // - opotimizing for contiguous memory layout doesn't make enough of a difference to warrent the complexity.
@@ -16,24 +16,24 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         let t1s = &[size, size];
         let t1_gpu = Wgpu32::randn(t1s, &mut rng);
         let t1_gpu_nc = t1_gpu.reshape(&[size / 2, size * 2]).transpose(0, 1);
-        let t1_cpu = t1_gpu.to_cpu();
-        let t1_cpu_nc = t1_gpu_nc.to_cpu();
+        let t1_cpu = Cpu32::from(&t1_gpu);
+        let t1_cpu_nc = Cpu32::from(&t1_gpu_nc);
 
         group.bench_with_input(BenchmarkId::new("cpu contiguous", size), &size, |b, _| {
-            b.iter(|| (black_box(t1_cpu.exp())))
+            b.iter(|| (black_box(t1_cpu.exp().realize())))
         });
         group.bench_with_input(BenchmarkId::new("gpu contiguous", size), &size, |b, _| {
-            b.iter(|| (black_box(t1_gpu.exp())))
+            b.iter(|| (black_box(t1_gpu.exp().realize())))
         });
         group.bench_with_input(
             BenchmarkId::new("cpu non-contiguous", size),
             &size,
-            |b, _| b.iter(|| (black_box(t1_cpu_nc.exp()))),
+            |b, _| b.iter(|| (black_box(t1_cpu_nc.exp().realize()))),
         );
         group.bench_with_input(
             BenchmarkId::new("gpu non-contiguous", size),
             &size,
-            |b, _| b.iter(|| (black_box(t1_gpu_nc.exp()))),
+            |b, _| b.iter(|| (black_box(t1_gpu_nc.exp().realize()))),
         );
     }
     group.finish();

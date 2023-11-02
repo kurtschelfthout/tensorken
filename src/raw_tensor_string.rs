@@ -72,10 +72,6 @@ impl RawTensor for String {
         panic!("shape() not implemented for String. Try ShapeTracker<String> instead.")
     }
 
-    fn to_cpu(&self) -> crate::CpuRawTensor<Self::Elem> {
-        panic!("to_cpu() not implemented for String.")
-    }
-
     fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self {
         format!("{self}.fused_multiply_add({other}, {axes:?})")
     }

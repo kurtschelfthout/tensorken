@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use rand::{rngs::StdRng, SeedableRng};
-use tensorken::{tensor::Wgpu32, Diffable, DiffableExt};
+use tensorken::{tensor::Wgpu32, Cpu32, Diffable, DiffableExt};
 
 // not much here on GPU that made much difference.
 // - Using vec2 in the input/output index function didn't make much of a difference.
@@ -20,26 +20,26 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         let t2_gpu = Wgpu32::randn(square, &mut rng);
         let t2_gpu_nc = t2_gpu.reshape(&[size / 2, size * 2]).transpose(0, 1);
 
-        let t1_cpu = t1_gpu.to_cpu();
-        let t1_cpu_nc = t1_gpu_nc.to_cpu();
-        let t2_cpu = t2_gpu.to_cpu();
-        let t2_cpu_nc = t2_gpu_nc.to_cpu();
+        let t1_cpu = Cpu32::from(&t1_gpu);
+        let t1_cpu_nc = Cpu32::from(&t1_gpu_nc);
+        let t2_cpu = Cpu32::from(&t2_gpu);
+        let t2_cpu_nc = Cpu32::from(&t2_gpu_nc);
 
         group.bench_with_input(BenchmarkId::new("cpu contiguous", size), &size, |b, _| {
-            b.iter(|| (black_box(&t1_cpu * &t2_cpu)))
+            b.iter(|| (black_box((&t1_cpu * &t2_cpu).realize())))
         });
         group.bench_with_input(
             BenchmarkId::new("cpu non-contiguous", size),
             &size,
-            |b, _| b.iter(|| (black_box(&t1_cpu_nc * &t2_cpu_nc))),
+            |b, _| b.iter(|| (black_box((&t1_cpu_nc * &t2_cpu_nc).realize()))),
         );
         group.bench_with_input(BenchmarkId::new("gpu contiguous", size), &size, |b, _| {
-            b.iter(|| (black_box(&t1_gpu * &t2_gpu)))
+            b.iter(|| (black_box((&t1_gpu * &t2_gpu).realize())))
         });
         group.bench_with_input(
             BenchmarkId::new("gpu non-contiguous", size),
             &size,
-            |b, _| b.iter(|| (black_box(&t1_gpu_nc * &t2_gpu_nc))),
+            |b, _| b.iter(|| (black_box((&t1_gpu_nc * &t2_gpu_nc).realize()))),
         );
     }
     group.finish();

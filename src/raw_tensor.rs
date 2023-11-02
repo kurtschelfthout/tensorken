@@ -1,4 +1,4 @@
-use crate::{num::Num, raw_tensor_cpu::CpuRawTensor};
+use crate::num::Num;
 
 /// Counterpart for tinygrad's "low-level" operations in ops.py.
 /// Represents the operations that a tensor implementation, be it on CPU or GPU, must implement.
@@ -110,9 +110,6 @@ pub trait RawTensor {
     /// Return the shape of the tensor.
     fn shape(&self) -> &[usize];
 
-    /// Return the tensor on the CPU.
-    fn to_cpu(&self) -> CpuRawTensor<Self::Elem>;
-
     // fused operations
     // ----------------
 
@@ -125,4 +122,14 @@ pub trait RawTensor {
     /// element-wise multiplication, and so is essential.
     #[must_use]
     fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self;
+}
+
+#[allow(clippy::module_name_repetitions)]
+pub trait RealizedRawTensor: RawTensor {
+    /// Return the tensor on the CPU.
+    fn to_cpu(&self) -> crate::CpuRawTensor<Self::Elem>;
+
+    /// For tensors that have lazy operations, run them.
+    #[must_use]
+    fn realize(&self) -> Self;
 }

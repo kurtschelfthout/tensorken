@@ -8,11 +8,11 @@ use wgpu::util::DeviceExt;
 
 use crate::{
     num::Num,
-    raw_tensor::RawTensor,
-    raw_tensor_cpu::CpuRawTensor,
+    raw_tensor::{RawTensor, RealizedRawTensor},
     shape::Shape,
     shape_strider::ShapeStrider,
     wgpu_context::{get_wgpu_device, WgpuContext, WorkgroupSize},
+    CpuRawTensor,
 };
 
 // Misc WGSL notes/tips:
@@ -550,7 +550,9 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
     }
 
     /// Returns a contiguous vector of the tensor's elements, on the CPU.
-    fn ravel(&self) -> Vec<T> {
+    #[must_use]
+    #[allow(clippy::missing_panics_doc)]
+    pub fn ravel(&self) -> Vec<T> {
         if !self.strider.is_contiguous() {
             let t = self.contiguous();
             return t.ravel();
@@ -684,12 +686,18 @@ impl<T: Num + NoUninit + Pod> RawTensor for WgpuRawTensor<'_, T> {
         self.strider.shape()
     }
 
-    fn to_cpu(&self) -> crate::raw_tensor_cpu::CpuRawTensor<Self::Elem> {
+    fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self {
+        self.fused_multiply_add_impl(other, axes)
+    }
+}
+
+impl<T: Num + NoUninit + Pod> RealizedRawTensor for WgpuRawTensor<'_, T> {
+    fn to_cpu(&self) -> crate::CpuRawTensor<Self::Elem> {
         CpuRawTensor::new_into(self.shape(), self.ravel())
     }
 
-    fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self {
-        self.fused_multiply_add_impl(other, axes)
+    fn realize(&self) -> Self {
+        self.clone()
     }
 }
 

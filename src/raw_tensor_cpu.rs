@@ -3,7 +3,7 @@ use std::ops::Add;
 use std::sync::Arc;
 
 use crate::num::Num;
-use crate::raw_tensor::RawTensor;
+use crate::raw_tensor::{RawTensor, RealizedRawTensor};
 use crate::shape::Shape;
 use crate::shape_strider::{ShapeStrider, TensorIndexIterator};
 
@@ -299,12 +299,18 @@ impl<T: Num> RawTensor for CpuRawTensor<T> {
         self.strider.shape()
     }
 
-    fn to_cpu(&self) -> CpuRawTensor<Self::Elem> {
+    fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self {
+        self.fused_zip_reduce(other, axes, T::ZERO, |acc, x, y| acc + x * y)
+    }
+}
+
+impl<T: Num> RealizedRawTensor for CpuRawTensor<T> {
+    fn to_cpu(&self) -> crate::CpuRawTensor<Self::Elem> {
         self.clone()
     }
 
-    fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self {
-        self.fused_zip_reduce(other, axes, T::ZERO, |acc, x, y| acc + x * y)
+    fn realize(&self) -> Self {
+        self.clone()
     }
 }
 

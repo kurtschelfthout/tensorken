@@ -9,7 +9,7 @@ use prettytable::{format, Cell, Table};
 
 use crate::{
     num::Num,
-    raw_tensor::RawTensor,
+    raw_tensor::{RawTensor, RealizedRawTensor},
     raw_tensor_cpu::CpuRawTensor,
     raw_tensor_fuse::Fuse,
     raw_tensor_shape_tracker::ShapeTracker,
@@ -101,10 +101,15 @@ impl<T: Num, TTensor: RawTensor<Elem = T>> Diffable for TTensor {
 #[must_use]
 pub struct Tensor<T>(T);
 
-impl<T: Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
+impl<T: Num, TRawTensor: RealizedRawTensor<Elem = T>> Tensor<TRawTensor> {
     /// Create a new mutable tensor with self's shape and elements.
     pub fn to_tensor_mut(&self) -> TensorMut<T> {
         TensorMut::new(self)
+    }
+
+    /// Create a new Tensor that has any lazy operations realized.
+    pub fn realize(&self) -> Self {
+        Tensor(self.0.realize())
     }
 
     /// Create a new [`CpuRawTensor`] with self's shape and elements.
@@ -136,6 +141,18 @@ impl<T: Num, TRawTensor: RawTensor<Elem = T>> Tensor<TRawTensor> {
         new_shape.extend(self.shape());
         new_shape.push(num_classes);
         Self::new(&new_shape, &data)
+    }
+}
+
+impl From<&Wgpu32<'static>> for Cpu32 {
+    fn from(wgpu: &Wgpu32<'static>) -> Self {
+        Tensor::new(wgpu.shape(), &wgpu.ravel())
+    }
+}
+
+impl From<&Cpu32> for Wgpu32<'static> {
+    fn from(wgpu: &Cpu32) -> Self {
+        Tensor::new(wgpu.shape(), &wgpu.ravel())
     }
 }
 
@@ -346,7 +363,7 @@ fn create_table<T: Num + Display>(
     }
 }
 
-impl<RT: RawTensor> Display for Tensor<RT>
+impl<RT: RealizedRawTensor> Display for Tensor<RT>
 where
     RT::Elem: Display,
 {

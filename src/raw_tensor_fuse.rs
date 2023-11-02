@@ -1,7 +1,7 @@
 use core::panic;
 use std::rc::Rc;
 
-use crate::RawTensor;
+use crate::{raw_tensor::RealizedRawTensor, RawTensor};
 
 enum FuseCtx {
     Sum(Vec<usize>),
@@ -18,6 +18,19 @@ impl<T> Fuse<T> {
 
     fn run(&self) -> T {
         (self.0)(&FuseCtx::NotSum)
+    }
+}
+
+impl<TRaw: RawTensor + Clone + 'static> Fuse<TRaw> {
+    fn from_raw_tensor(raw_tensor: TRaw) -> Self {
+        Fuse::new(move |ctx| match ctx {
+            FuseCtx::Sum(axes2) => raw_tensor.sum(axes2),
+            FuseCtx::NotSum => raw_tensor.clone(),
+        })
+    }
+
+    pub fn realize(&self) -> Self {
+        Self::from_raw_tensor(self.run())
     }
 }
 
@@ -136,20 +149,12 @@ impl<TRaw: RawTensor + Clone + 'static> RawTensor for Fuse<TRaw> {
     }
 
     fn new(shape: &[usize], data: &[Self::Elem]) -> Self {
-        let s = shape.to_vec();
-        let d = data.to_vec();
-        Fuse::new(move |ctx| match ctx {
-            FuseCtx::Sum(axes2) => TRaw::new(&s, &d).sum(axes2),
-            FuseCtx::NotSum => TRaw::new(&s, &d),
-        })
+        let traw = TRaw::new(shape, data);
+        Self::from_raw_tensor(traw)
     }
 
     fn shape(&self) -> &[usize] {
         panic!("shape() can't be implemented for Fuse. Wrap it in ShapeTracker.")
-    }
-
-    fn to_cpu(&self) -> crate::CpuRawTensor<Self::Elem> {
-        self.run().to_cpu()
     }
 
     fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self {
@@ -163,6 +168,16 @@ impl<TRaw: RawTensor + Clone + 'static> RawTensor for Fuse<TRaw> {
             }
             FuseCtx::NotSum => f_lhs(&nextctx).fused_multiply_add(&f_rhs(&nextctx), &my_axes),
         })
+    }
+}
+
+impl<TRaw: RealizedRawTensor + Clone + 'static> RealizedRawTensor for Fuse<TRaw> {
+    fn to_cpu(&self) -> crate::CpuRawTensor<Self::Elem> {
+        self.run().to_cpu()
+    }
+
+    fn realize(&self) -> Self {
+        Self::from_raw_tensor(self.run())
     }
 }
 

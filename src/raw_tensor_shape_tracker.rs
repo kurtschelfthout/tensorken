@@ -1,4 +1,4 @@
-use crate::{shape_strider::ShapeStrider, RawTensor, Shape};
+use crate::{raw_tensor::RealizedRawTensor, shape_strider::ShapeStrider, RawTensor, Shape};
 
 #[derive(Clone)]
 pub struct ShapeTracker<T>(ShapeStrider, T);
@@ -88,15 +88,21 @@ impl<TRaw: RawTensor> RawTensor for ShapeTracker<TRaw> {
         self.0.shape()
     }
 
-    fn to_cpu(&self) -> crate::CpuRawTensor<Self::Elem> {
-        self.1.to_cpu()
-    }
-
     fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self {
         Self(
             self.0.reduce(axes).0,
             self.1.fused_multiply_add(&other.1, axes),
         )
+    }
+}
+
+impl<TRaw: RealizedRawTensor> RealizedRawTensor for ShapeTracker<TRaw> {
+    fn to_cpu(&self) -> crate::CpuRawTensor<Self::Elem> {
+        self.1.to_cpu()
+    }
+
+    fn realize(&self) -> Self {
+        Self(self.0.clone(), self.1.realize())
     }
 }
 
