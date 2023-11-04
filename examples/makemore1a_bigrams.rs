@@ -1,4 +1,5 @@
-#![warn(clippy::pedantic)]
+// #![warn(clippy::pedantic)]
+#![allow(non_snake_case)]
 
 extern crate tensorken;
 
@@ -11,7 +12,7 @@ use std::{
 
 use prettytable::{Cell, Row, Table};
 use rand::{distributions::WeightedIndex, prelude::Distribution, rngs::StdRng, SeedableRng};
-use tensorken::{CpuRawTensor, Diffable, DiffableExt, IndexValue, Tensor};
+use tensorken::{Cpu32, Diffable, DiffableExt, IndexValue, Tensor};
 
 // This example shows the first half of the first of Karpathy's from zero-to-hero tutorials on makemomre.
 // It builds a bigram, character-level language model from a set of names.
@@ -39,6 +40,8 @@ fn read_names() -> Vec<String> {
     }
     names
 }
+
+type Tr = Cpu32;
 
 fn main() {
     // read and show some stats on names
@@ -81,10 +84,7 @@ fn dict_bigram(names: &[String]) {
     println!("bigram_counts: {:?}", &bigrams_sorted_by_count[..10]);
 }
 
-type Cpu = CpuRawTensor<f32>;
-// type Gpu<'a> = WgpuRawTensor<'a, f32>;
-
-fn pretty_print_bigram(tensor: &Tensor<Cpu>, itos: &HashMap<usize, char>, prec: usize) {
+fn pretty_print_bigram(tensor: &Tr, itos: &HashMap<usize, char>, prec: usize) {
     let mut table = Table::new();
     for row in 0..tensor.shape()[0] {
         let mut table_row = Row::empty();
@@ -102,7 +102,7 @@ fn pretty_print_bigram(tensor: &Tensor<Cpu>, itos: &HashMap<usize, char>, prec: 
 }
 
 // Candidate for addition to Tensorken.
-fn multinouilli_sample(tensor: &Tensor<Cpu>, row: usize, rng: &mut StdRng) -> usize {
+fn multinouilli_sample(tensor: &Tr, row: usize, rng: &mut StdRng) -> usize {
     // Purely on a rand usage basis, I should only make the WeightedIndex once per row.
     // Also, all this copying out should not be necessary. Maybe contiguous tensors could
     // have a method that returns a slice of the underlying data? Or an iterator, more generally?
@@ -139,7 +139,7 @@ fn tensor_bigram(names: &[String]) {
 
     // Create a tensor to store bigram counts.
     // This is a mutable tensor, so it doesn't make sense to use any other backend.
-    let mut bigrams_mut = Tensor::<Cpu>::zeros(&[27, 27]).to_tensor_mut();
+    let mut bigrams_mut = Cpu32::zeros(&[27, 27]).to_tensor_mut();
 
     for name in names {
         let chars: Vec<_> = format!(".{name}.").chars().collect();
@@ -150,7 +150,7 @@ fn tensor_bigram(names: &[String]) {
         }
     }
 
-    let bigrams = bigrams_mut.to_tensor::<Cpu>();
+    let bigrams = bigrams_mut.to_tensor();
 
     // I could import a plotting library, but I'll just pretty print the tensor.
     // No heatmaps for us...I spent a bit of time looking for a terminal-based heatmap :) but came up empty.
@@ -165,7 +165,7 @@ fn tensor_bigram(names: &[String]) {
     let bigrams = &bigrams / &bigrams.sum(&[1]);
     pretty_print_bigram(&bigrams, &itos, 4);
 
-    // Now let's do some predictions.
+    // Now let's make some predictions.
     let mut rng = StdRng::seed_from_u64(2_147_483_647);
     for _ in 0..5 {
         let mut out = Vec::new();
@@ -185,12 +185,18 @@ fn tensor_bigram(names: &[String]) {
     // of all the memory transfers involved in at calls.
     let mut log_likelihood = 0.0;
     let mut n = 0;
+
+    // You can use tensor slice index, but it's much slower, because
+    // those operations are AD-able. Instead, just transfer the data to
+    // a TensorMut.
+    let bg = bigrams.to_tensor_mut();
+
     for name in names {
         let chars: Vec<_> = format!(".{name}.").chars().collect();
         for bigram in chars.windows(2) {
             let i = stoi[&bigram[0]];
             let j = stoi[&bigram[1]];
-            let prob = bigrams.at(&[i, j]).to_scalar();
+            let prob = bg[&[i, j]];
             let log_prob = prob.log(E);
             log_likelihood += log_prob;
             n += 1;
