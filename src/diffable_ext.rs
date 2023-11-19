@@ -207,32 +207,32 @@ where
     // math
     #[must_use]
     fn add(&self, other: &Self) -> Self {
-        broadcasted_apply(self, other, |a, b| a.elementwise_add(b), false)
+        broadcasted_apply(self, other, Diffable::elementwise_add, false)
     }
 
     #[must_use]
     fn sub(&self, other: &Self) -> Self {
-        broadcasted_apply(self, other, |a, b| a.elementwise_sub(b), false)
+        broadcasted_apply(self, other, Diffable::elementwise_sub, false)
     }
 
     #[must_use]
     fn mul(&self, other: &Self) -> Self {
-        broadcasted_apply(self, other, |a, b| a.elementwise_mul(b), false)
+        broadcasted_apply(self, other, Diffable::elementwise_mul, false)
     }
 
     #[must_use]
     fn div(&self, other: &Self) -> Self {
-        broadcasted_apply(self, other, |a, b| a.elementwise_div(b), false)
+        broadcasted_apply(self, other, Diffable::elementwise_div, false)
     }
 
     #[must_use]
     fn pow(&self, other: &Self) -> Self {
-        broadcasted_apply(self, other, |a, b| a.elementwise_pow(b), false)
+        broadcasted_apply(self, other, Diffable::elementwise_pow, false)
     }
 
     #[must_use]
     fn eq(&self, other: &Self) -> Self {
-        broadcasted_apply(self, other, |a, b| a.elementwise_eq(b), false)
+        broadcasted_apply(self, other, Diffable::elementwise_eq, false)
     }
 
     #[must_use]

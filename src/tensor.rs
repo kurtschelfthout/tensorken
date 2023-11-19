@@ -25,6 +25,7 @@ impl<T: Num, TTensor: RawTensor<Elem = T>> Diffable for TTensor {
     fn log(&self) -> Self {
         self.log()
     }
+
     fn exp(&self) -> Self {
         self.exp()
     }

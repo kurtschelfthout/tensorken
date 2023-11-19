@@ -21,7 +21,7 @@ fn assert_vec_eq(a: &[f32], b: &[f32]) {
 #[allow(clippy::similar_names)]
 fn test_df<'t, RT: 't + RealizedRawTensor<Elem = f32> + Clone + Debug, F, G, H>(f: F, df: G, ft: H)
 where
-    for<'a> F: Fn(&'a Forward<'a, 't, Tensor<RT>>) -> Forward<'a, 't, Tensor<RT>>,
+    for<'a> F: Fn(&'a Forward<Tensor<RT>>) -> Forward<Tensor<RT>>,
     for<'a> G: Fn(&'a Tensor<RT>) -> Tensor<RT>, // G & H are identical, but if we want to pass closures,
     for<'a> H: Fn(&'a Tensor<RT>) -> Tensor<RT>, // we need to use two different types.
 {
@@ -46,9 +46,7 @@ where
 #[allow(clippy::similar_names)]
 fn test_ddf<RT: RealizedRawTensor<Elem = f32> + Clone + Debug, F, G, H>(f: F, ddf: G, dft: H)
 where
-    for<'a, 't, 'b, 'tt> F: Fn(
-        &'a Forward<'a, 't, Forward<'b, 'tt, Tensor<RT>>>,
-    ) -> Forward<'a, 't, Forward<'b, 'tt, Tensor<RT>>>,
+    for<'a, 't, 'b, 'tt> F: Fn(&'a Forward<Forward<Tensor<RT>>>) -> Forward<Forward<Tensor<RT>>>,
     for<'a> G: Fn(&'a Tensor<RT>) -> Tensor<RT>,
     for<'a> H: Fn(&'a Tensor<RT>) -> Tensor<RT>,
 {
@@ -70,10 +68,7 @@ fn test_df_2<RT: RealizedRawTensor<Elem = f32> + Clone + Debug, F, H, GA, GB>(
     dfda: GA,
     dfdb: GB,
 ) where
-    for<'a, 't> F: Fn(
-        &'a Forward<'a, 't, Tensor<RT>>,
-        &'a Forward<'a, 't, Tensor<RT>>,
-    ) -> Forward<'a, 't, Tensor<RT>>,
+    for<'a, 't> F: Fn(&'a Forward<Tensor<RT>>, &'a Forward<Tensor<RT>>) -> Forward<Tensor<RT>>,
     for<'a> GA: Fn(&'a Tensor<RT>, &'a Tensor<RT>) -> Tensor<RT>,
     for<'a> GB: Fn(&'a Tensor<RT>, &'a Tensor<RT>) -> Tensor<RT>,
     for<'a> H: Fn(&'a Tensor<RT>, &'a Tensor<RT>) -> Tensor<RT>,
@@ -525,19 +520,27 @@ fn test_matmul() {
 fn do_test_matmul<RT: RealizedRawTensor<Elem = f32> + Clone + Debug>() {
     let a: Tensor<RT> = Tensor::new(&[2, 3], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
     let b: Tensor<RT> = Tensor::new(&[3, 2], &[7.0, 8.0, 9.0, 10.0, 11.0, 12.0]);
-
-    let (primals, pushforward) = jvpn(|ab| f_matmul(&ab[0], &ab[1]), &[&a, &b]);
-    assert_eq!(primals.shape(), &[2, 2]);
-    assert_eq!(primals.ravel(), &[58.0, 64.0, 139.0, 154.0]);
-
     let tangent_a: Tensor<RT> = a.constant_like(2.0);
     let tangent_b: Tensor<RT> = b.zeros_like();
-    let df = pushforward.call(&[&tangent_a, &tangent_b]);
+
+    let (primals, df) = jvpn(
+        |ab| f_matmul(&ab[0], &ab[1]),
+        &[&a, &b],
+        &[&tangent_a, &tangent_b],
+    );
+    assert_eq!(primals.shape(), &[2, 2]);
+    assert_eq!(primals.ravel(), &[58.0, 64.0, 139.0, 154.0]);
     assert_eq!(df.ravel(), tangent_a.matmul(&b).ravel());
 
     let tangent_a: Tensor<RT> = b.zeros_like();
     let tangent_b: Tensor<RT> = b.constant_like(2.0);
-    let df = pushforward.call(&[&tangent_a, &tangent_b]);
+    let (primals, df) = jvpn(
+        |ab| f_matmul(&ab[0], &ab[1]),
+        &[&a, &b],
+        &[&tangent_a, &tangent_b],
+    );
+    assert_eq!(primals.shape(), &[2, 2]);
+    assert_eq!(primals.ravel(), &[58.0, 64.0, 139.0, 154.0]);
     assert_eq!(df.ravel(), a.matmul(&tangent_b).ravel());
 }
 

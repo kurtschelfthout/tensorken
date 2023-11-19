@@ -1,7 +1,4 @@
 #![warn(clippy::pedantic)]
-// Gives many wrong warnings e.g. for vjp calls.
-// Doesn't realize that those need a closure for the HRTB.
-#![allow(clippy::redundant_closure_for_method_calls)]
 
 mod ad_forward;
 mod ad_forward_ops;
@@ -26,7 +23,6 @@ pub mod tensor_mut;
 mod wgpu_context;
 pub use ad_forward::{
     diff1, diff2, jacfwd, jvpn, value_and_diff1, value_and_diff2, value_and_diffn, Forward,
-    PushForward,
 };
 pub use ad_reverse::{
     grad1, grad2, jacrev, value_and_grad1, value_and_grad2, value_and_gradn, vjpn, PullBack,
@@ -46,3 +42,4 @@ pub use tensor::{
 // TODO of general interest
 // - Make vjp and jvp and friends all be N-to-N arguments instead of N-to-1.
 // - Treat zero and one as a special case for efficiency (also avoids NaNs, see jvp_test for pow). Maybe as a RawTensor implementation like Fuse.
+// - Try a jax style vmap implementation of Diffable
