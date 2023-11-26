@@ -1,6 +1,6 @@
 use rand::{rngs::StdRng, SeedableRng};
 use tensorken::{
-    grad1, grad2, jacfwd, jacrev, jvpn, value_and_grad2, vjpn, Cpu32, Diffable, DiffableExt,
+    diff1, grad1, grad2, jacfwd, jacrev, jvpn, value_and_grad2, vjpn, Cpu32, Diffable, DiffableExt,
     Forward, Reverse, TensorLike, TensorLikeRef,
 };
 
@@ -183,7 +183,7 @@ fn main() {
     // ## JVPs in JAX code
 
     let v = Tr::randn(w.shape(), &mut rng);
-    // Push forward the vector `v` along `f` evaluated at `W`
+    // Push forward the vector `v` along `f` evaluated at `w`
     let (y, u) = jvpn(
         |w| predict(&w[0], &Forward::lift(&b), &Forward::lift(&inputs)),
         &[&w],
@@ -193,7 +193,7 @@ fn main() {
 
     // ## VJPs in JAX code
 
-    // Pull back the covector `u` along `f` evaluated at `W`
+    // Pull back the covector `u` along `f` evaluated at `w`
     let (y, pullback) = vjpn(
         |w| predict(&w[0], &Reverse::lift(&b), &Reverse::lift(&inputs)),
         &[&w],
@@ -201,4 +201,14 @@ fn main() {
     let u = Tr::randn(y.shape(), &mut rng);
     let v = pullback.call(&u);
     println!("y: {y}, v: {}", &v[0]);
+
+    let p = Tr::scalar(2.0);
+    let df = diff1(|x| x.tanh(), &p);
+    print!("df: {df}");
+
+    let ddf = diff1(|x| diff1(|x| x.tanh(), x), &p);
+    print!("ddf: {ddf}");
+
+    let dddf = diff1(|x| diff1(|x| diff1(|x| x.tanh(), x), x), &p);
+    print!("dddf: {dddf}");
 }

@@ -1,10 +1,10 @@
 #![warn(clippy::pedantic)]
 
 mod ad_forward;
-mod ad_forward_ops;
 mod ad_ops;
+mod ad_ops_forward;
+mod ad_ops_reverse;
 mod ad_reverse;
-mod ad_reverse_ops;
 mod ad_trace;
 mod diffable;
 mod diffable_ext;

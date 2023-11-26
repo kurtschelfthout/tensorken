@@ -4,11 +4,11 @@ use std::{
 };
 
 use crate::{
-    ad_forward_ops::{CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
     ad_ops::{
         AddOp, BinaryDiffOp, BinaryOp, DivOp, ExpOp, LogOp, MulOp, PowOp, SubOp, UnaryDiffOp,
         UnaryOp,
     },
+    ad_ops_forward::{CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
     sl2, Axes, Diffable, DiffableExt, IndexValue, Shape,
 };
 
@@ -54,21 +54,21 @@ impl<T: Diffable> Forward<T> {
         &self,
         args: &TArgs,
     ) -> Self {
-        let (op, primal) = Op::f(self.primal(), args);
+        let (primal, op) = Op::f(self.primal(), args);
         match self {
             Forward::Lift(_) => Forward::Lift(primal),
-            Forward::Forward(_, tan) => Self::Forward(primal, op.df_dfda(tan)),
+            Forward::Forward(_, tan) => Forward::Forward(primal, op.dfda(tan)),
         }
     }
 
     fn binary<Op: BinaryOp<T> + BinaryDiffOp<T>>(&self, rhs: &Self) -> Self {
-        let (op, primal) = Op::f(self.primal(), rhs.primal());
+        let (primal, op) = Op::f(self.primal(), rhs.primal());
         match (self, rhs) {
             (Forward::Lift(_), Forward::Lift(_)) => Forward::Lift(primal),
-            (Forward::Lift(_), Forward::Forward(_, tan)) => Self::Forward(primal, op.df_dfdb(tan)),
-            (Forward::Forward(_, tan), Forward::Lift(_)) => Self::Forward(primal, op.df_dfda(tan)),
+            (Forward::Lift(_), Forward::Forward(_, tan)) => Self::Forward(primal, op.dfdb(tan)),
+            (Forward::Forward(_, tan), Forward::Lift(_)) => Self::Forward(primal, op.dfda(tan)),
             (Forward::Forward(_, left), Forward::Forward(_, right)) => {
-                Self::Forward(primal, op.df_dfda(left).elementwise_add(&op.df_dfdb(right)))
+                Self::Forward(primal, op.dfda(left).elementwise_add(&op.dfdb(right)))
             }
         }
     }
@@ -152,9 +152,24 @@ crate::math_macros::impl_bin_op!(Div, div, Forward<T: Diffable + Clone>);
 
 crate::math_macros::impl_un_op!(Neg, neg, Forward<T: Diffable + Clone>);
 
+// /// Compute a forward-mode Jacobian-vector product of a function `f` evaluated at the given primals.
+// /// Returns a tuple of the result of `f` and the tangent of `f`.
+// pub fn jvp1<T: Diffable + Clone, F>(f: F, at: &T, tangent: &T) -> (T, T)
+// where
+//     for<'a> F: Fn(&'a Forward<T>) -> Forward<T>,
+// {
+//     let forward = Forward::Forward(at.clone(), tangent.clone());
+//     let result = f(&forward);
+
+//     match result {
+//         Forward::Lift(p) => (p.clone(), p.zeros_like()),
+//         Forward::Forward(p, t) => (p, t),
+//     }
+// }
+
 /// Compute a forward-mode Jacobian-vector product of a function `f` evaluated at the given primals.
 /// Returns a tuple of the result of `f` and the tangent of `f`.
-pub fn jvpn<'b, 't, T: Diffable + Clone + 't, F>(f: F, at: &[&T], tangents: &[&T]) -> (T, T)
+pub fn jvpn<T: Diffable + Clone, F>(f: F, at: &[&T], tangents: &[&T]) -> (T, T)
 where
     for<'a> F: Fn(&'a [Forward<T>]) -> Forward<T>,
 {
@@ -204,7 +219,7 @@ where
 
 /// Compute the result and the gradient of a function at the given primals.
 #[allow(clippy::missing_panics_doc)]
-pub fn value_and_diff2<'t, T: Diffable + Clone + 't, F>(f: F, at0: &T, at1: &T) -> (T, (T, T))
+pub fn value_and_diff2<T: Diffable + Clone, F>(f: F, at0: &T, at1: &T) -> (T, (T, T))
 where
     for<'a> F: Fn(&'a Forward<T>, &'a Forward<T>) -> Forward<T>,
 {
@@ -243,8 +258,8 @@ where
 
     let mut tangents: Vec<T> = Vec::with_capacity(i.shape()[1]);
     for col_idx in 0..i.shape()[1] {
-        let col = i.at(sl2(.., col_idx)).squeeze(Axes::One(1));
-        let (_, col_tangent) = jvpn(|s| f(&s[0]), &[at], &[&col]); //pushforward.call(&[&col]);
+        let col = i.at(sl2(.., col_idx)).squeeze(Axes::Axis(1));
+        let (_, col_tangent) = jvpn(|s| f(&s[0]), &[at], &[&col]);
         tangents.push(col_tangent);
     }
     let t_refs = tangents.iter().collect::<Vec<_>>();

@@ -9,7 +9,7 @@ use crate::{
         AddOp, BinaryDiffOp, BinaryOp, DivOp, ExpOp, LogOp, MulOp, PowOp, SubOp, UnaryDiffOp,
         UnaryOp,
     },
-    ad_reverse_ops::{CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
+    ad_ops_reverse::{CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
     ad_trace::{Trace, TracedOp},
     Diffable, DiffableExt, IndexValue, Shape,
 };
@@ -74,7 +74,7 @@ impl<'a, 't, T: Diffable> Reverse<'a, 't, T> {
         &self,
         args: &TArgs,
     ) -> Self {
-        let (op, primal) = Op::f(self.primal(), args);
+        let (primal, op) = Op::f(self.primal(), args);
         match self {
             Reverse::Lift(_) => Reverse::Lift(primal),
             Reverse::Reverse(trace, _, tan) => {
@@ -85,7 +85,7 @@ impl<'a, 't, T: Diffable> Reverse<'a, 't, T> {
     }
 
     fn binary<Op: BinaryOp<T> + BinaryDiffOp<T> + 't>(&self, rhs: &Self) -> Self {
-        let (op, primal) = Op::f(self.primal(), rhs.primal());
+        let (primal, op) = Op::f(self.primal(), rhs.primal());
         match (self, rhs) {
             (Reverse::Lift(_), Reverse::Lift(_)) => Reverse::Lift(primal),
             (Reverse::Lift(_), Reverse::Reverse(trace, _, idx)) => {
@@ -245,16 +245,16 @@ impl<T: Diffable + Clone> PullBack<'_, T> {
                         // We can't pop this adjoint, so we must break.
                         break;
                     }
-                    TracedOp::Unary(op, a) => adjoints_acc.update(*a, op.df_dfda(&adjoints_acc[i])),
+                    TracedOp::Unary(op, a) => adjoints_acc.update(*a, op.dfda(&adjoints_acc[i])),
                     TracedOp::Binary(op, a, b) => {
-                        adjoints_acc.update(*a, op.df_dfda(&adjoints_acc[i]));
-                        adjoints_acc.update(*b, op.df_dfdb(&adjoints_acc[i]));
+                        adjoints_acc.update(*a, op.dfda(&adjoints_acc[i]));
+                        adjoints_acc.update(*b, op.dfdb(&adjoints_acc[i]));
                     }
                     TracedOp::BinaryDA(op, a) => {
-                        adjoints_acc.update(*a, op.df_dfda(&adjoints_acc[i]));
+                        adjoints_acc.update(*a, op.dfda(&adjoints_acc[i]));
                     }
                     TracedOp::BinaryDB(op, b) => {
-                        adjoints_acc.update(*b, op.df_dfdb(&adjoints_acc[i]));
+                        adjoints_acc.update(*b, op.dfdb(&adjoints_acc[i]));
                     }
                 }
             }
@@ -276,16 +276,38 @@ impl<T: Diffable + Clone> PullBack<'_, T> {
     /// Takes a cotangent tensor with the same shape as the result of this `PullBack`'s originating vjp function,
     /// and returns a `Vec` of cotangent vectors with the same number and shapes as vjp's primals,
     /// representing the vector-Jacobian product of vjp's function evaluated at primals.
-    pub fn call(&self, adjoint: &T) -> Vec<T>
+    pub fn call(&self, cotangent: &T) -> Vec<T>
     where
         T: Diffable + Clone,
     {
         match self.index_result {
             None => self.zero_primals.clone(),
-            Some(var) => self.reverse(var, adjoint),
+            Some(var) => self.reverse(var, cotangent),
         }
     }
 }
+
+// pub fn vjp1<'b, 't, T: Diffable + Clone + 't, F>(f: F, at: &T) -> (T, PullBack<'t, T>)
+// where
+//     for<'a> F: Fn(&'a Reverse<'a, 't, T>) -> Reverse<'a, 't, T>,
+// {
+//     let trace = Trace::new();
+//     let reverse = Reverse::Reverse(&trace, at.clone(), trace.var());
+//     let result = f(&reverse);
+
+//     let index_result = result.try_get_adjoint_index();
+//     let zero_primals: Vec<_> = vec![at.zeros_like()];
+//     let primal_out_shape = result.shape().to_vec();
+//     (
+//         result.into_primal(),
+//         PullBack {
+//             trace,
+//             index_result,
+//             zero_primals,
+//             primal_out_shape,
+//         },
+//     )
+// }
 
 /// Compute a reverse-mode vector-Jacobian product of a function `f` evaluated at the given primals.
 /// Returns a tuple of the result of `f` and a `PullBack` object. `PullBack.call` can be used to

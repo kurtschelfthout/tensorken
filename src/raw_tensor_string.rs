@@ -76,3 +76,28 @@ impl RawTensor for String {
         format!("{self}.fused_multiply_add({other}, {axes:?})")
     }
 }
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn test_shape_tracks() {
+        let t1: String = RawTensor::new(&[2, 2], &[1., 2., 3., 4.]);
+        let t2: String = RawTensor::new(&[2, 2], &[5., 6., 7., 8.]);
+        let r = t1.exp().add(&t2.log());
+        assert_eq!(
+            r,
+            "(new([2, 2], [1.0, 2.0, 3.0, 4.0]).exp() + new([2, 2], [5.0, 6.0, 7.0, 8.0]).log())"
+        );
+    }
+
+    #[test]
+    fn test_symbolic() {
+        let t1: String = "A".to_string();
+        let t2: String = "B".to_string();
+        let r = t1.exp().add(&t2.log());
+        assert_eq!(r, "(A.exp() + B.log())");
+    }
+}

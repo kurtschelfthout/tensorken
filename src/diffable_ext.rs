@@ -44,7 +44,7 @@ pub(crate) fn broadcasted_apply<T: Diffable>(
 
 pub enum Axes {
     All,
-    One(usize),
+    Axis(usize),
 }
 
 /// These are operations that are based on the core Diffable operations.
@@ -148,7 +148,7 @@ where
     #[must_use]
     fn squeeze(&self, dim: Axes) -> Self {
         let mut shape = self.shape().to_vec();
-        if let Axes::One(dim) = dim {
+        if let Axes::Axis(dim) = dim {
             assert_eq!(shape[dim], 1);
             shape.remove(dim);
         } else {

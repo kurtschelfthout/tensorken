@@ -504,7 +504,7 @@ fn test_squeeze_expand_dims() {
     assert_eq!(r2.shape(), &[3, 1, 3]);
 
     let r3 = r1.squeeze(Axes::All);
-    let r4 = r1.squeeze(Axes::One(0));
+    let r4 = r1.squeeze(Axes::Axis(0));
     assert_eq!(r3.shape(), &[2, 3]);
     assert_eq!(r4.shape(), &[2, 3]);
 }
