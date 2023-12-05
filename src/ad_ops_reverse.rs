@@ -9,7 +9,7 @@ impl<TTensor: Diffable> UnaryOp<TTensor> for SumOp {
     type Args = [usize];
     fn f(a: &TTensor, axes: &Self::Args) -> (TTensor, Self) {
         let r = a.sum(axes);
-        (r, SumOp(a.shape().to_vec()))
+        (r, Self(a.shape().to_vec()))
     }
 }
 
@@ -25,7 +25,7 @@ impl<TTensor: Clone + Diffable> UnaryOp<TTensor> for MaxOp<TTensor> {
     type Args = [usize];
     fn f(a: &TTensor, axes: &Self::Args) -> (TTensor, Self) {
         let r = a.max(axes);
-        (r.clone(), MaxOp(a.clone(), r))
+        (r.clone(), Self(a.clone(), r))
     }
 }
 
@@ -61,7 +61,7 @@ impl<TTensor: Diffable> UnaryOp<TTensor> for ExpandOp {
     type Args = [usize];
     fn f(a: &TTensor, new_shape: &Self::Args) -> (TTensor, Self) {
         let r = a.expand(new_shape);
-        (r, ExpandOp(a.shape().to_vec()))
+        (r, Self(a.shape().to_vec()))
     }
 }
 
@@ -76,8 +76,8 @@ pub(crate) struct ReshapeOp(Vec<usize>);
 impl<TTensor: Diffable> UnaryOp<TTensor> for ReshapeOp {
     type Args = [usize];
     fn f(a: &TTensor, new_shape: &Self::Args) -> (TTensor, Self) {
-        let r = a.reshape(new_shape);
-        (r, ReshapeOp(a.shape().to_vec()))
+        let r: TTensor = a.reshape(new_shape);
+        (r, Self(a.shape().to_vec()))
     }
 }
 
@@ -92,7 +92,7 @@ pub(crate) struct PermuteOp(Vec<usize>);
 impl<TTensor: Diffable> UnaryOp<TTensor> for PermuteOp {
     type Args = [usize];
     fn f(a: &TTensor, order: &Self::Args) -> (TTensor, Self) {
-        (a.permute(order), PermuteOp(order.to_vec()))
+        (a.permute(order), Self(order.to_vec()))
     }
 }
 
@@ -121,7 +121,7 @@ impl<TTensor: Diffable> UnaryOp<TTensor> for PadOp {
             .zip(a.shape())
             .map(|((pl, _), s)| (*pl, pl + s))
             .collect::<Vec<_>>();
-        (r, PadOp(limits))
+        (r, Self(limits))
     }
 }
 
@@ -142,7 +142,7 @@ impl<TTensor: Diffable> UnaryOp<TTensor> for CropOp {
             .zip(a.shape())
             .map(|((l0, l1), s)| (*l0, s - l1))
             .collect::<Vec<_>>();
-        (r, CropOp(padding))
+        (r, Self(padding))
     }
 }
 
