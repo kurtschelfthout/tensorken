@@ -120,7 +120,7 @@ impl<TTensor: Diffable> UnaryOp<TTensor> for PadOp {
             .iter()
             .zip(a.shape())
             .map(|((pl, _), s)| (*pl, pl + s))
-            .collect::<Vec<_>>();
+            .collect();
         (r, Self(limits))
     }
 }
@@ -141,7 +141,7 @@ impl<TTensor: Diffable> UnaryOp<TTensor> for CropOp {
             .iter()
             .zip(a.shape())
             .map(|((l0, l1), s)| (*l0, s - l1))
-            .collect::<Vec<_>>();
+            .collect();
         (r, Self(padding))
     }
 }

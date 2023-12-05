@@ -319,7 +319,7 @@ fn do_test_exp<RT: RealizedRawTensor<Elem = f32> + Clone + Debug>() {
 }
 
 fn all_axes(shape: &[usize]) -> Vec<usize> {
-    (0..shape.len()).collect::<Vec<_>>()
+    (0..shape.len()).collect()
 }
 
 fn f_sum<'t, T>(a: &'t T) -> T
