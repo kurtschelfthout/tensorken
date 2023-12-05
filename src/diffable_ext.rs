@@ -89,12 +89,13 @@ where
     /// Create a new 1D tensor with `num` values linearly spaced between `start` and `end`.
     fn linspace(start: Self::Elem, end: Self::Elem, num: usize) -> Self {
         let mut data = Vec::with_capacity(num);
-        let step = if num > 1 {
-            let nf: Self::Elem = Self::Elem::from_usize(num);
-            (end - start) / (nf - Self::Elem::ONE)
-        } else {
-            Self::Elem::ZERO
-        };
+        let step =
+            if num > 1 {
+                let nf: Self::Elem = Self::Elem::from_usize(num);
+                (end - start) / (nf - Self::Elem::ONE)
+            } else {
+                Self::Elem::ZERO
+            };
         for i in 0..num {
             data.push(start + step * Self::Elem::from_usize(i));
         }
