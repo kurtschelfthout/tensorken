@@ -31,35 +31,35 @@ pub enum Forward<'a, 't, T> {
 impl<T> Forward<'_, '_, T> {
     fn into_primal(self) -> T {
         match self {
-            Forward::Lift(x) | Forward::Forward(_, x, _) => x,
+            Self::Lift(x) | Self::Forward(_, x, _) => x,
         }
     }
 
     pub fn primal(&self) -> &T {
         match self {
-            Forward::Lift(x) | Forward::Forward(_, x, _) => x,
+            Self::Lift(x) | Self::Forward(_, x, _) => x,
         }
     }
 
     fn try_get_adjoint_index(&self) -> Option<usize> {
         match self {
-            Forward::Forward(_, _, i) => Some(*i),
-            Forward::Lift(_) => None,
+            Self::Forward(_, _, i) => Some(*i),
+            Self::Lift(_) => None,
         }
     }
 }
 
 impl<T: Clone> Forward<'_, '_, T> {
     pub fn lift(x: &T) -> Self {
-        Forward::Lift(x.clone())
+        Self::Lift(x.clone())
     }
 }
 
 impl<T: Debug> Debug for Forward<'_, '_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Forward::Lift(x) => write!(f, "Lift({x:?})"),
-            Forward::Forward(_, x, i) => write!(f, "Forward(_, {x:?}, {i})"),
+            Self::Lift(x) => write!(f, "Lift({x:?})"),
+            Self::Forward(_, x, i) => write!(f, "Forward(_, {x:?}, {i})"),
         }
     }
 }
@@ -142,7 +142,7 @@ impl<T: Clone + Diffable> Diffable for Forward<'_, '_, T> {
     }
 
     fn elementwise_eq(&self, other: &Self) -> Self {
-        Forward::Lift(self.primal().elementwise_eq(other.primal()))
+        Self::Lift(self.primal().elementwise_eq(other.primal()))
     }
 
     fn sum(&self, axes: &[usize]) -> Self {
