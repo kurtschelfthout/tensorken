@@ -141,7 +141,7 @@ impl<T: Clone + Diffable> Diffable for Forward<T> {
     }
 
     fn new(shape: &[usize], data: &[Self::Elem]) -> Self {
-        Forward::Lift(T::new(shape, data))
+        Self::Lift(T::new(shape, data))
     }
 }
 

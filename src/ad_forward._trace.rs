@@ -71,9 +71,9 @@ impl<T: PartialEq> PartialEq for Forward<'_, '_, T> {
 }
 
 impl<'a, 't, T: Diffable> Forward<'a, 't, T> {
-    fn push_op(trace: &'a Trace<'t, T>, primal: T, op: TracedOp<'t, T>) -> Forward<'a, 't, T> {
+    fn push_op(trace: &'a Trace<'t, T>, primal: T, op: TracedOp<'t, T>) -> Self {
         let idx = trace.push_op(op);
-        Forward::Forward(trace, primal, idx)
+        Self::Forward(trace, primal, idx)
     }
 
     fn unary<Op: UnaryOp<T, Args = TArgs> + UnaryDiffOp<T> + 't, TArgs: ?Sized>(
@@ -82,8 +82,8 @@ impl<'a, 't, T: Diffable> Forward<'a, 't, T> {
     ) -> Self {
         let (op, primal) = Op::f(self.primal(), args);
         match self {
-            Forward::Lift(_) => Forward::Lift(primal),
-            Forward::Forward(trace, _, tan) => {
+            Self::Lift(_) => Self::Lift(primal),
+            Self::Forward(trace, _, tan) => {
                 let op = TracedOp::Unary(Box::new(op), *tan);
                 Self::push_op(trace, primal, op)
             }
@@ -93,16 +93,16 @@ impl<'a, 't, T: Diffable> Forward<'a, 't, T> {
     fn binary<Op: BinaryOp<T> + BinaryDiffOp<T> + 't>(&self, rhs: &Self) -> Self {
         let (op, primal) = Op::f(self.primal(), rhs.primal());
         match (self, rhs) {
-            (Forward::Lift(_), Forward::Lift(_)) => Forward::Lift(primal),
-            (Forward::Lift(_), Forward::Forward(trace, _, idx)) => {
+            (Self::Lift(_), Self::Lift(_)) => Self::Lift(primal),
+            (Self::Lift(_), Self::Forward(trace, _, idx)) => {
                 let op = TracedOp::BinaryDB(Box::new(op), *idx);
                 Self::push_op(trace, primal, op)
             }
-            (Forward::Forward(trace, _, idx), Forward::Lift(_)) => {
+            (Self::Forward(trace, _, idx), Self::Lift(_)) => {
                 let op = TracedOp::BinaryDA(Box::new(op), *idx);
                 Self::push_op(trace, primal, op)
             }
-            (Forward::Forward(left_trace, _, left), Forward::Forward(right_trace, _, right)) => {
+            (Self::Forward(left_trace, _, left), Self::Forward(right_trace, _, right)) => {
                 assert!(ptr::eq(*left_trace, *right_trace), "traces must be the same - likely perturbation confusion. Are lifts in the right place?");
                 let op = TracedOp::Binary(Box::new(op), *left, *right);
                 Self::push_op(left_trace, primal, op)

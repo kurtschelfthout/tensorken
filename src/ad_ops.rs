@@ -33,7 +33,7 @@ pub(crate) struct AddOp;
 
 impl<TTensor: Clone + Diffable> BinaryOp<TTensor> for AddOp {
     fn f(a: &TTensor, b: &TTensor) -> (TTensor, Self) {
-        (a.elementwise_add(b), AddOp)
+        (a.elementwise_add(b), Self)
     }
 }
 
@@ -51,7 +51,7 @@ pub(crate) struct MulOp<TTensor>(TTensor, TTensor);
 
 impl<TTensor: Clone + Diffable> BinaryOp<TTensor> for MulOp<TTensor> {
     fn f(a: &TTensor, b: &TTensor) -> (TTensor, Self) {
-        (a.elementwise_mul(b), MulOp(a.clone(), b.clone()))
+        (a.elementwise_mul(b), Self(a.clone(), b.clone()))
     }
 }
 
@@ -69,7 +69,7 @@ pub(crate) struct SubOp;
 
 impl<TTensor: Clone + Diffable> BinaryOp<TTensor> for SubOp {
     fn f(a: &TTensor, b: &TTensor) -> (TTensor, Self) {
-        (a.elementwise_sub(b), SubOp)
+        (a.elementwise_sub(b), Self)
     }
 }
 
@@ -87,7 +87,7 @@ pub(crate) struct DivOp<TTensor>(TTensor, TTensor);
 
 impl<TTensor: Clone + Diffable> BinaryOp<TTensor> for DivOp<TTensor> {
     fn f(a: &TTensor, b: &TTensor) -> (TTensor, Self) {
-        (a.elementwise_div(b), DivOp(a.clone(), b.clone()))
+        (a.elementwise_div(b), Self(a.clone(), b.clone()))
     }
 }
 
@@ -110,7 +110,7 @@ pub(crate) struct PowOp<TTensor>(TTensor, TTensor, TTensor);
 impl<TTensor: Clone + Diffable> BinaryOp<TTensor> for PowOp<TTensor> {
     fn f(a: &TTensor, b: &TTensor) -> (TTensor, Self) {
         let r = a.elementwise_pow(b);
-        (r.clone(), PowOp(a.clone(), b.clone(), r))
+        (r.clone(), Self(a.clone(), b.clone(), r))
     }
 }
 
