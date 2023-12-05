@@ -13,11 +13,11 @@ pub(crate) enum TracedOp<'t, TTensor: 't> {
 impl<T> Debug for TracedOp<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TracedOp::Var => write!(f, "Var"),
-            TracedOp::Unary(_, i) => write!(f, "Unary(_, {i})"),
-            TracedOp::Binary(_, i, j) => write!(f, "Binary(_, {i}, {j})"),
-            TracedOp::BinaryDA(_, i) => write!(f, "BinaryL(_, {i})"),
-            TracedOp::BinaryDB(_, i) => write!(f, "BinaryR(_, {i})"),
+            Self::Var => write!(f, "Var"),
+            Self::Unary(_, i) => write!(f, "Unary(_, {i})"),
+            Self::Binary(_, i, j) => write!(f, "Binary(_, {i}, {j})"),
+            Self::BinaryDA(_, i) => write!(f, "BinaryL(_, {i})"),
+            Self::BinaryDB(_, i) => write!(f, "BinaryR(_, {i})"),
         }
     }
 }
@@ -30,7 +30,7 @@ pub struct Trace<'t, TTensor> {
 impl<'t, TTensor> Trace<'t, TTensor> {
     #[must_use]
     pub fn new() -> Self {
-        Trace {
+        Self {
             trace: RefCell::new(vec![]),
         }
     }
@@ -53,6 +53,6 @@ impl<'t, TTensor> Trace<'t, TTensor> {
 
 impl<T: Default> Default for Trace<'_, T> {
     fn default() -> Self {
-        Trace::new()
+        Self::new()
     }
 }

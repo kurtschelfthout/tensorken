@@ -23,7 +23,7 @@ impl<T> Fuse<T> {
 
 impl<TRaw: RawTensor + Clone + 'static> Fuse<TRaw> {
     fn from_raw_tensor(raw_tensor: TRaw) -> Self {
-        Fuse::new(move |ctx| match ctx {
+        Self::new(move |ctx| match ctx {
             FuseCtx::Sum(axes2) => raw_tensor.sum(axes2),
             FuseCtx::NotSum => raw_tensor.clone(),
         })
@@ -91,7 +91,7 @@ impl<TRaw: RawTensor + Clone + 'static> RawTensor for Fuse<TRaw> {
         let f_lhs = Rc::clone(&self.0);
         let f_rhs = Rc::clone(&other.0);
         let nextctx = FuseCtx::NotSum;
-        Fuse::new(move |ctx| match ctx {
+        Self::new(move |ctx| match ctx {
             FuseCtx::Sum(axes) => f_lhs(&nextctx).fused_multiply_add(&f_rhs(&nextctx), axes),
             FuseCtx::NotSum => f_lhs(&nextctx).mul(&f_rhs(&nextctx)),
         })
@@ -112,7 +112,7 @@ impl<TRaw: RawTensor + Clone + 'static> RawTensor for Fuse<TRaw> {
     fn sum(&self, axes: &[usize]) -> Self {
         let f = Rc::clone(&self.0);
         let my_axes = axes.to_vec();
-        Fuse::new(move |ctx| match ctx {
+        Self::new(move |ctx| match ctx {
             FuseCtx::Sum(sum_axes) => f(&FuseCtx::Sum(combine_axes(&my_axes, sum_axes))),
             FuseCtx::NotSum => f(&FuseCtx::Sum(my_axes.clone())),
         })
@@ -162,7 +162,7 @@ impl<TRaw: RawTensor + Clone + 'static> RawTensor for Fuse<TRaw> {
         let f_rhs = Rc::clone(&other.0);
         let nextctx = FuseCtx::NotSum;
         let my_axes = axes.to_vec();
-        Fuse::new(move |ctx| match ctx {
+        Self::new(move |ctx| match ctx {
             FuseCtx::Sum(axes) => {
                 f_lhs(&nextctx).fused_multiply_add(&f_rhs(&nextctx), &combine_axes(&my_axes, axes))
             }

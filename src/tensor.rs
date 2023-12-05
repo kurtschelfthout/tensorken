@@ -87,7 +87,7 @@ impl<T: Num, TTensor: RawTensor<Elem = T>> Diffable for TTensor {
     }
 
     fn new(shape: &[usize], data: &[Self::Elem]) -> Self {
-        TTensor::new(shape, data)
+        Self::new(shape, data)
     }
 }
 
@@ -110,7 +110,7 @@ impl<T: Num, TRawTensor: RealizedRawTensor<Elem = T>> Tensor<TRawTensor> {
 
     /// Create a new Tensor that has any lazy operations realized.
     pub fn realize(&self) -> Self {
-        Tensor(self.0.realize())
+        Self(self.0.realize())
     }
 
     /// Create a new [`CpuRawTensor`] with self's shape and elements.
@@ -162,77 +162,77 @@ impl<T: Diffable> Diffable for Tensor<T> {
 
     /// Apply the natural logarithm to each element.
     fn log(&self) -> Self {
-        Tensor(self.0.log())
+        Self(self.0.log())
     }
 
     /// Apply exp to each element.
     fn exp(&self) -> Self {
-        Tensor(self.0.exp())
+        Self(self.0.exp())
     }
 
     fn elementwise_add(&self, other: &Self) -> Self {
-        Tensor(self.0.elementwise_add(&other.0))
+        Self(self.0.elementwise_add(&other.0))
     }
 
     fn elementwise_sub(&self, other: &Self) -> Self {
-        Tensor(self.0.elementwise_sub(&other.0))
+        Self(self.0.elementwise_sub(&other.0))
     }
 
     fn elementwise_mul(&self, other: &Self) -> Self {
-        Tensor(self.0.elementwise_mul(&other.0))
+        Self(self.0.elementwise_mul(&other.0))
     }
 
     fn elementwise_div(&self, other: &Self) -> Self {
-        Tensor(self.0.elementwise_div(&other.0))
+        Self(self.0.elementwise_div(&other.0))
     }
 
     /// Raise self to the power of other, element-wise.
     fn elementwise_pow(&self, exp: &Self) -> Self {
-        Tensor(self.0.elementwise_pow(&exp.0))
+        Self(self.0.elementwise_pow(&exp.0))
     }
 
     // Return a new tensor with ones where elements are equal, and zero otherwise.
     fn elementwise_eq(&self, other: &Self) -> Self {
-        Tensor(self.0.elementwise_eq(&other.0))
+        Self(self.0.elementwise_eq(&other.0))
     }
 
     /// Reduce to sum along the given axes.
     /// Keeps the reduced dimensions, but with size 1.
     fn sum(&self, axes: &[usize]) -> Self {
-        Tensor(self.0.sum(axes))
+        Self(self.0.sum(axes))
     }
 
     /// Reduce to max element along the given axes.
     /// Keeps the reduced dimensions, but with size 1.
     fn max(&self, axes: &[usize]) -> Self {
-        Tensor(self.0.max(axes))
+        Self(self.0.max(axes))
     }
 
     /// Reshape the tensor to the given shape.
     /// The number of elements must remain the same.
     /// Compare to numpy's `reshape`.
     fn reshape(&self, shape: &[usize]) -> Self {
-        Tensor(self.0.reshape(shape))
+        Self(self.0.reshape(shape))
     }
 
     /// Changes axes around according to the given permutation.
     /// Compare to numpy's `transpose`.
     fn permute(&self, dims: &[usize]) -> Self {
-        Tensor(self.0.permute(dims))
+        Self(self.0.permute(dims))
     }
 
     /// Expand the tensor to the given shape. Only dimensions of length 1 can be expanded.
     /// Like numpy's `broadcast_to` but simpler - does not add dimensions of size 1.
     fn expand(&self, shape: &[usize]) -> Self {
-        Tensor(self.0.expand(shape))
+        Self(self.0.expand(shape))
     }
 
     fn pad(&self, padding: &[(usize, usize)]) -> Self {
-        Tensor(self.0.pad(padding))
+        Self(self.0.pad(padding))
     }
 
     fn crop(&self, limits: &[(usize, usize)]) -> Self {
-        Tensor(self.0.crop(limits))
+        Self(self.0.crop(limits))
     }
 
     fn shape(&self) -> &[usize] {
@@ -240,7 +240,7 @@ impl<T: Diffable> Diffable for Tensor<T> {
     }
 
     fn new(shape: &[usize], data: &[Self::Elem]) -> Self {
-        Tensor(T::new(shape, data))
+        Self(T::new(shape, data))
     }
 }
 

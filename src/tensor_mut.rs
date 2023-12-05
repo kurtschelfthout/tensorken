@@ -31,7 +31,7 @@ impl<T: Num> TensorMut<T> {
     pub fn new<RT: RealizedRawTensor<Elem = T>>(from: &Tensor<RT>) -> Self {
         let buffer = from.ravel();
         let strider = ShapeStrider::contiguous(from.shape());
-        TensorMut { buffer, strider }
+        Self { buffer, strider }
     }
 
     /// Create a new tensor with the given shape and elements.
