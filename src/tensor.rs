@@ -138,7 +138,7 @@ impl<T: Num, TRawTensor: RealizedRawTensor<Elem = T>> Tensor<TRawTensor> {
         for (i, &x) in self.ravel().iter().enumerate() {
             data[i * num_classes + x.to_usize()] = T::ONE;
         }
-        let mut new_shape = Vec::new();
+        let mut new_shape = vec![];
         new_shape.extend(self.shape());
         new_shape.push(num_classes);
         Self::new(&new_shape, &data)
@@ -416,13 +416,8 @@ impl<T: Diffable, const N: usize> IndexValue<&[usize; N]> for Tensor<T> {
 
     /// Returns the tensor at the given index. There must be at most as many indices as dimensions.
     fn at(&self, index: &[usize; N]) -> Self::Output {
-        let mut limits = index.iter().map(|&i| (i, i + 1)).collect::<Vec<_>>();
-        let mut new_shape = self
-            .shape()
-            .iter()
-            .copied()
-            .skip(limits.len())
-            .collect::<Vec<_>>();
+        let mut limits: Vec<_> = index.iter().map(|&i| (i, i + 1)).collect();
+        let mut new_shape: Vec<_> = self.shape().iter().copied().skip(limits.len()).collect();
         if new_shape.is_empty() {
             new_shape.push(1);
         };

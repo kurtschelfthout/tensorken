@@ -20,12 +20,12 @@ pub(crate) fn broadcasted_apply<T: Diffable>(
     }
 
     if lhs.shape().ndims() == rhs.shape().ndims() {
-        let res_shape = lhs
+        let res_shape: Vec<_> = lhs
             .shape()
             .iter()
             .zip(rhs.shape().iter())
             .map(|(a, b)| *a.max(b))
-            .collect::<Vec<_>>();
+            .collect();
         let lhs_expanded = lhs.expand(&res_shape);
         let rhs_expanded = rhs.expand(&res_shape);
         return if reverse {
@@ -138,7 +138,7 @@ where
     /// Switch the two axes around.
     #[must_use]
     fn transpose(&self, axis0: usize, axis1: usize) -> Self {
-        let mut axes = (0..self.shape().ndims()).collect::<Vec<_>>();
+        let mut axes: Vec<_> = (0..self.shape().ndims()).collect();
         axes.swap(axis0, axis1);
         self.permute(&axes)
     }
@@ -198,10 +198,7 @@ where
 
     fn stack(tensors: &[&Self], axis: usize) -> Self {
         assert!(!tensors.is_empty(), "stack: no tensors given");
-        let ts = tensors
-            .iter()
-            .map(|t| t.expand_dims(axis))
-            .collect::<Vec<_>>();
+        let ts: Vec<_> = tensors.iter().map(|t| t.expand_dims(axis)).collect();
         Self::concatenate(&ts.iter().collect::<Vec<_>>(), axis)
     }
 

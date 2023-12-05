@@ -191,7 +191,7 @@ pub fn value_and_diffn<T: Diffable + Clone, F>(f: F, at: &[&T]) -> (T, Vec<T>)
 where
     for<'a> F: Fn(&'a [Forward<T>]) -> Forward<T>,
 {
-    let args = at.iter().map(|&ati| ati.zeros_like()).collect::<Vec<_>>();
+    let args: Vec<_> = at.iter().map(|&ati| ati.zeros_like()).collect();
 
     let (primal, _) = jvpn(&f, at, &args.iter().collect::<Vec<_>>());
     let mut tangents = Vec::with_capacity(at.len());
@@ -262,6 +262,6 @@ where
         let (_, col_tangent) = jvpn(|s| f(&s[0]), &[at], &[&col]);
         tangents.push(col_tangent);
     }
-    let t_refs = tangents.iter().collect::<Vec<_>>();
+    let t_refs: Vec<_> = tangents.iter().collect();
     T::stack(&t_refs, 1)
 }

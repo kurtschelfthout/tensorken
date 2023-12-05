@@ -272,10 +272,10 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
             }
         }
 
-        let contents_u32 = contents
+        let contents_u32: Vec<u32> = contents
             .iter()
             .map(|x| u32::try_from(*x).unwrap())
-            .collect::<Vec<u32>>();
+            .collect();
 
         let buffer = self
             .device()

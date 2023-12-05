@@ -407,6 +407,6 @@ where
         let row_tangent = pullback.call(&row).into_iter().next().unwrap();
         tangents.push(row_tangent);
     }
-    let t_refs = tangents.iter().collect::<Vec<_>>();
+    let t_refs: Vec<_> = tangents.iter().collect();
     T::stack(&t_refs[..], 0)
 }

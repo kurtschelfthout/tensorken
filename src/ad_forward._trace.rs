@@ -382,6 +382,6 @@ where
         let col_tangent = pushforward.call(&[&col]);
         tangents.push(col_tangent);
     }
-    let t_refs = tangents.iter().collect::<Vec<_>>();
+    let t_refs: Vec<_> = tangents.iter().collect();
     T::stack(&t_refs, 1)
 }

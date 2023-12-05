@@ -33,7 +33,7 @@ fn read_names() -> Vec<String> {
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
 
-    let mut names = Vec::new();
+    let mut names = vec![];
     for line in contents.lines() {
         names.push(line.to_ascii_lowercase());
     }
@@ -117,7 +117,7 @@ fn main() {
     // and finally we can sample some names from the model
     let mut rng = StdRng::seed_from_u64(2_147_483_647);
     for _ in 0..50 {
-        let mut out = Vec::new();
+        let mut out = vec![];
         let mut ix = 0;
         loop {
             let xenc = Tr::full(&[1], ix as f32).one_hot(27);
@@ -139,30 +139,23 @@ fn create_training_set(names: &[String]) -> (Tr, Tr, HashMap<usize, char>) {
     // this first part is the same as `tensor_bigram`.
 
     // Get all the unique characters in names.
-    let mut chars = names
+    let mut chars: Vec<_> = names
         .iter()
         .flat_map(|name| name.chars())
         .collect::<HashSet<_>>()
         .into_iter()
-        .collect::<Vec<_>>();
+        .collect();
     chars.sort_unstable();
 
     // Create a mapping from characters to indices, leaving room for the start/end token '.'
-    let mut stoi = chars
-        .iter()
-        .enumerate()
-        .map(|(i, c)| (*c, i + 1))
-        .collect::<HashMap<_, _>>();
+    let mut stoi: HashMap<_, _> = chars.iter().enumerate().map(|(i, c)| (*c, i + 1)).collect();
     stoi.insert('.', 0);
 
     // reverse index
-    let itos = stoi
-        .iter()
-        .map(|(c, i)| (*i, *c))
-        .collect::<std::collections::HashMap<_, _>>();
+    let itos: HashMap<_, _> = stoi.iter().map(|(c, i)| (*i, *c)).collect();
 
-    let mut xs = Vec::new();
-    let mut ys = Vec::new();
+    let mut xs = vec![];
+    let mut ys = vec![];
     for name in names.iter() {
         let chars: Vec<_> = format!(".{name}.").chars().collect();
         for bigram in chars.windows(2) {
