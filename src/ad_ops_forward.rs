@@ -9,7 +9,7 @@ impl<TTensor: Diffable> UnaryOp<TTensor> for SumOp {
     type Args = [usize];
     fn f(a: &TTensor, axes: &Self::Args) -> (TTensor, Self) {
         let r = a.sum(axes);
-        (r, SumOp(axes.to_vec()))
+        (r, Self(axes.to_vec()))
     }
 }
 
@@ -25,7 +25,7 @@ impl<TTensor: Clone + Diffable> UnaryOp<TTensor> for MaxOp<TTensor> {
     type Args = [usize];
     fn f(a: &TTensor, axes: &Self::Args) -> (TTensor, Self) {
         let r = a.max(axes);
-        (r.clone(), MaxOp(a.clone(), r))
+        (r.clone(), Self(a.clone(), r))
     }
 }
 
@@ -42,7 +42,7 @@ impl<TTensor: Diffable> UnaryOp<TTensor> for ExpandOp {
     type Args = [usize];
     fn f(a: &TTensor, new_shape: &Self::Args) -> (TTensor, Self) {
         let r = a.expand(new_shape);
-        (r, ExpandOp(new_shape.to_vec()))
+        (r, Self(new_shape.to_vec()))
     }
 }
 
@@ -58,7 +58,7 @@ impl<TTensor: Diffable> UnaryOp<TTensor> for ReshapeOp {
     type Args = [usize];
     fn f(a: &TTensor, new_shape: &Self::Args) -> (TTensor, Self) {
         let r = a.reshape(new_shape);
-        (r, ReshapeOp(new_shape.to_vec()))
+        (r, Self(new_shape.to_vec()))
     }
 }
 
@@ -73,7 +73,7 @@ pub(crate) struct PermuteOp(Vec<usize>);
 impl<TTensor: Diffable> UnaryOp<TTensor> for PermuteOp {
     type Args = [usize];
     fn f(a: &TTensor, order: &Self::Args) -> (TTensor, Self) {
-        (a.permute(order), PermuteOp(order.to_vec()))
+        (a.permute(order), Self(order.to_vec()))
     }
 }
 
@@ -89,7 +89,7 @@ impl<TTensor: Diffable> UnaryOp<TTensor> for PadOp {
     type Args = [(usize, usize)];
     fn f(a: &TTensor, padding: &Self::Args) -> (TTensor, Self) {
         let r = a.pad(padding);
-        (r, PadOp(padding.to_vec()))
+        (r, Self(padding.to_vec()))
     }
 }
 
@@ -105,7 +105,7 @@ impl<TTensor: Diffable> UnaryOp<TTensor> for CropOp {
     type Args = [(usize, usize)];
     fn f(a: &TTensor, limits: &Self::Args) -> (TTensor, Self) {
         let r = a.crop(limits);
-        (r, CropOp(limits.to_vec()))
+        (r, Self(limits.to_vec()))
     }
 }
 

@@ -56,11 +56,11 @@ impl Num for f32 {
 
     #[allow(clippy::cast_precision_loss)]
     fn from_usize(n: usize) -> Self {
-        n as f32
+        n as _
     }
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     fn to_usize(self) -> usize {
-        self as usize
+        self as _
     }
 }

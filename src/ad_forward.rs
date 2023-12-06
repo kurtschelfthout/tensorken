@@ -23,22 +23,22 @@ pub enum Forward<T> {
 impl<T> Forward<T> {
     pub fn primal(&self) -> &T {
         match self {
-            Forward::Lift(x) | Forward::Forward(x, _) => x,
+            Self::Lift(x) | Self::Forward(x, _) => x,
         }
     }
 }
 
 impl<T: Clone> Forward<T> {
     pub fn lift(x: &T) -> Self {
-        Forward::Lift(x.clone())
+        Self::Lift(x.clone())
     }
 }
 
 impl<T: Debug> Debug for Forward<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Forward::Lift(x) => write!(f, "Lift({x:?})"),
-            Forward::Forward(p, x) => write!(f, "Forward({p:?}, {x:?})"),
+            Self::Lift(x) => write!(f, "Lift({x:?})"),
+            Self::Forward(p, x) => write!(f, "Forward({p:?}, {x:?})"),
         }
     }
 }
@@ -56,18 +56,18 @@ impl<T: Diffable> Forward<T> {
     ) -> Self {
         let (primal, op) = Op::f(self.primal(), args);
         match self {
-            Forward::Lift(_) => Forward::Lift(primal),
-            Forward::Forward(_, tan) => Forward::Forward(primal, op.dfda(tan)),
+            Self::Lift(_) => Self::Lift(primal),
+            Self::Forward(_, tan) => Self::Forward(primal, op.dfda(tan)),
         }
     }
 
     fn binary<Op: BinaryOp<T> + BinaryDiffOp<T>>(&self, rhs: &Self) -> Self {
         let (primal, op) = Op::f(self.primal(), rhs.primal());
         match (self, rhs) {
-            (Forward::Lift(_), Forward::Lift(_)) => Forward::Lift(primal),
-            (Forward::Lift(_), Forward::Forward(_, tan)) => Self::Forward(primal, op.dfdb(tan)),
-            (Forward::Forward(_, tan), Forward::Lift(_)) => Self::Forward(primal, op.dfda(tan)),
-            (Forward::Forward(_, left), Forward::Forward(_, right)) => {
+            (Self::Lift(_), Self::Lift(_)) => Self::Lift(primal),
+            (Self::Lift(_), Self::Forward(_, tan)) => Self::Forward(primal, op.dfdb(tan)),
+            (Self::Forward(_, tan), Self::Lift(_)) => Self::Forward(primal, op.dfda(tan)),
+            (Self::Forward(_, left), Self::Forward(_, right)) => {
                 Self::Forward(primal, op.dfda(left).elementwise_add(&op.dfdb(right)))
             }
         }
@@ -105,7 +105,7 @@ impl<T: Clone + Diffable> Diffable for Forward<T> {
     }
 
     fn elementwise_eq(&self, other: &Self) -> Self {
-        Forward::Lift(self.primal().elementwise_eq(other.primal()))
+        Self::Lift(self.primal().elementwise_eq(other.primal()))
     }
 
     fn sum(&self, axes: &[usize]) -> Self {
@@ -141,7 +141,7 @@ impl<T: Clone + Diffable> Diffable for Forward<T> {
     }
 
     fn new(shape: &[usize], data: &[Self::Elem]) -> Self {
-        Forward::Lift(T::new(shape, data))
+        Self::Lift(T::new(shape, data))
     }
 }
 
@@ -191,7 +191,7 @@ pub fn value_and_diffn<T: Diffable + Clone, F>(f: F, at: &[&T]) -> (T, Vec<T>)
 where
     for<'a> F: Fn(&'a [Forward<T>]) -> Forward<T>,
 {
-    let args = at.iter().map(|&ati| ati.zeros_like()).collect::<Vec<_>>();
+    let args: Vec<_> = at.iter().map(|&ati| ati.zeros_like()).collect();
 
     let (primal, _) = jvpn(&f, at, &args.iter().collect::<Vec<_>>());
     let mut tangents = Vec::with_capacity(at.len());
@@ -262,6 +262,6 @@ where
         let (_, col_tangent) = jvpn(|s| f(&s[0]), &[at], &[&col]);
         tangents.push(col_tangent);
     }
-    let t_refs = tangents.iter().collect::<Vec<_>>();
+    let t_refs: Vec<_> = tangents.iter().collect();
     T::stack(&t_refs, 1)
 }
