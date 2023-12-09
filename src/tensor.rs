@@ -575,7 +575,7 @@ impl<T: Diffable> IndexValue<Slice> for T {
 pub trait TensorLike<'a>:
     'a
     + Clone
-    + DiffableExt
+    + Diffable
     + Neg<Output = Self>
     + Add<Output = Self>
     + Sub<Output = Self>
@@ -591,7 +591,7 @@ pub trait TensorLike<'a>:
 impl<'a, T> TensorLike<'a> for T where
     Self: 'a
         + Clone
-        + DiffableExt
+        + Diffable
         + Neg<Output = Self>
         + Add<Output = Self>
         + Sub<Output = Self>

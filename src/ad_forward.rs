@@ -186,6 +186,13 @@ where
     }
 }
 
+// pub fn value_and_diff1_simple<T: Diffable + Clone, F>(f: F, at: &T) -> (T, T)
+// where
+//     for<'a> F: Fn(&'a Forward<T>) -> Forward<T>,
+// {
+//     jvp1(&f, at, &at.ones_like())
+// }
+
 /// Compute the result and the gradient of a function at the given primals.
 pub fn value_and_diffn<T: Diffable + Clone, F>(f: F, at: &[&T]) -> (T, Vec<T>)
 where
