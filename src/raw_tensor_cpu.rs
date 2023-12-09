@@ -206,19 +206,19 @@ impl<T: Num> RawTensor for CpuRawTensor<T> {
     }
 
     fn add(&self, other: &Self) -> Self {
-        self.zip(other, |x, y| x + y)
+        self.zip(other, T::add)
     }
 
     fn sub(&self, other: &Self) -> Self {
-        self.zip(other, |x, y| x - y)
+        self.zip(other, T::sub)
     }
 
     fn mul(&self, other: &Self) -> Self {
-        self.zip(other, |x, y| x * y)
+        self.zip(other, T::mul)
     }
 
     fn div(&self, other: &Self) -> Self {
-        self.zip(other, |x, y| x / y)
+        self.zip(other, T::div)
     }
 
     fn pow(&self, other: &Self) -> Self {

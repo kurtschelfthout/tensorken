@@ -65,14 +65,16 @@ impl WgpuContext {
         workgroup_size: WorkgroupSize,
     ) {
         const ENTRY_POINT: &str = "call";
-        let compute_pipeline = Arc::new(self.device.create_compute_pipeline(
-            &wgpu::ComputePipelineDescriptor {
-                label: Some(operation),
-                layout: None,
-                module,
-                entry_point: ENTRY_POINT,
-            },
-        ));
+        let compute_pipeline =
+            Arc::new(
+                self.device
+                    .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                        label: Some(operation),
+                        layout: None,
+                        module,
+                        entry_point: ENTRY_POINT,
+                    }),
+            );
         pipelines.insert((operation, workgroup_size), compute_pipeline);
     }
 

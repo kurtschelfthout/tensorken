@@ -34,7 +34,7 @@ fn read_names() -> Vec<String> {
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
 
-    let mut names = Vec::new();
+    let mut names = vec![];
     for line in contents.lines() {
         names.push(line.to_ascii_lowercase());
     }
@@ -68,11 +68,11 @@ fn dict_bigram(names: &[String]) {
     // create a hashmap from bigrams to number of instances of that bigram in names.
     // Tokens are letters, with added start < and end > tokens.
     // Karpathy uses <S> and <E>, which is a bit awkward since Rust splits strings into chars.
-    let mut bigram_counts = std::collections::HashMap::new();
+    let mut bigram_counts = HashMap::new();
     for name in names {
         let name = format!("<{name}>");
         for bigram in name.chars().collect::<Vec<_>>().windows(2) {
-            let bigram = bigram.iter().collect::<String>();
+            let bigram: String = bigram.iter().collect();
             *bigram_counts.entry(bigram).or_insert(0) += 1;
         }
     }
@@ -114,27 +114,20 @@ fn multinouilli_sample(tensor: &Tr, row: usize, rng: &mut StdRng) -> usize {
 #[allow(clippy::cast_precision_loss)]
 fn tensor_bigram(names: &[String]) {
     // Get all the unique characters in names.
-    let mut chars = names
+    let mut chars: Vec<_> = names
         .iter()
         .flat_map(|name| name.chars())
         .collect::<HashSet<_>>()
         .into_iter()
-        .collect::<Vec<_>>();
+        .collect();
     chars.sort_unstable();
     println!("chars: {chars:?}");
 
     // Create a mapping from characters to indices, leaving room for the start/end token '.'
-    let mut stoi = chars
-        .iter()
-        .enumerate()
-        .map(|(i, c)| (*c, i + 1))
-        .collect::<HashMap<_, _>>();
+    let mut stoi: HashMap<_, _> = chars.iter().enumerate().map(|(i, c)| (*c, i + 1)).collect();
     stoi.insert('.', 0);
     // reverse index
-    let itos = stoi
-        .iter()
-        .map(|(c, i)| (*i, *c))
-        .collect::<std::collections::HashMap<_, _>>();
+    let itos: HashMap<_, _> = stoi.iter().map(|(c, i)| (*i, *c)).collect();
     println!("stoi: {stoi:#?} \nitos: {itos:#?}");
 
     // Create a tensor to store bigram counts.
@@ -168,7 +161,7 @@ fn tensor_bigram(names: &[String]) {
     // Now let's make some predictions.
     let mut rng = StdRng::seed_from_u64(2_147_483_647);
     for _ in 0..5 {
-        let mut out = Vec::new();
+        let mut out = vec![];
         let mut ix = 0;
         loop {
             ix = multinouilli_sample(&bigrams, ix, &mut rng);

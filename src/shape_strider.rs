@@ -78,10 +78,7 @@ impl ShapeStrider {
 
     pub(crate) fn validate_can_zip(&self, other: &Self) -> Result<(), String> {
         if self.shape != other.shape {
-            return Err(format!(
-                "Shapes must match: {:?} != {:?}",
-                self.shape, other.shape
-            ));
+            return Err(format!("Shapes must match: {:?} != {:?}", self.shape, other.shape));
         }
         Ok(())
     }
@@ -330,10 +327,7 @@ impl ShapeStrider {
 
     pub(crate) fn crop(&self, limits: &[(usize, usize)]) -> ShapeStrider {
         let offset = self.buffer_index(&limits.iter().map(|&(start, _)| start).collect::<Vec<_>>());
-        let shape = limits
-            .iter()
-            .map(|&(start, end)| end - start)
-            .collect::<Vec<_>>();
+        let shape = limits.iter().map(|&(start, end)| end - start).collect();
         Self {
             shape,
             strides: self.strides.clone(),

@@ -274,15 +274,16 @@ fn do_3x2x2x3_matmul_2x3x2<T: RealizedRawTensor<Elem = f32>>(t1: &Tensor<T>, t2:
 #[test]
 fn test_matmul_1d() {
     // test multiplying with 1d tensors works on the left and right
-    let t1 = &Cpu32::new(
-        &[4, 3],
-        &[
-            1., 2., 3., //
-            4., 5., 6., //
-            7., 8., 9., //
-            10., 11., 12.,
-        ],
-    );
+    let t1 =
+        &Cpu32::new(
+            &[4, 3],
+            &[
+                1., 2., 3., //
+                4., 5., 6., //
+                7., 8., 9., //
+                10., 11., 12.,
+            ],
+        );
     let t2 = &Cpu32::new(&[3], &[1.0, 2.0, 3.0]);
     let t3 = &Cpu32::new(&[4], &[1.0, 2.0, 3.0, 4.0]);
 
@@ -359,15 +360,16 @@ fn test_dot_vs_matmul_nd_shape() {
 
 #[test]
 fn test_dot_nd() {
-    let fourbyfour = Cpu32::new(
-        &[4, 4],
-        &[
-            1., 2., 3., 4., //
-            3., 2., 1., 4., //
-            5., 4., 6., 7., //
-            11., 12., 13., 14.,
-        ],
-    );
+    let fourbyfour =
+        Cpu32::new(
+            &[4, 4],
+            &[
+                1., 2., 3., 4., //
+                3., 2., 1., 4., //
+                5., 4., 6., 7., //
+                11., 12., 13., 14.,
+            ],
+        );
     let threebyfourbytwo = Cpu32::new(
         &[3, 4, 2],
         &[

@@ -25,35 +25,35 @@ pub enum Reverse<'a, 't, T> {
 impl<T> Reverse<'_, '_, T> {
     fn into_primal(self) -> T {
         match self {
-            Reverse::Lift(x) | Reverse::Reverse(_, x, _) => x,
+            Self::Lift(x) | Self::Reverse(_, x, _) => x,
         }
     }
 
     pub fn primal(&self) -> &T {
         match self {
-            Reverse::Lift(x) | Reverse::Reverse(_, x, _) => x,
+            Self::Lift(x) | Self::Reverse(_, x, _) => x,
         }
     }
 
     fn try_get_adjoint_index(&self) -> Option<usize> {
         match self {
-            Reverse::Reverse(_, _, i) => Some(*i),
-            Reverse::Lift(_) => None,
+            Self::Reverse(_, _, i) => Some(*i),
+            Self::Lift(_) => None,
         }
     }
 }
 
 impl<T: Clone> Reverse<'_, '_, T> {
     pub fn lift(x: &T) -> Self {
-        Reverse::Lift(x.clone())
+        Self::Lift(x.clone())
     }
 }
 
 impl<T: Debug> Debug for Reverse<'_, '_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Reverse::Lift(x) => write!(f, "Lift({x:?})"),
-            Reverse::Reverse(_, x, i) => write!(f, "Reverse(_, {x:?}, {i})"),
+            Self::Lift(x) => write!(f, "Lift({x:?})"),
+            Self::Reverse(_, x, i) => write!(f, "Reverse(_, {x:?}, {i})"),
         }
     }
 }
@@ -65,9 +65,9 @@ impl<T: PartialEq> PartialEq for Reverse<'_, '_, T> {
 }
 
 impl<'a, 't, T: Diffable> Reverse<'a, 't, T> {
-    fn push_op(trace: &'a Trace<'t, T>, primal: T, op: TracedOp<'t, T>) -> Reverse<'a, 't, T> {
+    fn push_op(trace: &'a Trace<'t, T>, primal: T, op: TracedOp<'t, T>) -> Self {
         let idx = trace.push_op(op);
-        Reverse::Reverse(trace, primal, idx)
+        Self::Reverse(trace, primal, idx)
     }
 
     fn unary<Op: UnaryOp<T, Args = TArgs> + UnaryDiffOp<T> + 't, TArgs: ?Sized>(
@@ -76,8 +76,8 @@ impl<'a, 't, T: Diffable> Reverse<'a, 't, T> {
     ) -> Self {
         let (primal, op) = Op::f(self.primal(), args);
         match self {
-            Reverse::Lift(_) => Reverse::Lift(primal),
-            Reverse::Reverse(trace, _, tan) => {
+            Self::Lift(_) => Self::Lift(primal),
+            Self::Reverse(trace, _, tan) => {
                 let op = TracedOp::Unary(Box::new(op), *tan);
                 Self::push_op(trace, primal, op)
             }
@@ -87,16 +87,16 @@ impl<'a, 't, T: Diffable> Reverse<'a, 't, T> {
     fn binary<Op: BinaryOp<T> + BinaryDiffOp<T> + 't>(&self, rhs: &Self) -> Self {
         let (primal, op) = Op::f(self.primal(), rhs.primal());
         match (self, rhs) {
-            (Reverse::Lift(_), Reverse::Lift(_)) => Reverse::Lift(primal),
-            (Reverse::Lift(_), Reverse::Reverse(trace, _, idx)) => {
+            (Self::Lift(_), Self::Lift(_)) => Self::Lift(primal),
+            (Self::Lift(_), Self::Reverse(trace, _, idx)) => {
                 let op = TracedOp::BinaryDB(Box::new(op), *idx);
                 Self::push_op(trace, primal, op)
             }
-            (Reverse::Reverse(trace, _, idx), Reverse::Lift(_)) => {
+            (Self::Reverse(trace, _, idx), Self::Lift(_)) => {
                 let op = TracedOp::BinaryDA(Box::new(op), *idx);
                 Self::push_op(trace, primal, op)
             }
-            (Reverse::Reverse(left_trace, _, left), Reverse::Reverse(right_trace, _, right)) => {
+            (Self::Reverse(left_trace, _, left), Self::Reverse(right_trace, _, right)) => {
                 assert!(ptr::eq(*left_trace, *right_trace), "traces must be the same - likely perturbation confusion. Are lifts in the right place?");
                 let op = TracedOp::Binary(Box::new(op), *left, *right);
                 Self::push_op(left_trace, primal, op)
@@ -136,7 +136,7 @@ impl<T: Clone + Diffable> Diffable for Reverse<'_, '_, T> {
     }
 
     fn elementwise_eq(&self, other: &Self) -> Self {
-        Reverse::Lift(self.primal().elementwise_eq(other.primal()))
+        Self::Lift(self.primal().elementwise_eq(other.primal()))
     }
 
     fn sum(&self, axes: &[usize]) -> Self {
@@ -172,7 +172,7 @@ impl<T: Clone + Diffable> Diffable for Reverse<'_, '_, T> {
     }
 
     fn new(shape: &[usize], data: &[Self::Elem]) -> Self {
-        Reverse::Lift(T::new(shape, data))
+        Self::Lift(T::new(shape, data))
     }
 }
 
@@ -191,7 +191,7 @@ struct Adjoints<T> {
 
 impl<T: Diffable + Clone> Adjoints<T> {
     fn new(len: usize) -> Self {
-        Adjoints {
+        Self {
             adjoints: vec![None; len],
         }
     }
@@ -407,6 +407,6 @@ where
         let row_tangent = pullback.call(&row).into_iter().next().unwrap();
         tangents.push(row_tangent);
     }
-    let t_refs = tangents.iter().collect::<Vec<_>>();
+    let t_refs: Vec<_> = tangents.iter().collect();
     T::stack(&t_refs[..], 0)
 }
