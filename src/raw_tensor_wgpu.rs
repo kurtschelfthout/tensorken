@@ -193,8 +193,10 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
             .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         {
-            let mut compute_pass =
-                encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });
+            let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: None,
+                timestamp_writes: None,
+            });
             compute_pass.set_pipeline(compute_pipeline);
             compute_pass.set_bind_group(0, bind_group, &[]);
             let workgroup_count = u32::try_from(workgroup_count).unwrap();
