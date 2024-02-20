@@ -39,11 +39,11 @@ impl WgpuContext {
     const REPLACE_WORKGROUP_SIZE: &'static str = "@workgroup_size(64)";
 
     // supported operations. crate visible for testing.
-    pub(crate) const MAP_OPS: [&str; 3] = ["exp", "log", "id"];
-    pub(crate) const ZIP_OPS: [&str; 6] = ["add", "sub", "mul", "div", "pow", "eq"];
-    pub(crate) const RED_OPS: [&str; 2] = ["sum", "max"];
-    pub(crate) const PAD_OP: &str = "pad";
-    pub(crate) const FUSED_MUL_ADD_OP: &str = "fused_mul_add";
+    pub(crate) const MAP_OPS: [&'static str; 3] = ["exp", "log", "id"];
+    pub(crate) const ZIP_OPS: [&'static str; 6] = ["add", "sub", "mul", "div", "pow", "eq"];
+    pub(crate) const RED_OPS: [&'static str; 2] = ["sum", "max"];
+    pub(crate) const PAD_OP: &'static str = "pad";
+    pub(crate) const FUSED_MUL_ADD_OP: &'static str = "fused_mul_add";
 
     pub(crate) fn new() -> Self {
         let (device, queue) = Self::get_device().unwrap();
@@ -65,16 +65,14 @@ impl WgpuContext {
         workgroup_size: WorkgroupSize,
     ) {
         const ENTRY_POINT: &str = "call";
-        let compute_pipeline =
-            Arc::new(
-                self.device
-                    .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                        label: Some(operation),
-                        layout: None,
-                        module,
-                        entry_point: ENTRY_POINT,
-                    }),
-            );
+        let compute_pipeline = Arc::new(self.device.create_compute_pipeline(
+            &wgpu::ComputePipelineDescriptor {
+                label: Some(operation),
+                layout: None,
+                module,
+                entry_point: ENTRY_POINT,
+            },
+        ));
         pipelines.insert((operation, workgroup_size), compute_pipeline);
     }
 

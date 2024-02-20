@@ -129,7 +129,7 @@ pub(crate) struct LogOp<TTensor>(TTensor);
 
 impl<TTensor: Clone + Diffable> UnaryOp<TTensor> for LogOp<TTensor> {
     type Args = ();
-    fn f(a: &TTensor, _: &Self::Args) -> (TTensor, Self) {
+    fn f(a: &TTensor, (): &Self::Args) -> (TTensor, Self) {
         (a.log(), LogOp(a.clone()))
     }
 }
@@ -144,7 +144,7 @@ pub(crate) struct ExpOp<TTensor>(TTensor);
 
 impl<TTensor: Clone + Diffable> UnaryOp<TTensor> for ExpOp<TTensor> {
     type Args = ();
-    fn f(a: &TTensor, _: &Self::Args) -> (TTensor, Self) {
+    fn f(a: &TTensor, (): &Self::Args) -> (TTensor, Self) {
         let r = a.exp();
         (r.clone(), ExpOp(r))
     }

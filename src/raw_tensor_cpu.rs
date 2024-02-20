@@ -183,6 +183,13 @@ impl<'a, T: Copy> Iterator for CpuRawTensorIterator<'a, T> {
     }
 }
 
+impl<'a, T: Copy> CpuRawTensor<T> {
+    #[must_use]
+    pub fn iter(&'a self) -> CpuRawTensorIterator<'a, T> {
+        self.into_iter()
+    }
+}
+
 impl<'a, T: Copy> IntoIterator for &'a CpuRawTensor<T> {
     type Item = T;
     type IntoIter = CpuRawTensorIterator<'a, T>;

@@ -363,14 +363,13 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
             Self::counts_n_sizes(output_strider.size());
         let output_buffer = self.make_output_buffer(output_strider.size(), operation);
         let compute_pipeline = self.pipeline_for(operation, workgroup_size);
-        let strides_and_shapes =
-            self.get_strides_and_shapes_buffer(
-                chunk_size,
-                Some(&other.strider),
-                &output_strider,
-                None,
-                None,
-            );
+        let strides_and_shapes = self.get_strides_and_shapes_buffer(
+            chunk_size,
+            Some(&other.strider),
+            &output_strider,
+            None,
+            None,
+        );
         let bind_group = self.get_bind_group_zip(
             other,
             compute_pipeline.as_ref(),
@@ -522,19 +521,18 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
             Self::counts_n_sizes(output_strider.size());
         let output_buffer = self.make_output_buffer(output_strider.size(), "fma");
         let compute_pipeline = self.pipeline_for("fused_mul_add", workgroup_size);
-        let strides_and_shapes =
-            self.get_strides_and_shapes_buffer(
-                chunk_size,
-                Some(&other.strider),
-                &output_strider,
-                Some((
-                    reduced_strider.strides(),
-                    reduced_strider.shape(),
-                    output_strider.shape(),
-                    reduced_strider.size(),
-                )),
-                None,
-            );
+        let strides_and_shapes = self.get_strides_and_shapes_buffer(
+            chunk_size,
+            Some(&other.strider),
+            &output_strider,
+            Some((
+                reduced_strider.strides(),
+                reduced_strider.shape(),
+                output_strider.shape(),
+                reduced_strider.size(),
+            )),
+            None,
+        );
         let bind_group = self.get_bind_group_zip(
             other,
             compute_pipeline.as_ref(),
@@ -975,10 +973,7 @@ mod tests {
         let t = WgpuRawTensor::new(&[2, 128], &make_vec(256), get_wgpu_device());
         let s = t.sum(&[0]);
         assert_eq!(s.shape(), &[1, 128]);
-        let expected: Vec<_> = (128i16..128 + 256)
-            .step_by(2)
-            .map(|i| f32::try_from(i).unwrap())
-            .collect();
+        let expected: Vec<_> = (128i16..128 + 256).step_by(2).map(f32::from).collect();
         assert_eq!(s.ravel(), expected);
 
         let s = t.sum(&[1]);
@@ -993,15 +988,12 @@ mod tests {
         let t = WgpuRawTensor::new(&[60, 60], &make_vec(3600), get_wgpu_device());
         let s = t.max(&[0]);
         assert_eq!(s.shape(), &[1, 60]);
-        let expected: Vec<_> = (3540i16..3600).map(|i| f32::try_from(i).unwrap()).collect();
+        let expected: Vec<_> = (3540i16..3600).map(f32::from).collect();
         assert_eq!(s.ravel(), expected);
 
         let s = t.max(&[1]);
         assert_eq!(s.shape(), &[60, 1]);
-        let expected: Vec<_> = (59i16..3600)
-            .step_by(60)
-            .map(|i| f32::try_from(i).unwrap())
-            .collect();
+        let expected: Vec<_> = (59i16..3600).step_by(60).map(f32::from).collect();
         assert_eq!(s.ravel(), expected);
 
         let s = t.sum(&[0, 1]);
@@ -1019,10 +1011,7 @@ mod tests {
         let s = t.sum(&[1]);
         assert_eq!(s.shape(), &[128, 1]);
 
-        let expected: Vec<_> = (128i16..128 + 256)
-            .step_by(2)
-            .map(|i| f32::try_from(i).unwrap())
-            .collect();
+        let expected: Vec<_> = (128i16..128 + 256).step_by(2).map(f32::from).collect();
         assert_eq!(s.ravel(), expected);
 
         let s = t.sum(&[0, 1]);
@@ -1134,12 +1123,11 @@ mod tests {
     fn test_fused_multiply_add() {
         // contiguous
         let t1 = WgpuRawTensor::new(&[2, 3], &make_vec(6), get_wgpu_device());
-        let t2 =
-            t1.add(&WgpuRawTensor::new(
-                &[2, 3],
-                &make_vec(6),
-                get_wgpu_device(),
-            ));
+        let t2 = t1.add(&WgpuRawTensor::new(
+            &[2, 3],
+            &make_vec(6),
+            get_wgpu_device(),
+        ));
 
         let r = t1.fused_multiply_add(&t2, &[0]);
         assert_eq!(r.shape(), &[1, 3]);
