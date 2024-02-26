@@ -16,7 +16,6 @@ use tensorken::{Cpu32, Diffable, DiffableExt, IndexValue, Tensor};
 
 // This example shows the first half of the first of Karpathy's from zero-to-hero tutorials on makemomre.
 // It builds a bigram, character-level language model from a set of names.
-// The second part needs neural networks, so Tensorken does not support it yet.
 // I more or less follow this notebook: https://github.com/karpathy/nn-zero-to-hero/blob/master/lectures/makemore/makemore_part1_bigrams.ipynb
 
 // Get the path to this source file, using the file! macro
@@ -93,7 +92,7 @@ fn pretty_print_bigram(tensor: &Tr, itos: &HashMap<usize, char>, prec: usize) {
                 "{}{}\n{:.prec$}",
                 itos[&row],
                 itos[&col],
-                tensor.at(&[row, col])
+                tensor.at(&[row, col]).to_scalar()
             )));
         }
         table.add_row(table_row);
