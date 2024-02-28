@@ -1,6 +1,7 @@
 // #![warn(clippy::pedantic)]
 #![allow(non_snake_case)]
 
+use std::io::Write;
 extern crate tensorken;
 
 use std::{
@@ -27,7 +28,7 @@ fn get_path() -> &'static Path {
 // read the names.txt file in the current directory, containing newline separated names, and return a vector of lowercase strings.
 fn read_names() -> Vec<String> {
     let mut names_file = PathBuf::from(get_path());
-    names_file.push("names.txt");
+    names_file.push("../data/names.txt");
     let mut file = std::fs::File::open(names_file).unwrap();
 
     let mut contents = String::new();
@@ -100,6 +101,42 @@ fn pretty_print_bigram(tensor: &Tr, itos: &HashMap<usize, char>, prec: usize) {
     table.printstd();
 }
 
+fn bigram_to_json(
+    tensor: &Tr,
+    itos: &HashMap<usize, char>,
+    prec: usize,
+    filename: &str,
+) -> std::io::Result<()> {
+    let mut data_file = PathBuf::from(get_path());
+    data_file.push(filename);
+    let mut file = std::fs::File::create(data_file)?;
+    write!(file, "[")?;
+    for row in 0..tensor.shape()[0] {
+        for col in 0..tensor.shape()[1] {
+            if (row, col) == (tensor.shape()[0] - 1, tensor.shape()[1] - 1) {
+                continue;
+            };
+            write!(
+                file,
+                "{{ \"from\":\"{}\", \"to\":\"{}\", \"v\":{:.prec$} }},",
+                itos[&row],
+                itos[&col],
+                tensor.at(&[row, col]).to_scalar()
+            )?;
+        }
+    }
+    let (row, col) = (tensor.shape()[0] - 1, tensor.shape()[1] - 1);
+    write!(
+        file,
+        "{{ \"from\":\"{}\", \"to\":\"{}\", \"v\":{:.prec$} }}",
+        itos[&row],
+        itos[&col],
+        tensor.at(&[row, col]).to_scalar()
+    )?;
+    write!(file, "]")?;
+    Ok(())
+}
+
 // Candidate for addition to Tensorken.
 fn multinouilli_sample(tensor: &Tr, row: usize, rng: &mut StdRng) -> usize {
     // Purely on a rand usage basis, I should only make the WeightedIndex once per row.
@@ -143,6 +180,7 @@ fn tensor_bigram(names: &[String]) {
     }
 
     let bigrams = bigrams_mut.to_tensor();
+    bigram_to_json(&bigrams, &itos, 0, "../data/bigram_count.json").unwrap();
 
     // I could import a plotting library, but I'll just pretty print the tensor.
     // No heatmaps for us...I spent a bit of time looking for a terminal-based heatmap :) but came up empty.

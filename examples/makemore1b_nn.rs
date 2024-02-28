@@ -27,7 +27,7 @@ fn get_path() -> &'static Path {
 // read the names.txt file in the current directory, containing newline separated names, and return a vector of lowercase strings.
 fn read_names() -> Vec<String> {
     let mut names_file = PathBuf::from(get_path());
-    names_file.push("names.txt");
+    names_file.push("../data/names.txt");
     let mut file = std::fs::File::open(names_file).unwrap();
 
     let mut contents = String::new();

@@ -1,0 +1,12 @@
+{
+    "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+    "description": "A simple bar chart with embedded data.",
+    "data": { "url": "../data/bigram_count.json" },
+    "mark": "rect",
+    "encoding": {
+        "x": {"field": "to", "type": "ordinal", "axis": {"labelAngle": 0, "orient":"top"}},
+        "y": {"field": "from", "type": "ordinal", "axis": {"labelAngle": 0}},
+        "color": {"field": "v", "type": "quantitative"},
+        "tooltip": [{"field": "v", "type": "quantitative", "title": "Count"}]
+    }
+}
