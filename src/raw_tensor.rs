@@ -1,5 +1,3 @@
-use crate::num::Num;
-
 /// Counterpart for tinygrad's "low-level" operations in ops.py.
 /// Represents the operations that a tensor implementation, be it on CPU or GPU, must implement.
 /// All tensor operations in mlops are eventually translated to these operations.
@@ -14,7 +12,7 @@ pub trait RawTensor {
     // If RawTensor would have a generic type, we'd have to mention it in the impl:
     // impl<T, RT: RawTensor<T>> Add for Tensor<RT> { ... }
     // but then rust complains that T is not restricted by the implementation.
-    type Elem: Num;
+    type E;
 
     // unary ops
     // ---------
@@ -102,7 +100,7 @@ pub trait RawTensor {
 
     /// Create a new tensor with the given shape and elements.
     /// The order of the elements is in increasing order of the last axis, then the second last, etc.
-    fn new(shape: &[usize], data: &[Self::Elem]) -> Self;
+    fn new(shape: &[usize], data: &[Self::E]) -> Self;
 
     // elimination
     // -----------
@@ -127,7 +125,7 @@ pub trait RawTensor {
 #[allow(clippy::module_name_repetitions)]
 pub trait RealizedRawTensor: RawTensor {
     /// Return the tensor on the CPU.
-    fn to_cpu(&self) -> crate::CpuRawTensor<Self::Elem>;
+    fn to_cpu(&self) -> crate::CpuRawTensor<Self::E>;
 
     /// For tensors that have lazy operations, run them.
     #[must_use]

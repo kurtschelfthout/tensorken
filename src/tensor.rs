@@ -19,7 +19,7 @@ use crate::{
 };
 
 // Blanket implementation to translate from diffable tensor ops (Diffable) to low-level tensor ops (RawTensor).
-impl<T: Num, TTensor: RawTensor<Elem = T>> Diffable for TTensor {
+impl<T: Num, TTensor: RawTensor<E = T>> Diffable for TTensor {
     type Elem = T;
 
     fn log(&self) -> Self {
@@ -102,7 +102,7 @@ impl<T: Num, TTensor: RawTensor<Elem = T>> Diffable for TTensor {
 #[must_use]
 pub struct Tensor<T>(T);
 
-impl<T: Num, TRawTensor: RealizedRawTensor<Elem = T>> Tensor<TRawTensor> {
+impl<T: Num, TRawTensor: RealizedRawTensor<E = T>> Tensor<TRawTensor> {
     /// Create a new mutable tensor with self's shape and elements.
     pub fn to_tensor_mut(&self) -> TensorMut<T> {
         TensorMut::new(self)
@@ -366,7 +366,7 @@ fn create_table<T: Num + Display>(
 
 impl<RT: RealizedRawTensor> Display for Tensor<RT>
 where
-    RT::Elem: Display,
+    RT::E: Num + Display,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let cpu = if self.shape().len() % 2 == 0 {

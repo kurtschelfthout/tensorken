@@ -2,7 +2,7 @@ use crate::RawTensor;
 
 /// An implementation of
 impl RawTensor for String {
-    type Elem = f32;
+    type E = f32;
 
     fn exp(&self) -> Self {
         format!("{self}.exp()")
@@ -64,7 +64,7 @@ impl RawTensor for String {
         format!("{self}.crop({limits:?})")
     }
 
-    fn new(shape: &[usize], data: &[Self::Elem]) -> Self {
+    fn new(shape: &[usize], data: &[Self::E]) -> Self {
         format!("new({shape:?}, {data:?})")
     }
 

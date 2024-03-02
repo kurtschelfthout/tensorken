@@ -28,7 +28,7 @@ pub struct TensorMut<T> {
 impl<T: Num> TensorMut<T> {
     /// Create a new tensor with the same shape and elements as the given tensor.
     /// Copies all the `Tensor`'s data.
-    pub fn new<RT: RealizedRawTensor<Elem = T>>(from: &Tensor<RT>) -> Self {
+    pub fn new<RT: RealizedRawTensor<E = T>>(from: &Tensor<RT>) -> Self {
         let buffer = from.ravel();
         let strider = ShapeStrider::contiguous(from.shape());
         Self { buffer, strider }
@@ -36,7 +36,7 @@ impl<T: Num> TensorMut<T> {
 
     /// Create a new tensor with the given shape and elements.
     /// Copies all the `TensorMut`'s data.
-    pub fn to_tensor<RT: RawTensor<Elem = T>>(&self) -> Tensor<RT> {
+    pub fn to_tensor<RT: RawTensor<E = T>>(&self) -> Tensor<RT> {
         // note: to avoid the copy here, could add an `into_new` method to RawTensor
         // which consumes the buffer & shape.
         Tensor::<RT>::new(self.strider.shape(), &self.buffer)
