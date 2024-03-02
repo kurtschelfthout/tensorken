@@ -69,7 +69,7 @@ fn combine_axes(lhs: &[usize], rhs: &[usize]) -> Vec<usize> {
 }
 
 impl<TRaw: RawTensor + Clone + 'static> RawTensor for Fuse<TRaw> {
-    type Elem = TRaw::Elem;
+    type E = TRaw::E;
 
     fn exp(&self) -> Self {
         unary_no_fuse(self, TRaw::exp)
@@ -148,7 +148,7 @@ impl<TRaw: RawTensor + Clone + 'static> RawTensor for Fuse<TRaw> {
         unary_no_fuse(self, move |x| x.crop(&vec))
     }
 
-    fn new(shape: &[usize], data: &[Self::Elem]) -> Self {
+    fn new(shape: &[usize], data: &[Self::E]) -> Self {
         let traw = TRaw::new(shape, data);
         Self::from_raw_tensor(traw)
     }
@@ -172,7 +172,7 @@ impl<TRaw: RawTensor + Clone + 'static> RawTensor for Fuse<TRaw> {
 }
 
 impl<TRaw: RealizedRawTensor + Clone + 'static> RealizedRawTensor for Fuse<TRaw> {
-    fn to_cpu(&self) -> crate::CpuRawTensor<Self::Elem> {
+    fn to_cpu(&self) -> crate::CpuRawTensor<Self::E> {
         self.run().to_cpu()
     }
 

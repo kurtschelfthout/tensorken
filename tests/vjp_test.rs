@@ -19,7 +19,7 @@ fn assert_vec_eq(a: &[f32], b: &[f32]) {
 /// Test that the first derivative of a function with a single input tensor is correct,
 /// given the function to derive using vjp and the expected derivative function (symbolically derived).
 #[allow(clippy::similar_names)]
-fn test_df<'t, RT: 't + RealizedRawTensor<Elem = f32> + Clone + Debug, F, G, H>(f: F, df: G, ft: H)
+fn test_df<'t, RT: 't + RealizedRawTensor<E = f32> + Clone + Debug, F, G, H>(f: F, df: G, ft: H)
 where
     for<'a> F: Fn(&'a Reverse<'a, 't, Tensor<RT>>) -> Reverse<'a, 't, Tensor<RT>>,
     for<'a> G: Fn(&'a Tensor<RT>) -> Tensor<RT>, // G & H are identical, but if we want to pass closures,
@@ -38,7 +38,7 @@ where
 /// Test that the second derivative of a function with a single input tensor is correct,
 /// given the function to derive using vjp and the expected derivative function (symbolically derived).
 #[allow(clippy::similar_names)]
-fn test_ddf<RT: RealizedRawTensor<Elem = f32> + Clone + Debug, F, G, H>(f: F, ddf: G, df: H)
+fn test_ddf<RT: RealizedRawTensor<E = f32> + Clone + Debug, F, G, H>(f: F, ddf: G, df: H)
 where
     for<'a, 't, 'b, 'tt> F: Fn(
         &'a Reverse<'a, 't, Reverse<'b, 'tt, Tensor<RT>>>,
@@ -58,7 +58,7 @@ where
 
 /// Test that the first derivative of a function with two input tensors is correct.
 #[allow(clippy::similar_names)]
-fn test_df_2<RT: RealizedRawTensor<Elem = f32> + Clone + Debug, F, H, GA, GB>(
+fn test_df_2<RT: RealizedRawTensor<E = f32> + Clone + Debug, F, H, GA, GB>(
     f: F,
     ft: H,
     dfda: GA,
@@ -92,7 +92,7 @@ fn test_derivative_constant() {
     do_test_constant::<WgpuRawTensor<f32>>();
 }
 
-fn do_test_constant<RT: RealizedRawTensor<Elem = f32> + Clone + Debug>() {
+fn do_test_constant<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {
     test_df::<RT, _, _, _>(
         |t| Reverse::lift(t.primal()),
         DiffableExt::zeros_like,
@@ -119,7 +119,7 @@ fn test_derivative_id() {
     do_test_id::<WgpuRawTensor<f32>>();
 }
 
-fn do_test_id<RT: RealizedRawTensor<Elem = f32> + Clone + Debug>() {
+fn do_test_id<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {
     test_df::<RT, _, _, _>(|a| f_id(a), DiffableExt::ones_like, |a| f_id(a));
     test_ddf::<RT, _, _, _>(|a| f_id(a), DiffableExt::zeros_like, DiffableExt::ones_like);
 }
@@ -137,7 +137,7 @@ fn test_derivative_add() {
     do_test_add::<WgpuRawTensor<f32>>();
 }
 
-fn do_test_add<RT: RealizedRawTensor<Elem = f32> + Clone + Debug>() {
+fn do_test_add<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {
     // let at: Tensor<CpuRawTensor<_>> = Tensor::new(&[2, 2], (1u8..5).map(f32::from).collect());
     // note: this doesn't work for some reason - needs explicit closure
     // let r = vjp1(f_add, &at);
@@ -169,7 +169,7 @@ fn test_derivative_mul() {
     do_test_mul::<WgpuRawTensor<f32>>();
 }
 
-fn do_test_mul<RT: RealizedRawTensor<Elem = f32> + Clone + Debug>() {
+fn do_test_mul<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {
     test_df::<RT, _, _, _>(|a| f_mul(a), |a| a.constant_like(2.0) * a, |a| f_mul(a));
     test_ddf::<RT, _, _, _>(
         |a| a * a * a,
@@ -200,7 +200,7 @@ fn test_derivative_sub() {
 }
 
 #[allow(clippy::eq_op)]
-fn do_test_sub<RT: RealizedRawTensor<Elem = f32> + Clone + Debug>() {
+fn do_test_sub<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {
     test_df::<RT, _, _, _>(|a| f_sub(a), DiffableExt::zeros_like, |a| f_sub(a));
     test_ddf::<RT, _, _, _>(|a| a - a - a, DiffableExt::zeros_like, |a| -a.ones_like());
     test_df_2::<RT, _, _, _, _>(
@@ -225,7 +225,7 @@ fn test_derivative_div() {
     do_test_div::<WgpuRawTensor<f32>>();
 }
 
-fn do_test_div<RT: RealizedRawTensor<Elem = f32> + Clone + Debug>() {
+fn do_test_div<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {
     test_df::<RT, _, _, _>(|a| f_div(a), |a| -a.ones_like() / (a * a), |a| f_div(a));
     test_ddf::<RT, _, _, _>(
         |a| a.ones_like() / a,
@@ -254,7 +254,7 @@ fn test_derivative_pow() {
     do_test_pow::<WgpuRawTensor<f32>>();
 }
 
-fn do_test_pow<RT: RealizedRawTensor<Elem = f32> + Clone + Debug>() {
+fn do_test_pow<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {
     test_df::<RT, _, _, _>(
         |a| f_pow(a),
         |a| a.pow(a) * (a.log() + a.ones_like()),
@@ -282,7 +282,7 @@ fn test_derivative_log() {
     do_test_log::<WgpuRawTensor<f32>>();
 }
 
-fn do_test_log<RT: RealizedRawTensor<Elem = f32> + Clone + Debug + 'static>() {
+fn do_test_log<RT: RealizedRawTensor<E = f32> + Clone + Debug + 'static>() {
     test_df::<RT, _, _, _>(|a| a.log(), |a| a.ones_like() / a, Diffable::log);
     test_ddf::<RT, _, _, _>(
         |a| a.log(),
@@ -297,7 +297,7 @@ fn test_derivative_exp() {
     do_test_exp::<WgpuRawTensor<f32>>();
 }
 
-fn do_test_exp<RT: RealizedRawTensor<Elem = f32> + Clone + Debug>() {
+fn do_test_exp<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {
     test_df::<RT, _, _, _>(|a| a.exp(), Diffable::exp, Diffable::exp);
     test_ddf::<RT, _, _, _>(|a| a.exp(), Diffable::exp, Diffable::exp);
 }
@@ -320,7 +320,7 @@ fn test_derivative_sum() {
     do_test_sum::<WgpuRawTensor<f32>>();
 }
 
-fn do_test_sum<RT: RealizedRawTensor<Elem = f32> + Clone + Debug>() {
+fn do_test_sum<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {
     test_df::<RT, _, _, _>(|a| f_sum(a), DiffableExt::ones_like, |a| f_sum(a));
     test_ddf::<RT, _, _, _>(
         |a| a.sum(&all_axes(a.shape())),
@@ -343,7 +343,7 @@ fn test_max() {
     do_test_max::<WgpuRawTensor<f32>>();
 }
 
-fn do_test_max<RT: RealizedRawTensor<Elem = f32> + Clone + Debug>() {
+fn do_test_max<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {
     test_df::<RT, _, _, _>(
         |a| f_max(a),
         |a| a.max(&all_axes(a.shape())).expand(a.shape()).eq(a),
@@ -370,7 +370,7 @@ fn test_reshape() {
     do_test_reshape::<WgpuRawTensor<f32>>();
 }
 
-fn do_test_reshape<RT: RealizedRawTensor<Elem = f32> + Clone + Debug>() {
+fn do_test_reshape<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {
     test_df::<RT, _, _, _>(|a| f_reshape(a), DiffableExt::ones_like, |a| f_reshape(a));
     test_ddf::<RT, _, _, _>(
         |a| a.reshape(&[a.shape().size()]),
@@ -393,7 +393,7 @@ fn test_permute() {
     do_test_permute::<WgpuRawTensor<f32>>();
 }
 
-fn do_test_permute<RT: RealizedRawTensor<Elem = f32> + Clone + Debug>() {
+fn do_test_permute<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {
     // bit iffy - assumes at least 2 dimensions
     test_df::<RT, _, _, _>(|a| f_permute(a), DiffableExt::ones_like, |a| f_permute(a));
     test_ddf::<RT, _, _, _>(
@@ -417,7 +417,7 @@ fn test_expand() {
     do_test_expand::<WgpuRawTensor<f32>>();
 }
 
-fn do_test_expand<RT: RealizedRawTensor<Elem = f32> + Clone + Debug>() {
+fn do_test_expand<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {
     test_df::<RT, _, _, _>(|a| f_expand(a), |a| a.constant_like(4.0), |a| f_expand(a));
     test_ddf::<RT, _, _, _>(
         |a| a.reshape(&[1, 2, 2]).expand(&[4, 2, 2]),
@@ -440,7 +440,7 @@ fn test_crop() {
     do_test_crop::<WgpuRawTensor<f32>>();
 }
 
-fn do_test_crop<RT: RealizedRawTensor<Elem = f32> + Clone + Debug>() {
+fn do_test_crop<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {
     test_df::<RT, _, _, _>(
         |a| f_crop(a),
         |a| a.ones_like().crop(&[(0, 1), (1, 2)]).pad(&[(0, 1), (1, 2)]),
@@ -469,7 +469,7 @@ fn test_pad() {
     do_test_pad::<WgpuRawTensor<f32>>();
 }
 
-fn do_test_pad<RT: RealizedRawTensor<Elem = f32> + Clone + Debug>() {
+fn do_test_pad<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {
     test_df::<RT, _, _, _>(|a| f_pad(a), DiffableExt::ones_like, |a| f_pad(a));
     test_ddf::<RT, _, _, _>(
         |a| f_pad(a),
@@ -492,7 +492,7 @@ fn test_matmul() {
     do_test_matmul::<WgpuRawTensor<f32>>();
 }
 
-fn do_test_matmul<RT: RealizedRawTensor<Elem = f32> + Clone + Debug>() {
+fn do_test_matmul<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {
     let a: Tensor<RT> = Tensor::new(&[2, 3], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
     let b: Tensor<RT> = Tensor::new(&[3, 2], &[7.0, 8.0, 9.0, 10.0, 11.0, 12.0]);
 
@@ -523,7 +523,7 @@ where
     a.pow(&a.constant_like(T::Elem::from_usize(2)))
 }
 
-fn do_test_jacrev<RT: RealizedRawTensor<Elem = f32> + Clone + Debug>() {
+fn do_test_jacrev<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {
     let a: Tensor<RT> = Tensor::new(&[3], &[1.0, 2.0, 3.0]);
     let r = jacrev(|x| f_pow2(x), &a);
     assert_eq!(r.shape(), &[3, 3]);

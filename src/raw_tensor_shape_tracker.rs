@@ -4,7 +4,7 @@ use crate::{raw_tensor::RealizedRawTensor, shape_strider::ShapeStrider, RawTenso
 pub struct ShapeTracker<T>(ShapeStrider, T);
 
 impl<TRaw: RawTensor> ShapeTracker<TRaw> {
-    fn new(shape: &[usize], data: &[TRaw::Elem]) -> Self {
+    fn new(shape: &[usize], data: &[TRaw::E]) -> Self {
         Self(ShapeStrider::contiguous(shape), TRaw::new(shape, data))
     }
 }
@@ -12,7 +12,7 @@ impl<TRaw: RawTensor> ShapeTracker<TRaw> {
 /// This implementation passes every operation through
 /// to self.1, except for shape.
 impl<TRaw: RawTensor> RawTensor for ShapeTracker<TRaw> {
-    type Elem = TRaw::Elem;
+    type E = TRaw::E;
 
     fn exp(&self) -> Self {
         Self(self.0.clone(), self.1.exp())
@@ -79,7 +79,7 @@ impl<TRaw: RawTensor> RawTensor for ShapeTracker<TRaw> {
         Self(self.0.crop(limits), self.1.crop(limits))
     }
 
-    fn new(shape: &[usize], data: &[Self::Elem]) -> Self {
+    fn new(shape: &[usize], data: &[Self::E]) -> Self {
         Self::new(shape, data)
     }
 
@@ -97,7 +97,7 @@ impl<TRaw: RawTensor> RawTensor for ShapeTracker<TRaw> {
 }
 
 impl<TRaw: RealizedRawTensor> RealizedRawTensor for ShapeTracker<TRaw> {
-    fn to_cpu(&self) -> crate::CpuRawTensor<Self::Elem> {
+    fn to_cpu(&self) -> crate::CpuRawTensor<Self::E> {
         self.1.to_cpu()
     }
 

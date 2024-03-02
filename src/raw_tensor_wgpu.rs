@@ -602,7 +602,7 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
 }
 
 impl<T: Num + NoUninit + Pod> RawTensor for WgpuRawTensor<'_, T> {
-    type Elem = T;
+    type E = T;
 
     fn exp(&self) -> Self {
         self.map("exp")
@@ -680,7 +680,7 @@ impl<T: Num + NoUninit + Pod> RawTensor for WgpuRawTensor<'_, T> {
         self.with_strider(strider)
     }
 
-    fn new(shape: &[usize], data: &[Self::Elem]) -> Self {
+    fn new(shape: &[usize], data: &[Self::E]) -> Self {
         Self::new(shape, data, get_wgpu_device())
     }
 
@@ -694,7 +694,7 @@ impl<T: Num + NoUninit + Pod> RawTensor for WgpuRawTensor<'_, T> {
 }
 
 impl<T: Num + NoUninit + Pod> RealizedRawTensor for WgpuRawTensor<'_, T> {
-    fn to_cpu(&self) -> crate::CpuRawTensor<Self::Elem> {
+    fn to_cpu(&self) -> crate::CpuRawTensor<Self::E> {
         CpuRawTensor::new_into(self.shape(), self.ravel())
     }
 

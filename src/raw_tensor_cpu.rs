@@ -203,7 +203,7 @@ impl<'a, T: Copy> IntoIterator for &'a CpuRawTensor<T> {
 }
 
 impl<T: Num> RawTensor for CpuRawTensor<T> {
-    type Elem = T;
+    type E = T;
     fn exp(&self) -> Self {
         self.map(Num::exp)
     }
@@ -298,7 +298,7 @@ impl<T: Num> RawTensor for CpuRawTensor<T> {
         self.with_strider(strider)
     }
 
-    fn new(shape: &[usize], data: &[Self::Elem]) -> Self {
+    fn new(shape: &[usize], data: &[Self::E]) -> Self {
         Self::new_into(shape, data.to_vec())
     }
 
@@ -312,7 +312,7 @@ impl<T: Num> RawTensor for CpuRawTensor<T> {
 }
 
 impl<T: Num> RealizedRawTensor for CpuRawTensor<T> {
-    fn to_cpu(&self) -> crate::CpuRawTensor<Self::Elem> {
+    fn to_cpu(&self) -> crate::CpuRawTensor<Self::E> {
         self.clone()
     }
 
