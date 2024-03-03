@@ -1,4 +1,4 @@
-use crate::num::Num;
+use crate::num::{Num, ZeroOne};
 
 /// Contains "mid level" operations (this is tinygrad terminology) that are differentiable.
 /// These are not dependent on Add,Mul etc, traits because we want to be able to have a blanket implementation
@@ -9,7 +9,7 @@ use crate::num::Num;
 /// this allows for calculation of higher-order derivatives, and eventually mixed forward and reverse modes (forward is
 /// not yet implemented)
 pub trait Diffable {
-    type Elem: Num;
+    type Elem: ZeroOne + Num;
 
     #[must_use]
     fn log(&self) -> Self;

@@ -3,7 +3,7 @@ use std::vec;
 use rand::Rng;
 use rand_distr::{Distribution, StandardNormal};
 
-use crate::num::Num;
+use crate::num::ZeroOne;
 use crate::{Diffable, Shape};
 
 pub(crate) fn broadcasted_apply<T: Diffable>(
