@@ -559,9 +559,10 @@ fn test_jacfwd() {
 fn f_pow2<'t, T>(a: &'t T) -> T
 where
     T: TensorLike<'t>,
+    T::Elem: From<u8>,
     for<'s> &'s T: TensorLikeRef<T>,
 {
-    a.pow(&a.constant_like(T::Elem::from_usize(2)))
+    a.pow(&a.constant_like(2.into()))
 }
 
 fn do_test_jacfwd<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {

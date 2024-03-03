@@ -87,19 +87,25 @@ where
     }
 
     /// Create a new 1D tensor with `num` values linearly spaced between `start` and `end`.
-    fn linspace(start: Self::Elem, end: Self::Elem, num: usize) -> Self {
-        let mut data = Vec::with_capacity(num);
-        let step =
-            if num > 1 {
-                let nf: Self::Elem = Self::Elem::from_usize(num);
-                (end - start) / (nf - Self::Elem::ONE)
-            } else {
-                Self::Elem::ZERO
-            };
-        for i in 0..num {
-            data.push(start + step * Self::Elem::from_usize(i));
+    fn linspace<N: Into<usize> + Into<Self::Elem> + Copy>(
+        start: Self::Elem,
+        end: Self::Elem,
+        num: N,
+    ) -> Self {
+        let num_usize = num.into();
+        let mut data = Vec::with_capacity(num_usize);
+        let step = if num_usize > 1 {
+            let nf: Self::Elem = num.into();
+            (end - start) / (nf - Self::Elem::ONE)
+        } else {
+            Self::Elem::ZERO
+        };
+        let mut point = start;
+        for _i in 0..num_usize {
+            data.push(point);
+            point = point + step;
         }
-        Self::new(&[num], &data)
+        Self::new(&[num_usize], &data)
     }
 
     /// Create a new tensor with the given shape, and fill it with random values from a standard normal distribution

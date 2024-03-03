@@ -18,12 +18,9 @@ pub trait Num:
     /// The minimum value.
     const MIN: Self;
 
-    /// Convert from usize.
-    /// This is really only so Tensor can implement linspace.
-    fn from_usize(n: usize) -> Self;
-
     /// Convert to usize.
     /// This is really only so Tensor can implement `one_hot`.
+    /// TODO: remove once we have int tensors.
     fn to_usize(self) -> usize;
 
     /// Apply exponential function.
@@ -52,11 +49,6 @@ impl Num for f32 {
 
     fn powf(self, exp: Self) -> Self {
         self.powf(exp)
-    }
-
-    #[allow(clippy::cast_precision_loss)]
-    fn from_usize(n: usize) -> Self {
-        n as _
     }
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
