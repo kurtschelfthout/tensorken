@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::ops::Add;
 use std::sync::Arc;
 
-use crate::num::Num;
+use crate::num::Float;
 use crate::raw_tensor::{RawTensor, RealizedRawTensor};
 use crate::shape::Shape;
 use crate::shape_strider::{ShapeStrider, TensorIndexIterator};
@@ -202,14 +202,14 @@ impl<'a, T: Copy> IntoIterator for &'a CpuRawTensor<T> {
     }
 }
 
-impl<T: Num> RawTensor for CpuRawTensor<T> {
+impl<T: Float> RawTensor for CpuRawTensor<T> {
     type E = T;
     fn exp(&self) -> Self {
-        self.map(Num::exp)
+        self.map(Float::exp)
     }
 
     fn log(&self) -> Self {
-        self.map(Num::log)
+        self.map(Float::log)
     }
 
     fn add(&self, other: &Self) -> Self {
@@ -229,7 +229,7 @@ impl<T: Num> RawTensor for CpuRawTensor<T> {
     }
 
     fn pow(&self, other: &Self) -> Self {
-        self.zip(other, Num::powf)
+        self.zip(other, Float::powf)
     }
 
     fn eq(&self, other: &Self) -> Self {
@@ -311,7 +311,7 @@ impl<T: Num> RawTensor for CpuRawTensor<T> {
     }
 }
 
-impl<T: Num> RealizedRawTensor for CpuRawTensor<T> {
+impl<T: Float> RealizedRawTensor for CpuRawTensor<T> {
     fn to_cpu(&self) -> crate::CpuRawTensor<Self::E> {
         self.clone()
     }

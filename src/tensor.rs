@@ -8,14 +8,14 @@ use std::{
 use prettytable::{format, Cell, Table};
 
 use crate::{
-    num::Num,
+    num::{Float, Num},
     raw_tensor::{RawTensor, RealizedRawTensor},
     raw_tensor_cpu::CpuRawTensor,
     raw_tensor_fuse::Fuse,
     raw_tensor_shape_tracker::ShapeTracker,
     raw_tensor_wgpu::WgpuRawTensor,
     tensor_mut::TensorMut,
-    Shape, {Diffable, DiffableExt},
+    Diffable, DiffableExt, Shape,
 };
 
 // Blanket implementation to translate from diffable tensor ops (Diffable) to low-level tensor ops (RawTensor).
@@ -324,7 +324,7 @@ fn get_single_line_format() -> &'static format::TableFormat {
 //     }
 // }
 
-fn create_table<T: Num + Display>(
+fn create_table<T: Float + Display>(
     tensor: &Tensor<CpuRawTensor<T>>,
     table: &mut Table,
     precision: Option<usize>,
@@ -367,7 +367,7 @@ fn create_table<T: Num + Display>(
 
 impl<RT: RealizedRawTensor> Display for Tensor<RT>
 where
-    RT::E: Num + Display,
+    RT::E: Float + Display,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let cpu = if self.shape().len() % 2 == 0 {
