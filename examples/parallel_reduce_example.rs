@@ -32,7 +32,7 @@ macro_rules! let_example {
 type Tr = Cpu32;
 
 fn main() {
-    let_example!(t, Tr::linspace(1.0, 20.0, 20).reshape(&[4, 5]));
+    let_example!(t, Tr::linspace(1.0, 20.0, 20_u8).reshape(&[4, 5]));
     do_example!(t.sum(&[0]));
     do_example!(t.crop(&[(0, 4), (0, 1)]));
     do_example!(t.sum(&[]));

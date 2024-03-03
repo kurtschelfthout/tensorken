@@ -32,7 +32,10 @@ macro_rules! let_example {
 type Tr = Cpu32;
 
 fn main() {
-    do_example!(Tensor::<CpuRawTensor<f32>>::new(&[3, 2], &[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]));
+    do_example!(Tensor::<CpuRawTensor<f32>>::new(
+        &[3, 2],
+        &[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
+    ));
 
     // unary operations
     let_example!(t, &Tr::new(&[3, 2], &[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]));
@@ -93,16 +96,16 @@ fn main() {
     do_example!(t.at(1));
     do_example!(t.at(&[1, 0]));
 
-    let_example!(t, Tr::linspace(0.0, 23.0, 24));
+    let_example!(t, Tr::linspace(0.0, 23.0, 24_u8));
     let_example!(t6x4, t.reshape(&[6, 4]));
     let_example!(t3x8, t6x4.reshape(&[3, 8]));
 
     do_example!(t3x8.permute(&[1, 0]));
 
     // broadcasting with matmul in more than 2 dimensions boggles the mind
-    let_example!(t1, &Tr::linspace(1.0, 36.0, 36).reshape(&[3, 2, 2, 3]));
-    let_example!(t2, &Tr::linspace(37.0, 72.0, 36).reshape(&[3, 2, 3, 2]));
+    let_example!(t1, &Tr::linspace(1.0, 36.0, 36_u8).reshape(&[3, 2, 2, 3]));
+    let_example!(t2, &Tr::linspace(37.0, 72.0, 36_u8).reshape(&[3, 2, 3, 2]));
     do_example!(t1.matmul(t2));
-    let_example!(t3, &Tr::linspace(39.0, 72.0, 12).reshape(&[2, 3, 2]));
+    let_example!(t3, &Tr::linspace(39.0, 72.0, 12_u8).reshape(&[2, 3, 2]));
     do_example!(t1.matmul(t3));
 }

@@ -52,8 +52,8 @@ where
 #[test]
 fn test_tensorlike() {
     let shape = &[2, 3];
-    let t_wgpu = &Wgpu32::linspace(1.0, 6.0, 6).reshape(shape);
-    let t_cpu = &Cpu32::linspace(1.0, 6.0, 6).reshape(shape);
+    let t_wgpu = &Wgpu32::linspace(1.0, 6.0, 6_u8).reshape(shape);
+    let t_cpu = &Cpu32::linspace(1.0, 6.0, 6_u8).reshape(shape);
 
     let r_cpu = fun(t_cpu, t_cpu);
     let r_gpu = fun(t_wgpu, t_wgpu);
@@ -63,12 +63,12 @@ fn test_tensorlike() {
 #[test]
 fn test_math_ops() {
     let shape = &[2, 3];
-    let t1 = &Cpu32::linspace(1., 6., 6).reshape(shape);
-    let t2 = &Cpu32::linspace(6., 11., 6).reshape(shape);
+    let t1 = &Cpu32::linspace(1., 6., 6_u8).reshape(shape);
+    let t2 = &Cpu32::linspace(6., 11., 6_u8).reshape(shape);
     math_ops(t1, t2);
 
-    let t1 = &Wgpu32::linspace(1., 6., 6).reshape(shape);
-    let t2 = &Wgpu32::linspace(6., 11., 6).reshape(shape);
+    let t1 = &Wgpu32::linspace(1., 6., 6_u8).reshape(shape);
+    let t2 = &Wgpu32::linspace(6., 11., 6_u8).reshape(shape);
     math_ops(t1, t2);
 }
 
@@ -106,14 +106,14 @@ fn test_broadcasted_ops() {
     let t1s = &[1, 1, 2, 3];
     let t2s = &t1s[3..];
 
-    let t1 = &Cpu32::linspace(1., 6., 6).reshape(t1s);
-    let t2 = &Cpu32::linspace(6., 8., 3).reshape(t2s);
-    let t3 = &Cpu32::linspace(1., 3., 3).reshape(t2s);
+    let t1 = &Cpu32::linspace(1., 6., 6_u8).reshape(t1s);
+    let t2 = &Cpu32::linspace(6., 8., 3_u8).reshape(t2s);
+    let t3 = &Cpu32::linspace(1., 3., 3_u8).reshape(t2s);
     broadcasted_ops(t1, t2, t3);
 
-    let t1 = &Wgpu32::linspace(1., 6., 6).reshape(t1s);
-    let t2 = &Wgpu32::linspace(6., 8., 3).reshape(t2s);
-    let t3 = &Wgpu32::linspace(1., 3., 3).reshape(t2s);
+    let t1 = &Wgpu32::linspace(1., 6., 6_u8).reshape(t1s);
+    let t2 = &Wgpu32::linspace(6., 8., 3_u8).reshape(t2s);
+    let t3 = &Wgpu32::linspace(1., 3., 3_u8).reshape(t2s);
     broadcasted_ops(t1, t2, t3);
 }
 
@@ -149,10 +149,10 @@ fn broadcasted_ops<T: RealizedRawTensor<E = f32>>(t1: &Tensor<T>, t2: &Tensor<T>
 #[test]
 fn test_reduce_ops() {
     let shape = &[2, 3];
-    let t1 = &Cpu32::linspace(1., 6., 6).reshape(shape);
+    let t1 = &Cpu32::linspace(1., 6., 6_u8).reshape(shape);
     reduce_ops(t1);
 
-    let t1 = &Wgpu32::linspace(1., 6., 6).reshape(shape);
+    let t1 = &Wgpu32::linspace(1., 6., 6_u8).reshape(shape);
     reduce_ops(t1);
 }
 
@@ -169,7 +169,7 @@ fn reduce_ops<T: RealizedRawTensor<E = f32>>(t1: &Tensor<T>) {
 
 #[test]
 fn test_reduce_ops_big() {
-    let t1_gpu = &Wgpu32::linspace(1., 120., 4800).reshape(&[150, 8, 4]);
+    let t1_gpu = &Wgpu32::linspace(1., 120., 4800_u16).reshape(&[150, 8, 4]);
     let t1_cpu = t1_gpu.to_cpu();
 
     let axes: [&[usize]; 7] = [&[0], &[1], &[2], &[0, 1], &[0, 2], &[1, 2], &[0, 1, 2]];
@@ -183,10 +183,10 @@ fn test_reduce_ops_big() {
 #[test]
 fn test_movement_ops() {
     let shape = &[2, 3];
-    let t1 = &Cpu32::linspace(1., 6., 6).reshape(shape);
+    let t1 = &Cpu32::linspace(1., 6., 6_u8).reshape(shape);
     movement_ops(t1);
 
-    let t1 = &Wgpu32::linspace(1., 6., 6).reshape(shape);
+    let t1 = &Wgpu32::linspace(1., 6., 6_u8).reshape(shape);
     movement_ops(t1);
 }
 
@@ -205,13 +205,13 @@ fn movement_ops<T: RealizedRawTensor<E = f32>>(t1: &Tensor<T>) {
 
 #[test]
 fn test_2x3_matmul_3x2() {
-    let t1 = &Cpu32::linspace(1., 6., 6).reshape(&[2, 3]);
-    let t2 = &Cpu32::linspace(6., 1., 6).reshape(&[3, 2]);
+    let t1 = &Cpu32::linspace(1., 6., 6_u8).reshape(&[2, 3]);
+    let t2 = &Cpu32::linspace(6., 1., 6_u8).reshape(&[3, 2]);
 
     do_2x3_matmul_3x2(t1, t2);
 
-    let t1 = &Wgpu32::linspace(1., 6., 6).reshape(&[2, 3]);
-    let t2 = &Wgpu32::linspace(6., 1., 6).reshape(&[3, 2]);
+    let t1 = &Wgpu32::linspace(1., 6., 6_u8).reshape(&[2, 3]);
+    let t2 = &Wgpu32::linspace(6., 1., 6_u8).reshape(&[3, 2]);
     do_2x3_matmul_3x2(t1, t2)
 }
 
@@ -223,12 +223,12 @@ fn do_2x3_matmul_3x2<T: RealizedRawTensor<E = f32>>(t1: &Tensor<T>, t2: &Tensor<
 
 #[test]
 fn test_2x3x5_matmul_2x5x2() {
-    let t1 = &Cpu32::linspace(0., 29., 30).reshape(&[2, 3, 5]);
-    let t2 = &Cpu32::linspace(0., 19., 20).reshape(&[2, 5, 2]);
+    let t1 = &Cpu32::linspace(0., 29., 30_u8).reshape(&[2, 3, 5]);
+    let t2 = &Cpu32::linspace(0., 19., 20_u8).reshape(&[2, 5, 2]);
     do_2x3x5_matmul_2x5x2(t1, t2);
 
-    let t1 = &Wgpu32::linspace(0., 29., 30).reshape(&[2, 3, 5]);
-    let t2 = &Wgpu32::linspace(0., 19., 20).reshape(&[2, 5, 2]);
+    let t1 = &Wgpu32::linspace(0., 29., 30_u8).reshape(&[2, 3, 5]);
+    let t2 = &Wgpu32::linspace(0., 19., 20_u8).reshape(&[2, 5, 2]);
     do_2x3x5_matmul_2x5x2(t1, t2);
 }
 
@@ -246,12 +246,12 @@ fn do_2x3x5_matmul_2x5x2<T: RealizedRawTensor<E = f32>>(t1: &Tensor<T>, t2: &Ten
 #[test]
 fn test_3x2x2x3_matmul_2x3x2() {
     // checked vs numpy
-    let t1 = &Cpu32::linspace(1.0, 36.0, 36).reshape(&[3, 2, 2, 3]);
-    let t2 = &Cpu32::linspace(39.0, 72.0, 12).reshape(&[2, 3, 2]);
+    let t1 = &Cpu32::linspace(1.0, 36.0, 36_u8).reshape(&[3, 2, 2, 3]);
+    let t2 = &Cpu32::linspace(39.0, 72.0, 12_u8).reshape(&[2, 3, 2]);
     do_3x2x2x3_matmul_2x3x2(t1, t2);
 
-    let t1 = &Wgpu32::linspace(1.0, 36.0, 36).reshape(&[3, 2, 2, 3]);
-    let t2 = &Wgpu32::linspace(39.0, 72.0, 12).reshape(&[2, 3, 2]);
+    let t1 = &Wgpu32::linspace(1.0, 36.0, 36_u8).reshape(&[3, 2, 2, 3]);
+    let t2 = &Wgpu32::linspace(39.0, 72.0, 12_u8).reshape(&[2, 3, 2]);
     do_3x2x2x3_matmul_2x3x2(t1, t2);
 }
 
@@ -323,7 +323,7 @@ fn test_dot_2d() {
 
 #[test]
 fn test_dot_2dx1d() {
-    let t1 = &Cpu32::linspace(1.0, 12.0, 12).reshape(&[4, 3]);
+    let t1 = &Cpu32::linspace(1.0, 12.0, 12_u8).reshape(&[4, 3]);
     let t2 = &Cpu32::new(&[3], &[4.0, -2.0, -3.0]);
 
     // re: 4, 3

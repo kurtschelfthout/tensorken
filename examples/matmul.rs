@@ -33,8 +33,8 @@ type Tr = Cpu32;
 
 fn main() {
     // how to multiply matrices, the hard way
-    let_example!(l, Tr::linspace(0.0, 11.0, 12).reshape(&[3, 4]));
-    let_example!(r, Tr::linspace(12.0, 23.0, 12).reshape(&[4, 3]));
+    let_example!(l, Tr::linspace(0.0, 11.0, 12_u16).reshape(&[3, 4]));
+    let_example!(r, Tr::linspace(12.0, 23.0, 12_u16).reshape(&[4, 3]));
     do_example!(&l.matmul(&r));
 
     // left's shape from [..., m, n] to [..., m, 1, n]

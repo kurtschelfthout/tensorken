@@ -133,14 +133,15 @@ impl<T: Num, TRawTensor: RealizedRawTensor<E = T>> Tensor<TRawTensor> {
     /// Returns a new tensor with a new axis inserted at the front of size `num_classes`.
     /// All elements are assumed to be integers in the range [0, `num_classes`).
     /// The new axis is used as a one-hot encoding of the elements.
-    pub fn one_hot(&self, num_classes: usize) -> Self {
-        let mut data = vec![T::ZERO; self.shape().size() * num_classes];
+    pub fn one_hot<N: Into<usize>>(&self, num_classes: N) -> Self {
+        let nc: usize = num_classes.into();
+        let mut data = vec![T::ZERO; self.shape().size() * nc];
         for (i, &x) in self.ravel().iter().enumerate() {
-            data[i * num_classes + x.to_usize()] = T::ONE;
+            data[i * nc + x.to_usize()] = T::ONE;
         }
         let mut new_shape = vec![];
         new_shape.extend(self.shape());
-        new_shape.push(num_classes);
+        new_shape.push(nc);
         Self::new(&new_shape, &data)
     }
 }

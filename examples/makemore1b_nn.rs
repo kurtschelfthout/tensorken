@@ -10,7 +10,7 @@ use std::{
 };
 
 use rand::{distributions::WeightedIndex, prelude::Distribution, rngs::StdRng, SeedableRng};
-use tensorken::{num::Num, value_and_grad1, Wgpu32};
+use tensorken::{value_and_grad1, Wgpu32};
 use tensorken::{Axes, Diffable, DiffableExt, Reverse, TensorLike, TensorLikeRef};
 
 // This example shows the first half of the first of Karpathy's from zero-to-hero tutorials on makemomre.
@@ -56,8 +56,8 @@ fn main() {
     let (xs, ys, itos) = create_training_set(&names);
 
     // one hot encodings of the training set
-    let xenc = xs.one_hot(27);
-    let yenc = ys.one_hot(27);
+    let xenc = xs.one_hot(27_u8);
+    let yenc = ys.one_hot(27_u8);
 
     // randomly generated weights
     let mut rng = StdRng::seed_from_u64(2_147_483_647);
@@ -82,13 +82,14 @@ fn main() {
     fn loss<'t, T>(probs: &T, yenc: &T) -> T
     where
         T: TensorLike<'t>,
+        T::Elem: From<f32>,
         for<'s> &'s T: TensorLikeRef<T>,
     {
         // the max here is a trick to get a columns vector of only the "correct" probabilities, as given by yenc
         // Karpathy does this with indexing one by one, or using pytorch's tensor indexing notation: probs[torch.arange(5), ys]
         let ps = (yenc * probs).max(&[1]).squeeze(Axes::All);
         let nlls = -ps.log();
-        nlls.sum(&[0]) / T::scalar(T::Elem::from_usize(nlls.shape()[0]))
+        nlls.sum(&[0]) / T::scalar((nlls.shape()[0] as f32).into())
     }
 
     // let l = loss(&probs, &yenc);
@@ -120,7 +121,7 @@ fn main() {
         let mut out = vec![];
         let mut ix = 0;
         loop {
-            let xenc = Tr::full(&[1], ix as f32).one_hot(27);
+            let xenc = Tr::full(&[1], ix as f32).one_hot(27_u8);
             let probs = predict(&W, &xenc).squeeze(Axes::All);
             // print!("probs\n{probs:.3}");
             let dist = WeightedIndex::new(probs.ravel()).unwrap();
