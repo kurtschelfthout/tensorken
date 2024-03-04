@@ -9,6 +9,7 @@ use crate::{
         UnaryOp,
     },
     ad_ops_forward::{CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
+    num::{Float, Num, ZeroOne},
     sl2, Axes, Diffable, DiffableExt, IndexValue, Shape,
 };
 
@@ -61,7 +62,10 @@ impl<T: Diffable> Forward<T> {
         }
     }
 
-    fn binary<Op: BinaryOp<T> + BinaryDiffOp<T>>(&self, rhs: &Self) -> Self {
+    fn binary<Op: BinaryOp<T> + BinaryDiffOp<T>>(&self, rhs: &Self) -> Self
+    where
+        T::Elem: Num,
+    {
         let (primal, op) = Op::f(self.primal(), rhs.primal());
         match (self, rhs) {
             (Self::Lift(_), Self::Lift(_)) => Self::Lift(primal),
@@ -74,13 +78,22 @@ impl<T: Diffable> Forward<T> {
     }
 }
 
-impl<T: Clone + Diffable> Diffable for Forward<T> {
+impl<T: Clone + Diffable> Diffable for Forward<T>
+where
+    T::Elem: Num,
+{
     type Elem = T::Elem;
-    fn log(&self) -> Self {
+    fn log(&self) -> Self
+    where
+        T::Elem: Float,
+    {
         self.unary::<LogOp<T>, _>(&())
     }
 
-    fn exp(&self) -> Self {
+    fn exp(&self) -> Self
+    where
+        T::Elem: Float,
+    {
         self.unary::<ExpOp<T>, _>(&())
     }
 
@@ -100,7 +113,10 @@ impl<T: Clone + Diffable> Diffable for Forward<T> {
         self.binary::<DivOp<T>>(rhs)
     }
 
-    fn elementwise_pow(&self, rhs: &Self) -> Self {
+    fn elementwise_pow(&self, rhs: &Self) -> Self
+    where
+        T::Elem: Float,
+    {
         self.binary::<PowOp<T>>(rhs)
     }
 
@@ -171,6 +187,7 @@ crate::math_macros::impl_un_op!(Neg, neg, Forward<T: Diffable + Clone>);
 /// Returns a tuple of the result of `f` and the tangent of `f`.
 pub fn jvpn<T: Diffable + Clone, F>(f: F, at: &[&T], tangents: &[&T]) -> (T, T)
 where
+    T::Elem: ZeroOne,
     for<'a> F: Fn(&'a [Forward<T>]) -> Forward<T>,
 {
     let vars: Vec<_> = at
@@ -196,6 +213,7 @@ where
 /// Compute the result and the gradient of a function at the given primals.
 pub fn value_and_diffn<T: Diffable + Clone, F>(f: F, at: &[&T]) -> (T, Vec<T>)
 where
+    T::Elem: ZeroOne,
     for<'a> F: Fn(&'a [Forward<T>]) -> Forward<T>,
 {
     let args: Vec<_> = at.iter().map(|&ati| ati.zeros_like()).collect();
@@ -218,6 +236,7 @@ where
 #[allow(clippy::missing_panics_doc)]
 pub fn value_and_diff1<T: Diffable + Clone, F>(f: F, at: &T) -> (T, T)
 where
+    T::Elem: ZeroOne,
     for<'a> F: Fn(&'a Forward<T>) -> Forward<T>,
 {
     let (primal, tangents) = value_and_diffn(|s| f(&s[0]), &[at]);
@@ -228,6 +247,7 @@ where
 #[allow(clippy::missing_panics_doc)]
 pub fn value_and_diff2<T: Diffable + Clone, F>(f: F, at0: &T, at1: &T) -> (T, (T, T))
 where
+    T::Elem: ZeroOne,
     for<'a> F: Fn(&'a Forward<T>, &'a Forward<T>) -> Forward<T>,
 {
     let (primal, tangents) = value_and_diffn(|s| f(&s[0], &s[1]), &[at0, at1]);
@@ -239,6 +259,7 @@ where
 #[allow(clippy::missing_panics_doc)]
 pub fn diff1<T: Diffable + Clone, F>(f: F, at: &T) -> T
 where
+    T::Elem: ZeroOne,
     for<'a> F: Fn(&'a Forward<T>) -> Forward<T>,
 {
     value_and_diff1(f, at).1
@@ -248,6 +269,7 @@ where
 #[allow(clippy::missing_panics_doc)]
 pub fn diff2<T: Diffable + Clone, F>(f: F, at0: &T, at1: &T) -> (T, T)
 where
+    T::Elem: ZeroOne,
     for<'a> F: Fn(&'a Forward<T>, &'a Forward<T>) -> Forward<T>,
 {
     value_and_diff2(f, at0, at1).1
@@ -257,6 +279,7 @@ where
 #[allow(clippy::missing_panics_doc)]
 pub fn jacfwd<T: Diffable + Clone, F>(f: F, at: &T) -> T
 where
+    T::Elem: Num,
     for<'a> F: Fn(&'a Forward<T>) -> Forward<T>,
 {
     let mut s = vec![at.shape().size()];

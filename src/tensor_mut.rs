@@ -2,7 +2,6 @@ use std::ops::{Index, IndexMut};
 
 use crate::{
     diffable::Diffable,
-    num::Num,
     raw_tensor::{RawTensor, RealizedRawTensor},
     shape::Shape,
     shape_strider::ShapeStrider,
@@ -25,7 +24,7 @@ pub struct TensorMut<T> {
     strider: ShapeStrider,
 }
 
-impl<T: Num> TensorMut<T> {
+impl<T: Copy> TensorMut<T> {
     /// Create a new tensor with the same shape and elements as the given tensor.
     /// Copies all the `Tensor`'s data.
     pub fn new<RT: RealizedRawTensor<E = T>>(from: &Tensor<RT>) -> Self {
@@ -69,7 +68,7 @@ impl<T: Num> TensorMut<T> {
     }
 }
 
-impl<T: Num> Index<&[usize]> for TensorMut<T> {
+impl<T: Copy> Index<&[usize]> for TensorMut<T> {
     type Output = T;
 
     fn index(&self, index: &[usize]) -> &Self::Output {
@@ -77,7 +76,7 @@ impl<T: Num> Index<&[usize]> for TensorMut<T> {
     }
 }
 
-impl<T: Num> IndexMut<&[usize]> for TensorMut<T> {
+impl<T: Copy> IndexMut<&[usize]> for TensorMut<T> {
     fn index_mut(&mut self, index: &[usize]) -> &mut Self::Output {
         self.index_mut(index)
     }

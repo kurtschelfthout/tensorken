@@ -1,3 +1,5 @@
+use crate::num::{Float, Num, ZeroOne};
+
 /// Counterpart for tinygrad's "low-level" operations in ops.py.
 /// Represents the operations that a tensor implementation, be it on CPU or GPU, must implement.
 /// All tensor operations in mlops are eventually translated to these operations.
@@ -19,48 +21,68 @@ pub trait RawTensor {
 
     /// Apply exp to each element.
     #[must_use]
-    fn exp(&self) -> Self;
+    fn exp(&self) -> Self
+    where
+        Self::E: Float;
 
     /// Apply the natural logarithm to each element.
     #[must_use]
-    fn log(&self) -> Self;
+    fn log(&self) -> Self
+    where
+        Self::E: Float;
 
     // binary ops
     // ----------
 
     /// Add self to other, element-wise.
     #[must_use]
-    fn add(&self, other: &Self) -> Self;
+    fn add(&self, other: &Self) -> Self
+    where
+        Self::E: Num;
 
     /// Subtract other from self, element-wise.
     #[must_use]
-    fn sub(&self, other: &Self) -> Self;
+    fn sub(&self, other: &Self) -> Self
+    where
+        Self::E: Num;
 
     /// Multiply self by other, element-wise.
     #[must_use]
-    fn mul(&self, other: &Self) -> Self;
+    fn mul(&self, other: &Self) -> Self
+    where
+        Self::E: Num;
 
     /// Divide self by other,  element-wise.
     #[must_use]
-    fn div(&self, other: &Self) -> Self;
+    fn div(&self, other: &Self) -> Self
+    where
+        Self::E: Num;
 
     /// Raise self to the power of other, element-wise.
     #[must_use]
-    fn pow(&self, other: &Self) -> Self;
+    fn pow(&self, other: &Self) -> Self
+    where
+        Self::E: Float;
 
     /// Return a new tensor with ones where elements are equal, and zero otherwise.
     #[must_use]
-    fn eq(&self, other: &Self) -> Self;
+    fn eq(&self, other: &Self) -> Self
+    where
+        Self::E: ZeroOne;
 
     // reduce ops
     // ----------
 
     #[must_use]
-    fn sum(&self, axes: &[usize]) -> Self;
+    fn sum(&self, axes: &[usize]) -> Self
+    where
+        Self::E: Num;
 
     /// Find the maximum of elements along the given axes.
     #[must_use]
-    fn max(&self, axes: &[usize]) -> Self;
+    fn max(&self, axes: &[usize]) -> Self
+    where
+        Self::E: ZeroOne;
 
     // movement ops
     // ------------
@@ -88,7 +110,9 @@ pub trait RawTensor {
     /// Like numpy's `pad`, but simpler - needs as many elements in `padding` as there
     /// are dimensions in the tensor.
     #[must_use]
-    fn pad(&self, padding: &[(usize, usize)]) -> Self;
+    fn pad(&self, padding: &[(usize, usize)]) -> Self
+    where
+        Self::E: ZeroOne;
 
     /// Crop the tensor according to the given limits - taking a contiguous slice in each axis.
     /// Needs as many limits as there are dimensions in the tensor.
@@ -119,7 +143,9 @@ pub trait RawTensor {
     /// allocation of a typically large intermediate result tensor which holds the results of the un-accumulated
     /// element-wise multiplication, and so is essential.
     #[must_use]
-    fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self;
+    fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self
+    where
+        Self::E: Num;
 }
 
 #[allow(clippy::module_name_repetitions)]

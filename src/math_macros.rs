@@ -6,7 +6,7 @@ macro_rules! impl_bin_op {
     // See https://stackoverflow.com/a/61189128/72211 for some explanation.
     // Add          , add         , Reverse,    , <      'a or T :  B  + C                       >
     ($op_trait:ident, $op_fn:ident, $name:ident $(< $( $ps:tt $( : $pb:tt $(+ $pbb:tt )* )?  ),+ >)? ) => {
-        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait for $name$(< $( $ps ),+ >)? {
+        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait for $name$(< $( $ps ),+ >)? where T::Elem: Num{
             type Output = Self;
 
             fn $op_fn(self, rhs: Self) -> Self::Output {
@@ -14,7 +14,7 @@ macro_rules! impl_bin_op {
             }
         }
 
-        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait for &$name$(< $( $ps ),+ >)? {
+        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait for &$name$(< $( $ps ),+ >)? where T::Elem: Num{
             type Output = $name$(< $( $ps ),+ >)?;
 
             fn $op_fn(self, rhs: Self) -> Self::Output {
@@ -22,7 +22,7 @@ macro_rules! impl_bin_op {
             }
         }
 
-        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait<&$name$(< $( $ps ),+ >)?> for $name$(< $( $ps ),+ >)? {
+        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait<&$name$(< $( $ps ),+ >)?> for $name$(< $( $ps ),+ >)? where T::Elem: Num{
             type Output = Self;
 
             fn $op_fn(self, rhs: &$name$(< $( $ps ),+ >)?) -> Self::Output {
@@ -30,7 +30,7 @@ macro_rules! impl_bin_op {
             }
         }
 
-        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait<$name$(< $( $ps ),+ >)?> for &$name$(< $( $ps ),+ >)? {
+        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait<$name$(< $( $ps ),+ >)?> for &$name$(< $( $ps ),+ >)? where T::Elem: Num{
             type Output = $name$(< $( $ps ),+ >)?;
 
             fn $op_fn(self, rhs: $name$(< $( $ps ),+ >)?) -> Self::Output {
@@ -45,7 +45,7 @@ pub(crate) use impl_bin_op;
 macro_rules! impl_un_op {
     ($op_trait:ident, $op_fn:ident, $name:ident $(< $( $ps:tt $( : $pb:tt $(+ $pbb:tt )* )?  ),+ >)? ) => {
 
-        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait for $name$(< $( $ps ),+ >)? {
+        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait for $name$(< $( $ps ),+ >)? where T::Elem: Num{
             type Output = Self;
 
             fn $op_fn(self) -> Self::Output {
@@ -53,7 +53,7 @@ macro_rules! impl_un_op {
             }
         }
 
-        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait for &$name$(< $( $ps ),+ >)? {
+        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait for &$name$(< $( $ps ),+ >)? where T::Elem: Num{
             type Output = $name$(< $( $ps ),+ >)?;
 
             fn $op_fn(self) -> Self::Output {

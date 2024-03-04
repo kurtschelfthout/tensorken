@@ -1,7 +1,11 @@
 use core::panic;
 use std::rc::Rc;
 
-use crate::{raw_tensor::RealizedRawTensor, RawTensor};
+use crate::{
+    num::{Float, Num},
+    raw_tensor::RealizedRawTensor,
+    RawTensor,
+};
 
 enum FuseCtx {
     Sum(Vec<usize>),
@@ -21,7 +25,10 @@ impl<T> Fuse<T> {
     }
 }
 
-impl<TRaw: RawTensor + Clone + 'static> Fuse<TRaw> {
+impl<TRaw: RawTensor + Clone + 'static> Fuse<TRaw>
+where
+    TRaw::E: Num,
+{
     fn from_raw_tensor(raw_tensor: TRaw) -> Self {
         Self::new(move |ctx| match ctx {
             FuseCtx::Sum(axes2) => raw_tensor.sum(axes2),
@@ -37,7 +44,10 @@ impl<TRaw: RawTensor + Clone + 'static> Fuse<TRaw> {
 fn unary_no_fuse<TRaw: RawTensor + 'static>(
     s: &Fuse<TRaw>,
     f: impl Fn(&TRaw) -> TRaw + 'static,
-) -> Fuse<TRaw> {
+) -> Fuse<TRaw>
+where
+    TRaw::E: Num,
+{
     let k = Rc::clone(&s.0);
     let nextctx = FuseCtx::NotSum;
     Fuse::new(move |ctx| match ctx {
@@ -50,7 +60,10 @@ fn binary_no_fuse<TRaw: RawTensor + 'static>(
     lhs: &Fuse<TRaw>,
     rhs: &Fuse<TRaw>,
     f: fn(&TRaw, &TRaw) -> TRaw,
-) -> Fuse<TRaw> {
+) -> Fuse<TRaw>
+where
+    TRaw::E: Num,
+{
     let f_lhs = Rc::clone(&lhs.0);
     let f_rhs = Rc::clone(&rhs.0);
     let nextctx = FuseCtx::NotSum;
@@ -68,14 +81,27 @@ fn combine_axes(lhs: &[usize], rhs: &[usize]) -> Vec<usize> {
     axes
 }
 
-impl<TRaw: RawTensor + Clone + 'static> RawTensor for Fuse<TRaw> {
+impl<TRaw: RawTensor + Clone + 'static> RawTensor for Fuse<TRaw>
+where
+    // Since fusing mul and sum only makes sense for Num types,
+    // we can constrain that for all methods here. This means
+    // we don't need to add individual where clauses to each method,
+    // except where Float is required.
+    TRaw::E: Num,
+{
     type E = TRaw::E;
 
-    fn exp(&self) -> Self {
+    fn exp(&self) -> Self
+    where
+        Self::E: Float,
+    {
         unary_no_fuse(self, TRaw::exp)
     }
 
-    fn log(&self) -> Self {
+    fn log(&self) -> Self
+    where
+        Self::E: Float,
+    {
         unary_no_fuse(self, TRaw::log)
     }
 
@@ -101,7 +127,10 @@ impl<TRaw: RawTensor + Clone + 'static> RawTensor for Fuse<TRaw> {
         binary_no_fuse(self, other, TRaw::div)
     }
 
-    fn pow(&self, other: &Self) -> Self {
+    fn pow(&self, other: &Self) -> Self
+    where
+        TRaw::E: Float,
+    {
         binary_no_fuse(self, other, TRaw::pow)
     }
 
@@ -171,7 +200,10 @@ impl<TRaw: RawTensor + Clone + 'static> RawTensor for Fuse<TRaw> {
     }
 }
 
-impl<TRaw: RealizedRawTensor + Clone + 'static> RealizedRawTensor for Fuse<TRaw> {
+impl<TRaw: RealizedRawTensor + Clone + 'static> RealizedRawTensor for Fuse<TRaw>
+where
+    TRaw::E: Num,
+{
     fn to_cpu(&self) -> crate::CpuRawTensor<Self::E> {
         self.run().to_cpu()
     }
