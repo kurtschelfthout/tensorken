@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::ops::Add;
 use std::sync::Arc;
 
-use crate::num::Float;
+use crate::num::{Float, Num, ZeroOne};
 use crate::raw_tensor::{RawTensor, RealizedRawTensor};
 use crate::shape::Shape;
 use crate::shape_strider::{ShapeStrider, TensorIndexIterator};
@@ -202,45 +202,75 @@ impl<'a, T: Copy> IntoIterator for &'a CpuRawTensor<T> {
     }
 }
 
-impl<T: Float> RawTensor for CpuRawTensor<T> {
+impl<T: Copy> RawTensor for CpuRawTensor<T> {
     type E = T;
-    fn exp(&self) -> Self {
-        self.map(Float::exp)
+    fn exp(&self) -> Self
+    where
+        Self::E: Float,
+    {
+        self.map(T::exp)
     }
 
-    fn log(&self) -> Self {
-        self.map(Float::log)
+    fn log(&self) -> Self
+    where
+        Self::E: Float,
+    {
+        self.map(T::log)
     }
 
-    fn add(&self, other: &Self) -> Self {
+    fn add(&self, other: &Self) -> Self
+    where
+        Self::E: Num,
+    {
         self.zip(other, T::add)
     }
 
-    fn sub(&self, other: &Self) -> Self {
+    fn sub(&self, other: &Self) -> Self
+    where
+        Self::E: Num,
+    {
         self.zip(other, T::sub)
     }
 
-    fn mul(&self, other: &Self) -> Self {
+    fn mul(&self, other: &Self) -> Self
+    where
+        Self::E: Num,
+    {
         self.zip(other, T::mul)
     }
 
-    fn div(&self, other: &Self) -> Self {
+    fn div(&self, other: &Self) -> Self
+    where
+        Self::E: Num,
+    {
         self.zip(other, T::div)
     }
 
-    fn pow(&self, other: &Self) -> Self {
-        self.zip(other, Float::powf)
+    fn pow(&self, other: &Self) -> Self
+    where
+        Self::E: Float,
+    {
+        self.zip(other, T::powf)
     }
 
-    fn eq(&self, other: &Self) -> Self {
+    fn eq(&self, other: &Self) -> Self
+    where
+        Self::E: ZeroOne,
+    {
         self.zip(other, |x, y| if x == y { T::ONE } else { T::ZERO })
     }
 
-    fn sum(&self, axes: &[usize]) -> Self {
+    fn sum(&self, axes: &[usize]) -> Self
+    where
+        Self::E: Num,
+    {
         self.reduce(T::ZERO, Add::add, axes)
     }
 
-    fn max(&self, axes: &[usize]) -> Self {
+    fn max(&self, axes: &[usize]) -> Self
+    where
+        Self::E: ZeroOne,
+    {
         self.reduce(T::MIN, |x, y| if x > y { x } else { y }, axes)
     }
 
@@ -269,7 +299,10 @@ impl<T: Float> RawTensor for CpuRawTensor<T> {
         self.with_strider(strider)
     }
 
-    fn pad(&self, padding: &[(usize, usize)]) -> Self {
+    fn pad(&self, padding: &[(usize, usize)]) -> Self
+    where
+        Self::E: ZeroOne,
+    {
         self.strider.validate_can_pad(padding).unwrap();
 
         let strider = self.strider.pad(padding);
@@ -306,12 +339,15 @@ impl<T: Float> RawTensor for CpuRawTensor<T> {
         self.strider.shape()
     }
 
-    fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self {
+    fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self
+    where
+        Self::E: Num,
+    {
         self.fused_zip_reduce(other, axes, T::ZERO, |acc, x, y| acc + x * y)
     }
 }
 
-impl<T: Float> RealizedRawTensor for CpuRawTensor<T> {
+impl<T: Copy> RealizedRawTensor for CpuRawTensor<T> {
     fn to_cpu(&self) -> crate::CpuRawTensor<Self::E> {
         self.clone()
     }

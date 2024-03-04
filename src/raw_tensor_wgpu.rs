@@ -7,7 +7,7 @@ use bytemuck::{NoUninit, Pod};
 use wgpu::util::DeviceExt;
 
 use crate::{
-    num::Num,
+    num::Float,
     raw_tensor::{RawTensor, RealizedRawTensor},
     shape::Shape,
     shape_strider::ShapeStrider,
@@ -225,11 +225,107 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
     ) -> Arc<wgpu::ComputePipeline> {
         self.context.pipeline_for(operation, workgroup_size)
     }
+    /// Create a new tensor with given buffer and strider, passing self's context along.
+    fn with_buffer_strider(&self, buffer: wgpu::Buffer, strider: ShapeStrider) -> Self {
+        WgpuRawTensor {
+            buffer: Arc::new(buffer),
+            strider,
+            context: self.context,
+            phantom: self.phantom,
+        }
+    }
+
+    /// Max number of threads in a workgroup, as defined by WebGPU.
+    const MAX_WORKGROUP_SIZE: usize = 256;
+    /// Max number of workgroups in a dispatch, as defined by WebGPU.
+    const MAX_WORKGROUP_COUNT: usize = 65535;
+
+    /// Return:
+    /// - workgroup size (the number of threads in each workgroup, x and y. y is always 1.),
+    /// - workgroup count (the number of workgroups to run)
+    /// - chunk size (the number of elements each thread will process)
+    /// This is based on the size of the output tensor, as for all operations except
+    /// reduce, that's the maximum amount of parallelism we can have.
+    /// The idea is to maximize workgroup size, then workgroup count, then chunk size -
+    /// this should maximize parallelism.
+    fn counts_n_sizes(output_tensor_size: usize) -> ((usize, usize), usize, usize) {
+        if output_tensor_size <= Self::MAX_WORKGROUP_SIZE {
+            return ((output_tensor_size, 1), 1, 1);
+        }
+
+        let workgroup_count =
+            (output_tensor_size + Self::MAX_WORKGROUP_SIZE - 1) / Self::MAX_WORKGROUP_SIZE;
+        if workgroup_count <= Self::MAX_WORKGROUP_COUNT {
+            return ((Self::MAX_WORKGROUP_SIZE, 1), workgroup_count, 1);
+        }
+
+        let chunk_size =
+            (output_tensor_size + Self::MAX_WORKGROUP_COUNT - 1) / Self::MAX_WORKGROUP_COUNT;
+        (
+            (Self::MAX_WORKGROUP_SIZE, 1),
+            Self::MAX_WORKGROUP_COUNT,
+            chunk_size,
+        )
+    }
+
+    fn clamp(v: usize, min: usize, max: usize) -> usize {
+        if v < min {
+            min
+        } else if v > max {
+            max
+        } else {
+            v
+        }
+    }
+
+    /// Return:
+    /// - workgroup size (the number of threads in each workgroup, x and y.),
+    /// - workgroup count (the number of workgroups to run)
+    /// - chunk size (the number of elements each thread will process)
+    /// Specifically for the reduce operation.
+    /// Reduce is suboptimal if we'd only base it on the output tensor size: in the extreme,
+    /// reducing to a single element achieves no parallelism at all.
+    /// The idea here is to check if we have enough parallelism in the output tensor to
+    /// parallelize "the normal way". If the output tensor size is smaller than the max workgroup size,
+    /// we also parallelize the reduction itself.
+    fn counts_n_sizes_reduce(
+        input_tensor_size: usize,
+        output_tensor_size: usize,
+    ) -> (WorkgroupSize, usize, usize) {
+        if output_tensor_size <= Self::MAX_WORKGROUP_SIZE {
+            // Parallelize the reduction. e.g. reducing a tensor to a single scalar.
+
+            // First parallelize on the output size as much as possible.
+            let workgroup_size_x = output_tensor_size;
+
+            // Then parallelize the reduction.
+            // This is the number of elements that need to be reduced to a single output element.
+            let reduce_size = input_tensor_size / output_tensor_size;
+            // We can only have MAX_WORKGROUP_SIZE threads total.
+            let max_workgroup_size_y = Self::MAX_WORKGROUP_SIZE / workgroup_size_x;
+            // Arbitrarily choose to reduce at least 64 elements per thread.
+            let workgroup_size_y = Self::clamp(reduce_size / 64, 1, max_workgroup_size_y);
+            let workgroup_size = (workgroup_size_x, workgroup_size_y);
+            let (workgroup_count, chunk_size) = (1, 1);
+            // dbg!(
+            //     output_tensor_size,
+            //     workgroup_size,
+            //     workgroup_count,
+            //     chunk_size
+            // );
+            return (workgroup_size, workgroup_count, chunk_size);
+        }
+
+        // if the output tensor is larger than the max workgroup size, we don't parallelize
+        // the reduce. I.e. each thread reduces one subtensor to a single element.
+        // (this will check MAX_WORKGROUP_SIZE again, but ok)
+        Self::counts_n_sizes(output_tensor_size)
+    }
 }
 
 type ReduceInfo<'a> = (&'a [usize], &'a [usize], &'a [usize], usize);
 
-impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
+impl<'a, T: Float + NoUninit + Pod> WgpuRawTensor<'a, T> {
     /// Get the buffer that encodes various strides and shapes of the inputs.
     /// Is used for all operations, so is a mess of a signature.
     fn get_strides_and_shapes_buffer(
@@ -289,49 +385,6 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
         buffer
     }
 
-    /// Create a new tensor with given buffer and strider, passing self's context along.
-    fn with_buffer_strider(&self, buffer: wgpu::Buffer, strider: ShapeStrider) -> Self {
-        WgpuRawTensor {
-            buffer: Arc::new(buffer),
-            strider,
-            context: self.context,
-            phantom: self.phantom,
-        }
-    }
-
-    /// Max number of threads in a workgroup, as defined by WebGPU.
-    const MAX_WORKGROUP_SIZE: usize = 256;
-    /// Max number of workgroups in a dispatch, as defined by WebGPU.
-    const MAX_WORKGROUP_COUNT: usize = 65535;
-
-    /// Return:
-    /// - workgroup size (the number of threads in each workgroup, x and y. y is always 1.),
-    /// - workgroup count (the number of workgroups to run)
-    /// - chunk size (the number of elements each thread will process)
-    /// This is based on the size of the output tensor, as for all operations except
-    /// reduce, that's the maximum amount of parallelism we can have.
-    /// The idea is to maximize workgroup size, then workgroup count, then chunk size -
-    /// this should maximize parallelism.
-    fn counts_n_sizes(output_tensor_size: usize) -> ((usize, usize), usize, usize) {
-        if output_tensor_size <= Self::MAX_WORKGROUP_SIZE {
-            return ((output_tensor_size, 1), 1, 1);
-        }
-
-        let workgroup_count =
-            (output_tensor_size + Self::MAX_WORKGROUP_SIZE - 1) / Self::MAX_WORKGROUP_SIZE;
-        if workgroup_count <= Self::MAX_WORKGROUP_COUNT {
-            return ((Self::MAX_WORKGROUP_SIZE, 1), workgroup_count, 1);
-        }
-
-        let chunk_size =
-            (output_tensor_size + Self::MAX_WORKGROUP_COUNT - 1) / Self::MAX_WORKGROUP_COUNT;
-        (
-            (Self::MAX_WORKGROUP_SIZE, 1),
-            Self::MAX_WORKGROUP_COUNT,
-            chunk_size,
-        )
-    }
-
     /// Return a new tensor with the same shape as self, after applying f to each element.
     /// Allocates a new buffer. Resulting tensor is contiguous.
     fn map(&self, operation: &'static str) -> Self {
@@ -381,60 +434,6 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
         self.encode_and_submit(compute_pipeline.as_ref(), &bind_group, workgroup_count);
 
         self.with_buffer_strider(output_buffer, output_strider)
-    }
-
-    fn clamp(v: usize, min: usize, max: usize) -> usize {
-        if v < min {
-            min
-        } else if v > max {
-            max
-        } else {
-            v
-        }
-    }
-
-    /// Return:
-    /// - workgroup size (the number of threads in each workgroup, x and y.),
-    /// - workgroup count (the number of workgroups to run)
-    /// - chunk size (the number of elements each thread will process)
-    /// Specifically for the reduce operation.
-    /// Reduce is suboptimal if we'd only base it on the output tensor size: in the extreme,
-    /// reducing to a single element achieves no parallelism at all.
-    /// The idea here is to check if we have enough parallelism in the output tensor to
-    /// parallelize "the normal way". If the output tensor size is smaller than the max workgroup size,
-    /// we also parallelize the reduction itself.
-    fn counts_n_sizes_reduce(
-        input_tensor_size: usize,
-        output_tensor_size: usize,
-    ) -> (WorkgroupSize, usize, usize) {
-        if output_tensor_size <= Self::MAX_WORKGROUP_SIZE {
-            // Parallelize the reduction. e.g. reducing a tensor to a single scalar.
-
-            // First parallelize on the output size as much as possible.
-            let workgroup_size_x = output_tensor_size;
-
-            // Then parallelize the reduction.
-            // This is the number of elements that need to be reduced to a single output element.
-            let reduce_size = input_tensor_size / output_tensor_size;
-            // We can only have MAX_WORKGROUP_SIZE threads total.
-            let max_workgroup_size_y = Self::MAX_WORKGROUP_SIZE / workgroup_size_x;
-            // Arbitrarily choose to reduce at least 64 elements per thread.
-            let workgroup_size_y = Self::clamp(reduce_size / 64, 1, max_workgroup_size_y);
-            let workgroup_size = (workgroup_size_x, workgroup_size_y);
-            let (workgroup_count, chunk_size) = (1, 1);
-            // dbg!(
-            //     output_tensor_size,
-            //     workgroup_size,
-            //     workgroup_count,
-            //     chunk_size
-            // );
-            return (workgroup_size, workgroup_count, chunk_size);
-        }
-
-        // if the output tensor is larger than the max workgroup size, we don't parallelize
-        // the reduce. I.e. each thread reduces one subtensor to a single element.
-        // (this will check MAX_WORKGROUP_SIZE again, but ok)
-        Self::counts_n_sizes(output_tensor_size)
     }
 
     /// Return a new tensor with the given axes reduced.
@@ -601,7 +600,8 @@ impl<'a, T: Num + NoUninit + Pod> WgpuRawTensor<'a, T> {
     }
 }
 
-impl<T: Num + NoUninit + Pod> RawTensor for WgpuRawTensor<'_, T> {
+// Float here because the shaders are written in terms of f32.
+impl<T: Float + NoUninit + Pod> RawTensor for WgpuRawTensor<'_, T> {
     type E = T;
 
     fn exp(&self) -> Self {
@@ -693,7 +693,7 @@ impl<T: Num + NoUninit + Pod> RawTensor for WgpuRawTensor<'_, T> {
     }
 }
 
-impl<T: Num + NoUninit + Pod> RealizedRawTensor for WgpuRawTensor<'_, T> {
+impl RealizedRawTensor for WgpuRawTensor<'_, f32> {
     fn to_cpu(&self) -> crate::CpuRawTensor<Self::E> {
         CpuRawTensor::new_into(self.shape(), self.ravel())
     }

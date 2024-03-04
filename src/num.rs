@@ -1,11 +1,13 @@
 use std::ops::{Add, Div, Mul, Sub};
 
 /// A number that has both zero and one values.
-pub trait ZeroOne {
+pub trait ZeroOne: Copy + PartialEq + PartialOrd {
     /// The zero value.
     const ZERO: Self;
     /// The one value.
     const ONE: Self;
+    /// The minimum value.
+    const MIN: Self;
 }
 
 /// A trait with basic requirements of numbers stored in tensors.
@@ -16,13 +18,7 @@ pub trait Num:
     + Sub<Self, Output = Self>
     + Mul<Self, Output = Self>
     + Div<Self, Output = Self>
-    + PartialEq
-    + PartialOrd
-    + Copy
 {
-    /// The minimum value.
-    const MIN: Self;
-
     /// Convert to usize.
     /// This is really only so Tensor can implement `one_hot`.
     /// TODO: remove once we have int tensors.
@@ -44,11 +40,10 @@ pub trait Float: Num {
 impl ZeroOne for f32 {
     const ZERO: Self = 0.0;
     const ONE: Self = 1.0;
+    const MIN: Self = f32::MIN;
 }
 
 impl Num for f32 {
-    const MIN: Self = f32::MIN;
-
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     fn to_usize(self) -> usize {
         self as _
@@ -67,4 +62,23 @@ impl Float for f32 {
     fn powf(self, exp: Self) -> Self {
         self.powf(exp)
     }
+}
+
+impl ZeroOne for i32 {
+    const ZERO: Self = 0;
+    const ONE: Self = 1;
+    const MIN: Self = i32::MIN;
+}
+
+impl Num for i32 {
+    #[allow(clippy::cast_sign_loss)]
+    fn to_usize(self) -> usize {
+        self as _
+    }
+}
+
+impl ZeroOne for bool {
+    const ZERO: Self = false;
+    const ONE: Self = true;
+    const MIN: Self = false;
 }

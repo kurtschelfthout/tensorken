@@ -1,8 +1,8 @@
 use tensorken::{
     jacfwd, jvpn,
-    num::Num,
-    value_and_diff2, CpuRawTensor, Diffable, DiffableExt, RawTensor, RealizedRawTensor, Shape,
-    WgpuRawTensor, {value_and_diff1, Forward}, {Tensor, TensorLike, TensorLikeRef},
+    num::{Float, Num, ZeroOne},
+    value_and_diff1, value_and_diff2, CpuRawTensor, Diffable, DiffableExt, Forward, RawTensor,
+    RealizedRawTensor, Shape, Tensor, TensorLike, TensorLikeRef, WgpuRawTensor,
 };
 
 use std::{fmt::Debug, ops::Add};
@@ -214,6 +214,7 @@ fn do_test_sub<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {
 
 fn f_div<'t, T>(a: &'t T) -> T
 where
+    T::Elem: ZeroOne,
     T: TensorLike<'t>,
     for<'s> &'s T: TensorLikeRef<T>,
 {
@@ -243,6 +244,7 @@ fn do_test_div<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {
 
 fn f_pow<'t, T>(a: &'t T) -> T
 where
+    T::Elem: Float,
     T: TensorLike<'t>,
     for<'s> &'s T: TensorLikeRef<T>,
 {
@@ -324,6 +326,7 @@ fn all_axes(shape: &[usize]) -> Vec<usize> {
 
 fn f_sum<'t, T>(a: &'t T) -> T
 where
+    T::Elem: Num,
     T: TensorLike<'t>,
     for<'s> &'s T: TensorLikeRef<T>,
 {
@@ -339,13 +342,13 @@ fn test_derivative_sum() {
 fn do_test_sum<RT: RealizedRawTensor<E = f32> + Clone + Debug + 'static>() {
     fn df<RT: RawTensor>(a: &Tensor<RT>) -> Tensor<RT>
     where
-        RT::E: Num,
+        RT::E: Num + Float,
     {
         a.ones_like().sum(&all_axes(a.shape()))
     }
     fn ddf<RT: RawTensor>(a: &Tensor<RT>) -> Tensor<RT>
     where
-        RT::E: Num,
+        RT::E: Num + Float,
     {
         a.zeros_like().sum(&all_axes(a.shape()))
     }
@@ -356,6 +359,7 @@ fn do_test_sum<RT: RealizedRawTensor<E = f32> + Clone + Debug + 'static>() {
 
 fn f_max<'t, T>(a: &'t T) -> T
 where
+    T::Elem: Num,
     T: TensorLike<'t>,
     for<'s> &'s T: TensorLikeRef<T>,
 {
@@ -488,6 +492,7 @@ fn do_test_crop<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {
 
 fn f_pad<'t, T>(a: &'t T) -> T
 where
+    T::Elem: ZeroOne,
     T: TensorLike<'t>,
     for<'s> &'s T: TensorLikeRef<T>,
 {
@@ -511,6 +516,7 @@ fn do_test_pad<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {
 
 fn f_matmul<'t, T>(a: &'t T, b: &'t T) -> T
 where
+    T::Elem: Num,
     T: TensorLike<'t>,
     for<'s> &'s T: TensorLikeRef<T>,
 {
@@ -558,6 +564,7 @@ fn test_jacfwd() {
 
 fn f_pow2<'t, T>(a: &'t T) -> T
 where
+    T::Elem: Float,
     T: TensorLike<'t>,
     T::Elem: From<u8>,
     for<'s> &'s T: TensorLikeRef<T>,

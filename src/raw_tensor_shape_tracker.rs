@@ -1,4 +1,9 @@
-use crate::{raw_tensor::RealizedRawTensor, shape_strider::ShapeStrider, RawTensor, Shape};
+use crate::{
+    num::{Float, Num, ZeroOne},
+    raw_tensor::RealizedRawTensor,
+    shape_strider::ShapeStrider,
+    RawTensor, Shape,
+};
 
 #[derive(Clone)]
 pub struct ShapeTracker<T>(ShapeStrider, T);
@@ -14,43 +19,73 @@ impl<TRaw: RawTensor> ShapeTracker<TRaw> {
 impl<TRaw: RawTensor> RawTensor for ShapeTracker<TRaw> {
     type E = TRaw::E;
 
-    fn exp(&self) -> Self {
+    fn exp(&self) -> Self
+    where
+        Self::E: Float,
+    {
         Self(self.0.clone(), self.1.exp())
     }
 
-    fn log(&self) -> Self {
+    fn log(&self) -> Self
+    where
+        Self::E: Float,
+    {
         Self(self.0.clone(), self.1.log())
     }
 
-    fn add(&self, other: &Self) -> Self {
+    fn add(&self, other: &Self) -> Self
+    where
+        Self::E: Num,
+    {
         Self(self.0.clone(), self.1.add(&other.1))
     }
 
-    fn sub(&self, other: &Self) -> Self {
+    fn sub(&self, other: &Self) -> Self
+    where
+        Self::E: Num,
+    {
         Self(self.0.clone(), self.1.sub(&other.1))
     }
 
-    fn mul(&self, other: &Self) -> Self {
+    fn mul(&self, other: &Self) -> Self
+    where
+        Self::E: Num,
+    {
         Self(self.0.clone(), self.1.mul(&other.1))
     }
 
-    fn div(&self, other: &Self) -> Self {
+    fn div(&self, other: &Self) -> Self
+    where
+        Self::E: Num,
+    {
         Self(self.0.clone(), self.1.div(&other.1))
     }
 
-    fn pow(&self, other: &Self) -> Self {
+    fn pow(&self, other: &Self) -> Self
+    where
+        Self::E: Float,
+    {
         Self(self.0.clone(), self.1.pow(&other.1))
     }
 
-    fn eq(&self, other: &Self) -> Self {
+    fn eq(&self, other: &Self) -> Self
+    where
+        Self::E: ZeroOne,
+    {
         Self(self.0.clone(), self.1.eq(&other.1))
     }
 
-    fn sum(&self, axes: &[usize]) -> Self {
+    fn sum(&self, axes: &[usize]) -> Self
+    where
+        Self::E: Num,
+    {
         Self(self.0.reduce(axes).0, self.1.sum(axes))
     }
 
-    fn max(&self, axes: &[usize]) -> Self {
+    fn max(&self, axes: &[usize]) -> Self
+    where
+        Self::E: ZeroOne,
+    {
         Self(self.0.reduce(axes).0, self.1.max(axes))
     }
 
@@ -71,7 +106,10 @@ impl<TRaw: RawTensor> RawTensor for ShapeTracker<TRaw> {
         Self(self.0.expand(shape).unwrap(), self.1.expand(shape))
     }
 
-    fn pad(&self, padding: &[(usize, usize)]) -> Self {
+    fn pad(&self, padding: &[(usize, usize)]) -> Self
+    where
+        Self::E: ZeroOne,
+    {
         Self(self.0.pad(padding), self.1.pad(padding))
     }
 
@@ -88,7 +126,10 @@ impl<TRaw: RawTensor> RawTensor for ShapeTracker<TRaw> {
         self.0.shape()
     }
 
-    fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self {
+    fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self
+    where
+        Self::E: Num,
+    {
         Self(
             self.0.reduce(axes).0,
             self.1.fused_multiply_add(&other.1, axes),

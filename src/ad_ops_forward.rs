@@ -1,11 +1,15 @@
 use crate::{
     ad_ops::{UnaryDiffOp, UnaryOp},
+    num::{Num, ZeroOne},
     Diffable,
 };
 
 pub(crate) struct SumOp(Vec<usize>);
 
-impl<TTensor: Diffable> UnaryOp<TTensor> for SumOp {
+impl<TTensor: Diffable> UnaryOp<TTensor> for SumOp
+where
+    TTensor::Elem: Num,
+{
     type Args = [usize];
     fn f(a: &TTensor, axes: &Self::Args) -> (TTensor, Self) {
         let r = a.sum(axes);
@@ -13,7 +17,10 @@ impl<TTensor: Diffable> UnaryOp<TTensor> for SumOp {
     }
 }
 
-impl<TTensor: Diffable> UnaryDiffOp<TTensor> for SumOp {
+impl<TTensor: Diffable> UnaryDiffOp<TTensor> for SumOp
+where
+    TTensor::Elem: Num,
+{
     fn dfda(&self, d: &TTensor) -> TTensor {
         d.sum(&self.0)
     }
@@ -21,7 +28,10 @@ impl<TTensor: Diffable> UnaryDiffOp<TTensor> for SumOp {
 
 pub(crate) struct MaxOp<TTensor>(TTensor, TTensor);
 
-impl<TTensor: Clone + Diffable> UnaryOp<TTensor> for MaxOp<TTensor> {
+impl<TTensor: Clone + Diffable> UnaryOp<TTensor> for MaxOp<TTensor>
+where
+    TTensor::Elem: ZeroOne,
+{
     type Args = [usize];
     fn f(a: &TTensor, axes: &Self::Args) -> (TTensor, Self) {
         let r = a.max(axes);
@@ -29,7 +39,10 @@ impl<TTensor: Clone + Diffable> UnaryOp<TTensor> for MaxOp<TTensor> {
     }
 }
 
-impl<TTensor: Diffable> UnaryDiffOp<TTensor> for MaxOp<TTensor> {
+impl<TTensor: Diffable> UnaryDiffOp<TTensor> for MaxOp<TTensor>
+where
+    TTensor::Elem: Num,
+{
     fn dfda(&self, d: &TTensor) -> TTensor {
         let max_is_1s = self.0.elementwise_eq(&self.1.expand(self.0.shape()));
         max_is_1s.elementwise_mul(d)
@@ -85,7 +98,10 @@ impl<TTensor: Diffable> UnaryDiffOp<TTensor> for PermuteOp {
 
 pub(crate) struct PadOp(Vec<(usize, usize)>);
 
-impl<TTensor: Diffable> UnaryOp<TTensor> for PadOp {
+impl<TTensor: Diffable> UnaryOp<TTensor> for PadOp
+where
+    TTensor::Elem: ZeroOne,
+{
     type Args = [(usize, usize)];
     fn f(a: &TTensor, padding: &Self::Args) -> (TTensor, Self) {
         let r = a.pad(padding);
@@ -93,7 +109,10 @@ impl<TTensor: Diffable> UnaryOp<TTensor> for PadOp {
     }
 }
 
-impl<TTensor: Diffable> UnaryDiffOp<TTensor> for PadOp {
+impl<TTensor: Diffable> UnaryDiffOp<TTensor> for PadOp
+where
+    TTensor::Elem: ZeroOne,
+{
     fn dfda(&self, d: &TTensor) -> TTensor {
         d.pad(&self.0)
     }

@@ -1,7 +1,7 @@
 use rand::{rngs::StdRng, SeedableRng};
 use tensorken::{
-    Axes, CpuRawTensor, Diffable, DiffableExt, RealizedRawTensor, WgpuRawTensor,
-    {Cpu32, IndexValue, Tensor, TensorLike, TensorLikeRef, Wgpu32},
+    num::Float, Axes, Cpu32, CpuRawTensor, Diffable, DiffableExt, IndexValue, RealizedRawTensor,
+    Tensor, TensorLike, TensorLikeRef, Wgpu32, WgpuRawTensor,
 };
 
 fn assert_tensor_eq<T1: RealizedRawTensor<E = f32>, T2: RealizedRawTensor<E = f32>>(
@@ -35,6 +35,7 @@ fn assert_vec_eq(a: &[f32], b: &[f32]) {
 // TernsorLike traits are having the right effect.
 fn fun<T>(t1: &T, t2: &T) -> T
 where
+    T::Elem: Float,
     for<'s> T: TensorLike<'s>,
     for<'s> &'s T: TensorLikeRef<T>,
 {

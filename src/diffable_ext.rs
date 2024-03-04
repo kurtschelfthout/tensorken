@@ -3,7 +3,7 @@ use std::vec;
 use rand::Rng;
 use rand_distr::{Distribution, StandardNormal};
 
-use crate::num::ZeroOne;
+use crate::num::{Float, Num, ZeroOne};
 use crate::{Diffable, Shape};
 
 pub(crate) fn broadcasted_apply<T: Diffable>(
@@ -65,17 +65,26 @@ where
     }
 
     /// Create a new tensor with the given shape, and fill it with zeros.
-    fn zeros(shape: &[usize]) -> Self {
+    fn zeros(shape: &[usize]) -> Self
+    where
+        Self::Elem: ZeroOne,
+    {
         Self::full(shape, Self::Elem::ZERO)
     }
 
     /// Create a new tensor with the given shape, and fill it with ones.
-    fn ones(shape: &[usize]) -> Self {
+    fn ones(shape: &[usize]) -> Self
+    where
+        Self::Elem: ZeroOne,
+    {
         Self::full(shape, Self::Elem::ONE)
     }
 
     /// Create a new 2-dimensional tensor with ones on the diagonal and zeros elsewhere.
-    fn eye(dim: usize) -> Self {
+    fn eye(dim: usize) -> Self
+    where
+        Self::Elem: ZeroOne,
+    {
         // kind of an pad/crop/expand/reshape stress test
         Self::scalar(Self::Elem::ONE)
             .pad(&[(0, dim)])
@@ -91,7 +100,10 @@ where
         start: Self::Elem,
         end: Self::Elem,
         num: N,
-    ) -> Self {
+    ) -> Self
+    where
+        Self::Elem: Num,
+    {
         let num_usize = num.into();
         let mut data = Vec::with_capacity(num_usize);
         let step = if num_usize > 1 {
@@ -130,12 +142,18 @@ where
     }
 
     #[must_use]
-    fn zeros_like(&self) -> Self {
+    fn zeros_like(&self) -> Self
+    where
+        Self::Elem: ZeroOne,
+    {
         self.constant_like(Self::Elem::ZERO)
     }
 
     #[must_use]
-    fn ones_like(&self) -> Self {
+    fn ones_like(&self) -> Self
+    where
+        Self::Elem: ZeroOne,
+    {
         self.constant_like(Self::Elem::ONE)
     }
 
@@ -175,7 +193,10 @@ where
     }
 
     /// Join a sequence of tensors along an existing axis.
-    fn concatenate(tensors: &[&Self], axis: usize) -> Self {
+    fn concatenate(tensors: &[&Self], axis: usize) -> Self
+    where
+        Self::Elem: Num,
+    {
         assert!(!tensors.is_empty(), "concatenate: no tensors given");
         let mut shape = tensors[0].shape().to_vec();
 
@@ -202,7 +223,10 @@ where
         result
     }
 
-    fn stack(tensors: &[&Self], axis: usize) -> Self {
+    fn stack(tensors: &[&Self], axis: usize) -> Self
+    where
+        Self::Elem: Num,
+    {
         assert!(!tensors.is_empty(), "stack: no tensors given");
         let ts: Vec<_> = tensors.iter().map(|t| t.expand_dims(axis)).collect();
         Self::concatenate(&ts.iter().collect::<Vec<_>>(), axis)
@@ -210,42 +234,66 @@ where
 
     // math
     #[must_use]
-    fn add(&self, other: &Self) -> Self {
+    fn add(&self, other: &Self) -> Self
+    where
+        Self::Elem: Num,
+    {
         broadcasted_apply(self, other, Diffable::elementwise_add, false)
     }
 
     #[must_use]
-    fn sub(&self, other: &Self) -> Self {
+    fn sub(&self, other: &Self) -> Self
+    where
+        Self::Elem: Num,
+    {
         broadcasted_apply(self, other, Diffable::elementwise_sub, false)
     }
 
     #[must_use]
-    fn mul(&self, other: &Self) -> Self {
+    fn mul(&self, other: &Self) -> Self
+    where
+        Self::Elem: Num,
+    {
         broadcasted_apply(self, other, Diffable::elementwise_mul, false)
     }
 
     #[must_use]
-    fn div(&self, other: &Self) -> Self {
+    fn div(&self, other: &Self) -> Self
+    where
+        Self::Elem: Num,
+    {
         broadcasted_apply(self, other, Diffable::elementwise_div, false)
     }
 
     #[must_use]
-    fn pow(&self, other: &Self) -> Self {
+    fn pow(&self, other: &Self) -> Self
+    where
+        Self::Elem: Float,
+    {
         broadcasted_apply(self, other, Diffable::elementwise_pow, false)
     }
 
     #[must_use]
-    fn eq(&self, other: &Self) -> Self {
+    fn eq(&self, other: &Self) -> Self
+    where
+        Self::Elem: ZeroOne,
+    {
         broadcasted_apply(self, other, Diffable::elementwise_eq, false)
     }
 
     #[must_use]
-    fn neg(&self) -> Self {
+    fn neg(&self) -> Self
+    where
+        Self::Elem: Num,
+    {
         self.zeros_like().sub(self)
     }
 
     #[must_use]
-    fn reciprocal(&self) -> Self {
+    fn reciprocal(&self) -> Self
+    where
+        Self::Elem: Num,
+    {
         self.ones_like().div(self)
     }
 
@@ -261,7 +309,10 @@ where
     /// # Panics
     /// If one of the dimensions is 0 or if the inner dimensions don't match.
     #[must_use]
-    fn matmul(&self, other: &Self) -> Self {
+    fn matmul(&self, other: &Self) -> Self
+    where
+        Self::Elem: Num,
+    {
         let (l_nd, r_nd) = (self.shape().ndims(), other.shape().ndims());
 
         assert!(l_nd != 0, "matmul: lhs has no dimensions");
@@ -315,7 +366,10 @@ where
     }
 
     #[must_use]
-    fn dot(&self, other: &Self) -> Self {
+    fn dot(&self, other: &Self) -> Self
+    where
+        Self::Elem: Num,
+    {
         let (l_nd, r_nd) = (self.shape().ndims(), other.shape().ndims());
 
         assert!(l_nd != 0, "dot: lhs has no dimensions");
@@ -369,11 +423,17 @@ where
 
     // activation functions
     #[must_use]
-    fn sigmoid(&self) -> Self {
+    fn sigmoid(&self) -> Self
+    where
+        Self::Elem: Float,
+    {
         self.ones_like().add(&self.neg().exp()).reciprocal()
     }
     #[must_use]
-    fn tanh(&self) -> Self {
+    fn tanh(&self) -> Self
+    where
+        Self::Elem: Float,
+    {
         let two = &(self.ones_like().add(&self.ones_like()));
         two.mul(&two.mul(self).sigmoid()).sub(&self.ones_like())
     }

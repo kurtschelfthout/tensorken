@@ -10,7 +10,7 @@ use std::{
 };
 
 use rand::{distributions::WeightedIndex, prelude::Distribution, rngs::StdRng, SeedableRng};
-use tensorken::{value_and_grad1, Wgpu32};
+use tensorken::{num::Float, value_and_grad1, Wgpu32};
 use tensorken::{Axes, Diffable, DiffableExt, Reverse, TensorLike, TensorLikeRef};
 
 // This example shows the first half of the first of Karpathy's from zero-to-hero tutorials on makemomre.
@@ -69,6 +69,7 @@ fn main() {
     where
         T: TensorLike<'t>,
         for<'s> &'s T: TensorLikeRef<T>,
+        T::Elem: Float,
     {
         let logits = xenc.matmul(W);
         let counts = logits.exp();
@@ -82,7 +83,7 @@ fn main() {
     fn loss<'t, T>(probs: &T, yenc: &T) -> T
     where
         T: TensorLike<'t>,
-        T::Elem: From<f32>,
+        T::Elem: From<f32> + Float,
         for<'s> &'s T: TensorLikeRef<T>,
     {
         // the max here is a trick to get a columns vector of only the "correct" probabilities, as given by yenc

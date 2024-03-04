@@ -8,7 +8,7 @@ use std::{
 use prettytable::{format, Cell, Table};
 
 use crate::{
-    num::{Float, Num},
+    num::{Float, Num, ZeroOne},
     raw_tensor::{RawTensor, RealizedRawTensor},
     raw_tensor_cpu::CpuRawTensor,
     raw_tensor_fuse::Fuse,
@@ -19,46 +19,76 @@ use crate::{
 };
 
 // Blanket implementation to translate from diffable tensor ops (Diffable) to low-level tensor ops (RawTensor).
-impl<T: Num, TTensor: RawTensor<E = T>> Diffable for TTensor {
-    type Elem = T;
+impl<E, T: RawTensor<E = E>> Diffable for T {
+    type Elem = E;
 
-    fn log(&self) -> Self {
+    fn log(&self) -> Self
+    where
+        Self::Elem: Float,
+    {
         self.log()
     }
 
-    fn exp(&self) -> Self {
+    fn exp(&self) -> Self
+    where
+        Self::Elem: Float,
+    {
         self.exp()
     }
 
-    fn elementwise_add(&self, other: &Self) -> Self {
+    fn elementwise_add(&self, other: &Self) -> Self
+    where
+        Self::Elem: Num,
+    {
         self.add(other)
     }
 
-    fn elementwise_sub(&self, other: &Self) -> Self {
+    fn elementwise_sub(&self, other: &Self) -> Self
+    where
+        Self::Elem: Num,
+    {
         self.sub(other)
     }
 
-    fn elementwise_mul(&self, other: &Self) -> Self {
+    fn elementwise_mul(&self, other: &Self) -> Self
+    where
+        Self::Elem: Num,
+    {
         self.mul(other)
     }
 
-    fn elementwise_div(&self, other: &Self) -> Self {
+    fn elementwise_div(&self, other: &Self) -> Self
+    where
+        Self::Elem: Num,
+    {
         self.div(other)
     }
 
-    fn elementwise_pow(&self, other: &Self) -> Self {
+    fn elementwise_pow(&self, other: &Self) -> Self
+    where
+        Self::Elem: Float,
+    {
         self.pow(other)
     }
 
-    fn elementwise_eq(&self, other: &Self) -> Self {
+    fn elementwise_eq(&self, other: &Self) -> Self
+    where
+        Self::Elem: ZeroOne,
+    {
         self.eq(other)
     }
 
-    fn sum(&self, axes: &[usize]) -> Self {
+    fn sum(&self, axes: &[usize]) -> Self
+    where
+        Self::Elem: Num,
+    {
         self.sum(axes)
     }
 
-    fn max(&self, axes: &[usize]) -> Self {
+    fn max(&self, axes: &[usize]) -> Self
+    where
+        Self::Elem: ZeroOne,
+    {
         self.max(axes)
     }
 
@@ -74,7 +104,10 @@ impl<T: Num, TTensor: RawTensor<E = T>> Diffable for TTensor {
         self.expand(shape)
     }
 
-    fn pad(&self, padding: &[(usize, usize)]) -> Self {
+    fn pad(&self, padding: &[(usize, usize)]) -> Self
+    where
+        Self::Elem: ZeroOne,
+    {
         self.pad(padding)
     }
 
@@ -102,7 +135,7 @@ impl<T: Num, TTensor: RawTensor<E = T>> Diffable for TTensor {
 #[must_use]
 pub struct Tensor<T>(T);
 
-impl<T: Num, TRawTensor: RealizedRawTensor<E = T>> Tensor<TRawTensor> {
+impl<T: Copy, TRawTensor: RealizedRawTensor<E = T>> Tensor<TRawTensor> {
     /// Create a new mutable tensor with self's shape and elements.
     pub fn to_tensor_mut(&self) -> TensorMut<T> {
         TensorMut::new(self)
@@ -133,7 +166,10 @@ impl<T: Num, TRawTensor: RealizedRawTensor<E = T>> Tensor<TRawTensor> {
     /// Returns a new tensor with a new axis inserted at the front of size `num_classes`.
     /// All elements are assumed to be integers in the range [0, `num_classes`).
     /// The new axis is used as a one-hot encoding of the elements.
-    pub fn one_hot<N: Into<usize>>(&self, num_classes: N) -> Self {
+    pub fn one_hot<N: Into<usize>>(&self, num_classes: N) -> Self
+    where
+        T: Num,
+    {
         let nc: usize = num_classes.into();
         let mut data = vec![T::ZERO; self.shape().size() * nc];
         for (i, &x) in self.ravel().iter().enumerate() {
@@ -162,50 +198,80 @@ impl<T: Diffable> Diffable for Tensor<T> {
     type Elem = T::Elem;
 
     /// Apply the natural logarithm to each element.
-    fn log(&self) -> Self {
+    fn log(&self) -> Self
+    where
+        Self::Elem: Float,
+    {
         Self(self.0.log())
     }
 
     /// Apply exp to each element.
-    fn exp(&self) -> Self {
+    fn exp(&self) -> Self
+    where
+        Self::Elem: Float,
+    {
         Self(self.0.exp())
     }
 
-    fn elementwise_add(&self, other: &Self) -> Self {
+    fn elementwise_add(&self, other: &Self) -> Self
+    where
+        Self::Elem: Num,
+    {
         Self(self.0.elementwise_add(&other.0))
     }
 
-    fn elementwise_sub(&self, other: &Self) -> Self {
+    fn elementwise_sub(&self, other: &Self) -> Self
+    where
+        Self::Elem: Num,
+    {
         Self(self.0.elementwise_sub(&other.0))
     }
 
-    fn elementwise_mul(&self, other: &Self) -> Self {
+    fn elementwise_mul(&self, other: &Self) -> Self
+    where
+        Self::Elem: Num,
+    {
         Self(self.0.elementwise_mul(&other.0))
     }
 
-    fn elementwise_div(&self, other: &Self) -> Self {
+    fn elementwise_div(&self, other: &Self) -> Self
+    where
+        Self::Elem: Num,
+    {
         Self(self.0.elementwise_div(&other.0))
     }
 
     /// Raise self to the power of other, element-wise.
-    fn elementwise_pow(&self, exp: &Self) -> Self {
+    fn elementwise_pow(&self, exp: &Self) -> Self
+    where
+        Self::Elem: Float,
+    {
         Self(self.0.elementwise_pow(&exp.0))
     }
 
     // Return a new tensor with ones where elements are equal, and zero otherwise.
-    fn elementwise_eq(&self, other: &Self) -> Self {
+    fn elementwise_eq(&self, other: &Self) -> Self
+    where
+        Self::Elem: ZeroOne,
+    {
         Self(self.0.elementwise_eq(&other.0))
     }
 
     /// Reduce to sum along the given axes.
     /// Keeps the reduced dimensions, but with size 1.
-    fn sum(&self, axes: &[usize]) -> Self {
+    fn sum(&self, axes: &[usize]) -> Self
+    where
+        Self::Elem: Num,
+    {
         Self(self.0.sum(axes))
     }
 
     /// Reduce to max element along the given axes.
     /// Keeps the reduced dimensions, but with size 1.
-    fn max(&self, axes: &[usize]) -> Self {
+    fn max(&self, axes: &[usize]) -> Self
+    where
+        Self::Elem: ZeroOne,
+    {
         Self(self.0.max(axes))
     }
 
@@ -228,7 +294,10 @@ impl<T: Diffable> Diffable for Tensor<T> {
         Self(self.0.expand(shape))
     }
 
-    fn pad(&self, padding: &[(usize, usize)]) -> Self {
+    fn pad(&self, padding: &[(usize, usize)]) -> Self
+    where
+        Self::Elem: ZeroOne,
+    {
         Self(self.0.pad(padding))
     }
 
@@ -253,6 +322,8 @@ crate::math_macros::impl_bin_op!(Div, div, Tensor<T: Diffable>);
 crate::math_macros::impl_un_op!(Neg, neg, Tensor<T: Diffable>);
 
 pub type Cpu32 = Tensor<ShapeTracker<Fuse<CpuRawTensor<f32>>>>;
+pub type CpuI32 = Tensor<ShapeTracker<Fuse<CpuRawTensor<i32>>>>;
+pub type CpuBool = Tensor<CpuRawTensor<bool>>;
 pub type Wgpu32<'d> = Tensor<ShapeTracker<Fuse<WgpuRawTensor<'d, f32>>>>;
 
 static mut FORMAT_TENSOR: Option<format::TableFormat> = None;
@@ -681,5 +752,20 @@ mod tests {
         let r = t.at(sl2(.., 1..2));
         assert_eq!(r.shape(), &[2, 1]);
         assert_eq!(r.ravel(), &[2., 5.]);
+    }
+
+    #[test]
+    fn test_i32_tensor() {
+        let t = CpuI32::new(&[2, 3], &[1, 2, 3, 4, 5, 6]);
+        let mut r = &t + &t;
+        r = CpuI32::scalar(2) * &r;
+        assert_eq!(r.ravel(), &[4, 8, 12, 16, 20, 24]);
+    }
+
+    #[test]
+    fn test_bool_tensor() {
+        let t = CpuBool::new(&[2, 3], &[true, true, false, false, true, true]);
+        let r = &t.eq(&t);
+        assert_eq!(r.ravel(), &[true, true, true, true, true, true]);
     }
 }

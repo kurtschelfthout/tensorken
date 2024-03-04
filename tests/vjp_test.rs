@@ -1,6 +1,8 @@
 use tensorken::{
-    jacrev, CpuRawTensor, Diffable, DiffableExt, RealizedRawTensor, Shape, WgpuRawTensor,
-    {value_and_grad1, value_and_grad2, vjpn, Reverse}, {Tensor, TensorLike, TensorLikeRef},
+    jacrev,
+    num::{Float, Num, ZeroOne},
+    value_and_grad1, value_and_grad2, vjpn, CpuRawTensor, Diffable, DiffableExt, RealizedRawTensor,
+    Reverse, Shape, Tensor, TensorLike, TensorLikeRef, WgpuRawTensor,
 };
 
 use std::{fmt::Debug, ops::Add};
@@ -211,6 +213,7 @@ fn do_test_sub<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {
 
 fn f_div<'t, T>(a: &'t T) -> T
 where
+    T::Elem: Float,
     T: TensorLike<'t>,
     for<'s> &'s T: TensorLikeRef<T>,
 {
@@ -240,6 +243,7 @@ fn do_test_div<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {
 
 fn f_pow<'t, T>(a: &'t T) -> T
 where
+    T::Elem: Float,
     T: TensorLike<'t>,
     for<'s> &'s T: TensorLikeRef<T>,
 {
@@ -306,6 +310,7 @@ fn all_axes(shape: &[usize]) -> Vec<usize> {
 
 fn f_sum<'t, T>(a: &'t T) -> T
 where
+    T::Elem: Num,
     T: TensorLike<'t>,
     for<'s> &'s T: TensorLikeRef<T>,
 {
@@ -329,6 +334,7 @@ fn do_test_sum<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {
 
 fn f_max<'t, T>(a: &'t T) -> T
 where
+    T::Elem: Num,
     T: TensorLike<'t>,
     for<'s> &'s T: TensorLikeRef<T>,
 {
@@ -455,6 +461,7 @@ fn do_test_crop<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {
 
 fn f_pad<'t, T>(a: &'t T) -> T
 where
+    T::Elem: ZeroOne,
     T: TensorLike<'t>,
     for<'s> &'s T: TensorLikeRef<T>,
 {
@@ -478,6 +485,7 @@ fn do_test_pad<RT: RealizedRawTensor<E = f32> + Clone + Debug>() {
 
 fn f_matmul<'t, T>(a: &'t T, b: &'t T) -> T
 where
+    T::Elem: Num,
     T: TensorLike<'t>,
     for<'s> &'s T: TensorLikeRef<T>,
 {
@@ -515,6 +523,7 @@ fn test_jacrev() {
 
 fn f_pow2<'t, T>(a: &'t T) -> T
 where
+    T::Elem: Float,
     T: TensorLike<'t>,
     T::Elem: From<u8>,
     for<'s> &'s T: TensorLikeRef<T>,

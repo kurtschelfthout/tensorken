@@ -11,6 +11,7 @@ use crate::{
     },
     ad_ops_reverse::{CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
     ad_trace::{Trace, TracedOp},
+    num::{Float, Num},
     Diffable, DiffableExt, IndexValue, Shape,
 };
 
@@ -105,13 +106,22 @@ impl<'a, 't, T: Diffable> Reverse<'a, 't, T> {
     }
 }
 
-impl<T: Clone + Diffable> Diffable for Reverse<'_, '_, T> {
+impl<T: Clone + Diffable> Diffable for Reverse<'_, '_, T>
+where
+    T::Elem: Num,
+{
     type Elem = T::Elem;
-    fn log(&self) -> Self {
+    fn log(&self) -> Self
+    where
+        T::Elem: Float,
+    {
         self.unary::<LogOp<T>, _>(&())
     }
 
-    fn exp(&self) -> Self {
+    fn exp(&self) -> Self
+    where
+        T::Elem: Float,
+    {
         self.unary::<ExpOp<T>, _>(&())
     }
 
@@ -131,7 +141,10 @@ impl<T: Clone + Diffable> Diffable for Reverse<'_, '_, T> {
         self.binary::<DivOp<T>>(rhs)
     }
 
-    fn elementwise_pow(&self, rhs: &Self) -> Self {
+    fn elementwise_pow(&self, rhs: &Self) -> Self
+    where
+        T::Elem: Float,
+    {
         self.binary::<PowOp<T>>(rhs)
     }
 
@@ -189,7 +202,10 @@ struct Adjoints<T> {
     adjoints: Vec<Option<T>>,
 }
 
-impl<T: Diffable + Clone> Adjoints<T> {
+impl<T: Diffable + Clone> Adjoints<T>
+where
+    T::Elem: Float,
+{
     fn new(len: usize) -> Self {
         Self {
             adjoints: vec![None; len],
@@ -223,7 +239,10 @@ pub struct PullBack<'t, T> {
     primal_out_shape: Vec<usize>,
 }
 
-impl<T: Diffable + Clone> PullBack<'_, T> {
+impl<T: Diffable + Clone> PullBack<'_, T>
+where
+    T::Elem: Float,
+{
     fn reverse(&self, var: usize, adjoint: &T) -> Vec<T> {
         assert!(
             self.primal_out_shape == adjoint.shape(),
@@ -314,6 +333,7 @@ impl<T: Diffable + Clone> PullBack<'_, T> {
 /// compute the vector-Jacobian product of `f` at any cotangent.
 pub fn vjpn<'b, 't, T: Diffable + Clone + 't, F>(f: F, at: &[&T]) -> (T, PullBack<'t, T>)
 where
+    T::Elem: Float,
     for<'a> F: Fn(&'a [Reverse<'a, 't, T>]) -> Reverse<'a, 't, T>,
 {
     let trace = Trace::new();
@@ -343,6 +363,7 @@ where
 /// Compute the result and the gradient of a function at the given primals.
 pub fn value_and_gradn<'t, T: Diffable + Clone + 't, F>(f: F, at: &[&T]) -> (T, Vec<T>)
 where
+    T::Elem: Float,
     for<'a> F: Fn(&'a [Reverse<'a, 't, T>]) -> Reverse<'a, 't, T>,
 {
     let (primal, pullback) = vjpn(f, at);
@@ -354,6 +375,7 @@ where
 #[allow(clippy::missing_panics_doc)]
 pub fn value_and_grad1<'t, T: Diffable + Clone + 't, F>(f: F, at: &T) -> (T, T)
 where
+    T::Elem: Float,
     for<'a> F: Fn(&'a Reverse<'a, 't, T>) -> Reverse<'a, 't, T>,
 {
     let (primal, tangents) = value_and_gradn(|s| f(&s[0]), &[at]);
@@ -364,6 +386,7 @@ where
 #[allow(clippy::missing_panics_doc)]
 pub fn value_and_grad2<'t, T: Diffable + Clone + 't, F>(f: F, at0: &T, at1: &T) -> (T, (T, T))
 where
+    T::Elem: Float,
     for<'a> F: Fn(&'a Reverse<'a, 't, T>, &'a Reverse<'a, 't, T>) -> Reverse<'a, 't, T>,
 {
     let (primal, tangents) = value_and_gradn(|s| f(&s[0], &s[1]), &[at0, at1]);
@@ -375,6 +398,7 @@ where
 #[allow(clippy::missing_panics_doc)]
 pub fn grad1<'t, T: Diffable + Clone + 't, F>(f: F, at: &T) -> T
 where
+    T::Elem: Float,
     for<'a> F: Fn(&'a Reverse<'a, 't, T>) -> Reverse<'a, 't, T>,
 {
     value_and_grad1(f, at).1
@@ -384,6 +408,7 @@ where
 #[allow(clippy::missing_panics_doc)]
 pub fn grad2<'t, T: Diffable + Clone + 't, F>(f: F, at0: &T, at1: &T) -> (T, T)
 where
+    T::Elem: Float,
     for<'a> F: Fn(&'a Reverse<'a, 't, T>, &'a Reverse<'a, 't, T>) -> Reverse<'a, 't, T>,
 {
     value_and_grad2(f, at0, at1).1
@@ -393,6 +418,7 @@ where
 #[allow(clippy::missing_panics_doc)]
 pub fn jacrev<'b, 't, T: Diffable + Clone + 't, F>(f: F, at: &T) -> T
 where
+    T::Elem: Float,
     for<'a> F: Fn(&'a Reverse<'a, 't, T>) -> Reverse<'a, 't, T>,
 {
     let (primal, pullback) = vjpn(|s| f(&s[0]), &[at]);

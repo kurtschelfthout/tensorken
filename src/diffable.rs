@@ -1,4 +1,4 @@
-use crate::num::{Num, ZeroOne};
+use crate::num::{Float, Num, ZeroOne};
 
 /// Contains "mid level" operations (this is tinygrad terminology) that are differentiable.
 /// These are not dependent on Add,Mul etc, traits because we want to be able to have a blanket implementation
@@ -9,12 +9,16 @@ use crate::num::{Num, ZeroOne};
 /// this allows for calculation of higher-order derivatives, and eventually mixed forward and reverse modes (forward is
 /// not yet implemented)
 pub trait Diffable {
-    type Elem: ZeroOne + Num;
+    type Elem;
 
     #[must_use]
-    fn log(&self) -> Self;
+    fn log(&self) -> Self
+    where
+        Self::Elem: Float;
     #[must_use]
-    fn exp(&self) -> Self;
+    fn exp(&self) -> Self
+    where
+        Self::Elem: Float;
 
     // These ops are all elementwise, meaning in particular they have identical shapes.
     // No broadcasting. It's important to implemented broadcasted ops in terms of these ops,
@@ -25,22 +29,38 @@ pub trait Diffable {
     // As a result, the add,sub etc we actually use are on DiffableExt.
 
     #[must_use]
-    fn elementwise_add(&self, other: &Self) -> Self;
+    fn elementwise_add(&self, other: &Self) -> Self
+    where
+        Self::Elem: Num;
     #[must_use]
-    fn elementwise_sub(&self, other: &Self) -> Self;
+    fn elementwise_sub(&self, other: &Self) -> Self
+    where
+        Self::Elem: Num;
     #[must_use]
-    fn elementwise_mul(&self, other: &Self) -> Self;
+    fn elementwise_mul(&self, other: &Self) -> Self
+    where
+        Self::Elem: Num;
     #[must_use]
-    fn elementwise_div(&self, other: &Self) -> Self;
+    fn elementwise_div(&self, other: &Self) -> Self
+    where
+        Self::Elem: Num;
     #[must_use]
-    fn elementwise_pow(&self, exp: &Self) -> Self;
+    fn elementwise_pow(&self, exp: &Self) -> Self
+    where
+        Self::Elem: Float;
     #[must_use]
-    fn elementwise_eq(&self, other: &Self) -> Self;
+    fn elementwise_eq(&self, other: &Self) -> Self
+    where
+        Self::Elem: ZeroOne;
 
     #[must_use]
-    fn sum(&self, axes: &[usize]) -> Self;
+    fn sum(&self, axes: &[usize]) -> Self
+    where
+        Self::Elem: Num;
     #[must_use]
-    fn max(&self, axes: &[usize]) -> Self;
+    fn max(&self, axes: &[usize]) -> Self
+    where
+        Self::Elem: ZeroOne;
 
     #[must_use]
     fn reshape(&self, shape: &[usize]) -> Self;
@@ -49,7 +69,9 @@ pub trait Diffable {
     #[must_use]
     fn expand(&self, shape: &[usize]) -> Self;
     #[must_use]
-    fn pad(&self, padding: &[(usize, usize)]) -> Self;
+    fn pad(&self, padding: &[(usize, usize)]) -> Self
+    where
+        Self::Elem: ZeroOne;
     #[must_use]
     fn crop(&self, limits: &[(usize, usize)]) -> Self;
 
