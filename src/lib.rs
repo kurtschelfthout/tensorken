@@ -36,8 +36,8 @@ pub use raw_tensor_cpu::CpuRawTensor;
 pub use raw_tensor_wgpu::WgpuRawTensor;
 pub use shape::Shape;
 pub use tensor::{
-    sl, sl1, sl2, sl3, sl4, Cpu32, IndexValue, Slice, SliceIdx, Tensor, TensorLike, TensorLikeRef,
-    Wgpu32,
+    sl, sl1, sl2, sl3, sl4, Cpu32, CpuBool, CpuI32, IndexValue, Slice, SliceIdx, Tensor,
+    TensorLike, TensorLikeRef, Wgpu32,
 };
 
 // TODO of general interest

@@ -1,4 +1,3 @@
-// #![warn(clippy::pedantic)]
 #![allow(non_snake_case)]
 
 extern crate tensorken;
@@ -10,8 +9,10 @@ use std::{
 };
 
 use rand::{distributions::WeightedIndex, prelude::Distribution, rngs::StdRng, SeedableRng};
-use tensorken::{num::Float, value_and_grad1, Wgpu32};
-use tensorken::{Axes, Diffable, DiffableExt, Reverse, TensorLike, TensorLikeRef};
+use tensorken::{
+    num::Float, value_and_grad1, Axes, Diffable, DiffableExt, Reverse, TensorLike, TensorLikeRef,
+    Wgpu32,
+};
 
 // This example shows the first half of the first of Karpathy's from zero-to-hero tutorials on makemomre.
 // It builds a bigram, character-level language model from a set of names.

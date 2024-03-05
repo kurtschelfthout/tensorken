@@ -1,7 +1,4 @@
-use tensorken::{
-    tensor::{CpuBool, CpuI32},
-    Cpu32, CpuRawTensor, Diffable, DiffableExt, IndexValue, Tensor,
-};
+use tensorken::{Cpu32, CpuBool, CpuI32, CpuRawTensor, Diffable, DiffableExt, IndexValue, Tensor};
 
 /// A macro to print the result of an expression and the expression itself.
 macro_rules! do_example {
