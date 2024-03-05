@@ -121,4 +121,5 @@ fn main() {
     let_example!(tb2, &CpuBool::new(&[2, 2], &[false, true, false, true]));
     do_example!(tb1.max(&[0]));
     do_example!(tb2.reshape(&[4]));
+    do_example!(tb1.eq(tb2));
 }

@@ -8,6 +8,7 @@ mod ad_reverse;
 mod ad_trace;
 mod diffable;
 mod diffable_ext;
+mod indexing;
 mod math_macros;
 pub mod num;
 mod raw_tensor;
@@ -31,14 +32,12 @@ pub use ad_reverse::{
 };
 pub use diffable::Diffable;
 pub use diffable_ext::{Axes, DiffableExt};
+pub use indexing::{sl, sl1, sl2, sl3, sl4, IndexValue, Slice, SliceIdx};
 pub use raw_tensor::{RawTensor, RealizedRawTensor};
 pub use raw_tensor_cpu::CpuRawTensor;
 pub use raw_tensor_wgpu::WgpuRawTensor;
 pub use shape::Shape;
-pub use tensor::{
-    sl, sl1, sl2, sl3, sl4, Cpu32, CpuBool, CpuI32, IndexValue, Slice, SliceIdx, Tensor,
-    TensorLike, TensorLikeRef, Wgpu32,
-};
+pub use tensor::{Cpu32, CpuBool, CpuI32, Tensor, TensorLike, TensorLikeRef, Wgpu32};
 
 // TODO of general interest
 // - Make vjp and jvp and friends all be N-to-N arguments instead of N-to-1.
