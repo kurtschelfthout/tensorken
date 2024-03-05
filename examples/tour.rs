@@ -1,4 +1,7 @@
-use tensorken::{Cpu32, CpuRawTensor, Diffable, DiffableExt, IndexValue, Tensor};
+use tensorken::{
+    tensor::{CpuBool, CpuI32},
+    Cpu32, CpuRawTensor, Diffable, DiffableExt, IndexValue, Tensor,
+};
 
 /// A macro to print the result of an expression and the expression itself.
 macro_rules! do_example {
@@ -108,4 +111,17 @@ fn main() {
     do_example!(t1.matmul(t2));
     let_example!(t3, &Tr::linspace(39.0, 72.0, 12_u8).reshape(&[2, 3, 2]));
     do_example!(t1.matmul(t3));
+
+    // a subset of operations (checked by the type system) are possible with i32
+    let_example!(ti1, &CpuI32::new(&[2, 2], &[0, 1, 2, 3]));
+    let_example!(ti2, &CpuI32::new(&[2, 2], &[4, 5, 6, 7]));
+    do_example!(ti1 + ti2);
+    do_example!(ti1 * ti2);
+    do_example!(ti1.matmul(ti2));
+
+    // an even smaller subset is possible with bool
+    let_example!(tb1, &CpuBool::new(&[2, 2], &[true, false, true, false]));
+    let_example!(tb2, &CpuBool::new(&[2, 2], &[false, true, false, true]));
+    do_example!(tb1.max(&[0]));
+    do_example!(tb2.reshape(&[4]));
 }
