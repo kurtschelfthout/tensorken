@@ -7,13 +7,15 @@ use std::{
 /// Size of a workgroup (number of threads) in X and Y dimensions. Z dimension is always 1 at the moment, it's not included.
 pub(crate) type WorkgroupSize = (usize, usize);
 
+type MemoKey = (&'static str, &'static str, &'static str, WorkgroupSize);
+
 /// A singleton GPU context for the process. Holds a `wgpu::Device` and a `wgpu::Queue`, and a cache of compute
 /// pipelines. The latter to avoid recompiling WGSL shaders.
 /// Does double duty as the pipeline/shader builder, using straightforward string replacements.
 pub(crate) struct WgpuContext {
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
-    pipelines: RwLock<HashMap<(&'static str, WorkgroupSize), Arc<wgpu::ComputePipeline>>>,
+    pipelines: RwLock<HashMap<MemoKey, Arc<wgpu::ComputePipeline>>>,
 }
 
 impl WgpuContext {
@@ -28,18 +30,20 @@ impl WgpuContext {
     const REPLACE_OP_NAME: &'static str = "replace_me_with_actual_operation";
     const REPLACE_DEFAULT_NAME: &'static str = "replace_me_with_actual_default()";
     const REPLACE_UNARY_OP_DEF: &'static str =
-        r"fn replace_me_with_actual_operation(in: f32) -> f32 { discard; }";
-    const REPLACE_BINARY_OP_DEF: &'static str =
-        r"fn replace_me_with_actual_operation(in_1: f32, in_2: f32) -> f32 { discard; }";
+        r"fn replace_me_with_actual_operation(in: element_in) -> element_out { discard; }";
+    const REPLACE_BINARY_OP_DEF: &'static str = r"fn replace_me_with_actual_operation(in_1: element, in_2: element) -> element { discard; }";
     const REPLACE_REDUCE_DEFAULT_DEF: &'static str =
-        r"fn replace_me_with_actual_default() -> f32 { discard; }";
+        r"fn replace_me_with_actual_default() -> element { discard; }";
     const REPLACE_REDUCE_THREAD_COUNT_CONST: &'static str = r"const REDUCE_THREADS: u32 = 64u;";
     const REPLACE_REDUCE_INTERMEDIATE_BUFFER_SIZE_CONST: &'static str =
         r"const INTERMEDIATE_SIZE: u32 = 64u;";
     const REPLACE_WORKGROUP_SIZE: &'static str = "@workgroup_size(64)";
+    const REPLACE_ELEMENT_ALIAS: &'static str = "alias element = f32;";
+    const REPLACE_ELEMENT_IN_ALIAS: &'static str = "alias element_in = f32;";
+    const REPLACE_ELEMENT_OUT_ALIAS: &'static str = "alias element_out = f32;";
 
     // supported operations. crate visible for testing.
-    pub(crate) const MAP_OPS: [&'static str; 3] = ["exp", "log", "id"];
+    pub(crate) const MAP_OPS: [&'static str; 5] = ["exp", "log", "id", "i32", "f32"];
     pub(crate) const ZIP_OPS: [&'static str; 6] = ["add", "sub", "mul", "div", "pow", "eq"];
     pub(crate) const RED_OPS: [&'static str; 2] = ["sum", "max"];
     pub(crate) const PAD_OP: &'static str = "pad";
@@ -58,10 +62,10 @@ impl WgpuContext {
     fn memo_compute_pipeline(
         &self,
         operation: &'static str,
+        element_in: &'static str,
+        element_out: &'static str,
         module: &wgpu::ShaderModule,
-        pipelines: &mut std::sync::RwLockWriteGuard<
-            HashMap<(&str, WorkgroupSize), Arc<wgpu::ComputePipeline>>,
-        >,
+        pipelines: &mut std::sync::RwLockWriteGuard<HashMap<MemoKey, Arc<wgpu::ComputePipeline>>>,
         workgroup_size: WorkgroupSize,
     ) {
         const ENTRY_POINT: &str = "call";
@@ -73,7 +77,10 @@ impl WgpuContext {
                 entry_point: ENTRY_POINT,
             },
         ));
-        pipelines.insert((operation, workgroup_size), compute_pipeline);
+        pipelines.insert(
+            (operation, element_in, element_out, workgroup_size),
+            compute_pipeline,
+        );
     }
 
     /// Create a shader module, replacing the `workgroup_size` placeholder with the actual workgroup size.
@@ -97,14 +104,18 @@ impl WgpuContext {
     }
 
     /// Retrieve or build and memoize a compute pipeline for the given operation and workgroup size.
+    /// `element_in` and `element_out` are the input and output element types, respectively.
+    /// This only matters for map.wgsl now. For all others, just passing element twice is fine.
     pub(crate) fn pipeline_for(
         &self,
         operation: &'static str,
+        element_in: &'static str,
+        element_out: &'static str,
         workgroup_size: WorkgroupSize,
     ) -> Arc<wgpu::ComputePipeline> {
         {
             let pipelines = self.pipelines.read().unwrap();
-            if let Some(r) = pipelines.get(&(operation, workgroup_size)) {
+            if let Some(r) = pipelines.get(&(operation, element_in, element_out, workgroup_size)) {
                 return Arc::clone(r);
             }
         }
@@ -112,13 +123,35 @@ impl WgpuContext {
         let mut pipelines = self.pipelines.write().unwrap();
 
         let module = if operation == Self::PAD_OP {
-            self.create_shader_module(operation, Self::PAD_SHADER, workgroup_size)
+            self.create_shader_module(
+                operation,
+                &Self::PAD_SHADER.replace(
+                    Self::REPLACE_ELEMENT_ALIAS,
+                    &format!("alias element = {element_in};"),
+                ),
+                workgroup_size,
+            )
         } else if operation == Self::FUSED_MUL_ADD_OP {
-            self.create_shader_module(operation, Self::FUSED_MUL_ADD_SHADER, workgroup_size)
+            self.create_shader_module(
+                operation,
+                &Self::FUSED_MUL_ADD_SHADER.replace(
+                    Self::REPLACE_ELEMENT_ALIAS,
+                    &format!("alias element = {element_in};"),
+                ),
+                workgroup_size,
+            )
         } else if Self::MAP_OPS.contains(&operation) {
             self.create_shader_module(
                 operation,
                 &Self::MAP_SHADER
+                    .replace(
+                        Self::REPLACE_ELEMENT_IN_ALIAS,
+                        &format!("alias element_in = {element_in};"),
+                    )
+                    .replace(
+                        Self::REPLACE_ELEMENT_OUT_ALIAS,
+                        &format!("alias element_out = {element_out};"),
+                    )
                     .replace(Self::REPLACE_UNARY_OP_DEF, "")
                     .replace(Self::REPLACE_OP_NAME, operation),
                 workgroup_size,
@@ -127,6 +160,10 @@ impl WgpuContext {
             self.create_shader_module(
                 operation,
                 &Self::ZIP_SHADER
+                    .replace(
+                        Self::REPLACE_ELEMENT_ALIAS,
+                        &format!("alias element = {element_in};"),
+                    )
                     .replace(Self::REPLACE_BINARY_OP_DEF, "")
                     .replace(Self::REPLACE_OP_NAME, operation),
                 workgroup_size,
@@ -135,10 +172,17 @@ impl WgpuContext {
             self.create_shader_module(
                 operation,
                 &Self::REDUCE_SHADER
+                    .replace(
+                        Self::REPLACE_ELEMENT_ALIAS,
+                        &format!("alias element = {element_in};"),
+                    )
                     .replace(Self::REPLACE_BINARY_OP_DEF, "")
                     .replace(Self::REPLACE_OP_NAME, operation)
                     .replace(Self::REPLACE_REDUCE_DEFAULT_DEF, "")
-                    .replace(Self::REPLACE_DEFAULT_NAME, &operation.to_uppercase())
+                    .replace(
+                        Self::REPLACE_DEFAULT_NAME,
+                        &format!("{}{}", operation.to_uppercase(), element_in.to_uppercase()),
+                    )
                     .replace(
                         Self::REPLACE_REDUCE_THREAD_COUNT_CONST,
                         &format!("const REDUCE_THREADS: u32 = {}u;", workgroup_size.1),
@@ -156,8 +200,19 @@ impl WgpuContext {
             panic!("Unsupported operation: {operation}");
         };
 
-        self.memo_compute_pipeline(operation, &module, &mut pipelines, workgroup_size);
-        Arc::clone(pipelines.get(&(operation, workgroup_size)).unwrap())
+        self.memo_compute_pipeline(
+            operation,
+            element_in,
+            element_out,
+            &module,
+            &mut pipelines,
+            workgroup_size,
+        );
+        Arc::clone(
+            pipelines
+                .get(&(operation, element_in, element_out, workgroup_size))
+                .unwrap(),
+        )
     }
 
     /// Get the wgpu device and queue.

@@ -715,6 +715,7 @@ mod tests {
     #[test]
     fn test_cast() {
         let b = CpuRawTensor::new(&[2, 3], &[true, true, false, true, false, false]);
+        assert_eq!(b.ravel(), vec![true, true, false, true, false, false]);   
         let i: CpuRawTensor<i32> = b.cast();
         let f: CpuRawTensor<f32> = b.cast();
         assert_eq!(i.ravel(), vec![1, 1, 0, 1, 0, 0]);

@@ -1,9 +1,10 @@
+alias element = f32;
 
 @group(0) @binding(0)
-var<storage, read> input_0: array<f32>;
+var<storage, read> input_0: array<element>;
 
 @group(0) @binding(1)
-var<storage, read_write> output_0: array<f32>;
+var<storage, read_write> output_0: array<element>;
 
 // ndims, input_offset, chunk_size, input_strides, output_strides, input_shape, padding_before, padding_after
 @group(0) @binding(2)
@@ -33,7 +34,7 @@ fn padding_after(i: u32) -> u32 {
 
 // Find the value for the given output index - figure out whether to pad,
 // i.e. result is 0.0, or not, i.e. result is the value from the input.
-fn value_for(output_i: u32) -> f32 {
+fn value_for(output_i: u32) -> element {
     let ndims = strides_and_shape[0];
     let offset = strides_and_shape[1];
 

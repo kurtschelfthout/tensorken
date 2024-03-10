@@ -1,8 +1,11 @@
+alias element_in = f32;
+alias element_out = f32;
+
 @group(0) @binding(0)
-var<storage, read> input_0: array<f32>;
+var<storage, read> input_0: array<element_in>;
 
 @group(0) @binding(1)
-var<storage, read_write> output_0: array<f32>;
+var<storage, read_write> output_0: array<element_out>;
 
 // ndims, input_offset, chunk_size, input_strides, output_strides, shape
 @group(0) @binding(2)
@@ -31,10 +34,10 @@ fn shape(i: u32) -> u32 {
 // 2. Replace the function name with the actual operation name
 // (if we don't do step 1, we'll also replace the name in the definition, which on my GPU causes a crash...)
 
-fn replace_me_with_actual_operation(in: f32) -> f32 { discard; }
+fn replace_me_with_actual_operation(in: element_in) -> element_out { discard; }
 
 // The identity functions is used for ravel, i.e. making a given tensor contiugous.
-fn id(in: f32) -> f32 {
+fn id(in: element_in) -> element_in {
     return in;
 }
 

@@ -1,11 +1,13 @@
+alias element = f32;
+
 @group(0) @binding(0)
-var<storage, read> input_0: array<f32>;
+var<storage, read> input_0: array<element>;
 
 @group(0) @binding(1)
-var<storage, read> input_1: array<f32>;
+var<storage, read> input_1: array<element>;
 
 @group(0) @binding(2)
-var<storage, read_write> output_0: array<f32>;
+var<storage, read_write> output_0: array<element>;
 
 // ndims, offset_0, offset_1, chunk_size, reduce_size, strides_0, strides_1, output_strides, input_shape, 
 // reduced_strides, reduced_shape, output_shape

@@ -315,6 +315,8 @@ pub type Cpu32 = Tensor<ShapeTracker<Fuse<CpuRawTensor<f32>>>>;
 pub type CpuI32 = Tensor<ShapeTracker<Fuse<CpuRawTensor<i32>>>>;
 pub type CpuBool = Tensor<CpuRawTensor<bool>>;
 pub type Wgpu32<'d> = Tensor<ShapeTracker<Fuse<WgpuRawTensor<'d, f32>>>>;
+// pub type WgpuI32<'d> = Tensor<ShapeTracker<Fuse<WgpuRawTensor<'d, i32>>>>;
+// pub type WgpuBool<'d> = Tensor<WgpuRawTensor<'d, bool>>;
 
 impl From<&Wgpu32<'static>> for Cpu32 {
     fn from(wgpu: &Wgpu32<'static>) -> Self {

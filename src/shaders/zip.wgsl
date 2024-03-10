@@ -1,11 +1,13 @@
+alias element = f32;
+
 @group(0) @binding(0)
-var<storage, read> input_0: array<f32>;
+var<storage, read> input_0: array<element>;
 
 @group(0) @binding(1)
-var<storage, read> input_1: array<f32>;
+var<storage, read> input_1: array<element>;
 
 @group(0) @binding(2)
-var<storage, read_write> output_0: array<f32>;
+var<storage, read_write> output_0: array<element>;
 
 // WebGPU afaik does not support structs with dynamic array lengths.
 // So to encode our necessary strides and shape in one struct,
@@ -51,15 +53,15 @@ fn input_index_of(output_i: u32) -> vec2<u32> {
 }
 
 // Same parlor trick as in map.wgsl.
-fn replace_me_with_actual_operation(in_1: f32, in_2: f32) -> f32 { discard; }
+fn replace_me_with_actual_operation(in_1: element, in_2: element) -> element { discard; }
 
 // extension to the parlor trick: infix operators are annoying to replace, 
 // so we define counterparts for them here.
-fn add(a: f32, b: f32) -> f32 { return a + b; }
-fn sub(a: f32, b: f32) -> f32 { return a - b; }
-fn mul(a: f32, b: f32) -> f32 { return a * b; }
-fn div(a: f32, b: f32) -> f32 { return a / b; }
-fn eq(a: f32, b: f32) -> f32 { return f32(a == b); }
+fn add(a: element, b: element) -> element { return a + b; }
+fn sub(a: element, b: element) -> element { return a - b; }
+fn mul(a: element, b: element) -> element { return a * b; }
+fn div(a: element, b: element) -> element { return a / b; }
+fn eq(a: element, b: element) -> element { return element(a == b); }
 // pow is a builtin, no need to define it
 
 

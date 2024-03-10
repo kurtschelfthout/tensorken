@@ -1,9 +1,10 @@
+alias element = f32;
 
 @group(0) @binding(0)
-var<storage, read> input_0: array<f32>;
+var<storage, read> input_0: array<element>;
 
 @group(0) @binding(1)
-var<storage, read_write> output_0: array<f32>;
+var<storage, read_write> output_0: array<element>;
 
 // ndims, input_offset, chunk_size, reduce_size, input_strides, output_strides, input_shape, reduced_strides,  reduced_shape, output_shape
 @group(0) @binding(2)
@@ -11,7 +12,7 @@ var<storage, read> strides_and_shape: array<u32>;
 
 // this is replaced with the actual size at shader creation stage.
 const INTERMEDIATE_SIZE: u32 = 64u;
-var<workgroup> intermediate: array<f32, INTERMEDIATE_SIZE>;
+var<workgroup> intermediate: array<element, INTERMEDIATE_SIZE>;
 
 const preamble: u32 = 4u;
 
@@ -40,15 +41,18 @@ fn output_shape(i: u32) -> u32 {
 }
 
 // Same parlor trick as in map.wgsl.
-fn replace_me_with_actual_operation(in_1: f32, in_2: f32) -> f32 { discard; }
-fn replace_me_with_actual_default() -> f32 { discard; }
+fn replace_me_with_actual_operation(in_1: element, in_2: element) -> element { discard; }
+fn replace_me_with_actual_default() -> element { discard; }
 
 // Same extension to parlor trick as in zip.wgsl.
-fn sum(a: f32, b: f32) -> f32 { return a + b; }
+fn sum(a: element, b: element) -> element { return a + b; }
 
 // default values for the reduce
-const MAX: f32 = -1.17549435082228750797e-38f;
-const SUM: f32 = 0.0;
+const MAXF32: f32 = -0x1.fffffep+127f; //-1.17549435082228750797e-38f;
+const SUMF32: f32 = f32();
+
+const MAXI32: i32 = i32(-0x80000000);
+const SUMI32: i32 = i32();
 
 fn input_index_of(output_i: u32) -> u32 {
     let ndims = strides_and_shape[0];

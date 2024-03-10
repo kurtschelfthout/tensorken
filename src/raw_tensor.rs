@@ -6,8 +6,8 @@ use crate::num::{Float, Num, ZeroOne};
 /// As such it can be used to implement a new type of accelerator, but can also support
 /// optimizations like fusing.
 /// Think of `RawTensor` as the DSL for accelerators, in final style.
+// Note: Elem is an associated type, not a generic parameter, for rather subtle reasons.
 pub trait RawTensor {
-    // Note: Elem is an associated type, not a generic parameter, for rather subtle reasons.
     // We often want to implement traits for e.g. Tensor<impl RawTensor> without having to mention
     // the element type, as the element type is not restricted by the implementation. See e.g. Add, Neg on Tensor:
     // impl<RT: RawTensor> Add for Tensor<RT> { ... }

@@ -1,18 +1,18 @@
 use std::{
+    borrow::Cow,
     fmt::{Debug, Formatter},
     sync::Arc,
 };
 
-use bytemuck::{NoUninit, Pod};
 use wgpu::util::DeviceExt;
 
 use crate::{
-    num::Float,
+    num::{Float, Num, ZeroOne},
     raw_tensor::{RawTensor, RealizedRawTensor},
     shape::Shape,
     shape_strider::ShapeStrider,
     wgpu_context::{get_wgpu_device, WgpuContext, WorkgroupSize},
-    CpuRawTensor,
+    CastInto, CpuRawTensor,
 };
 
 // Misc WGSL notes/tips:
@@ -20,17 +20,17 @@ use crate::{
 //   If you have declared it in the rust wgpu code as a binding group, there will
 //   be a failure at runtime, saying the number of bindings doesn't correspond.
 // - I've been told it's a good idea to cache compute pipelines, as this avoids recompiling WGSL.
-// - It's necessary to poll the device after submission of a command buffer, otherwise the under high
+// - It's necessary to poll the device after submission of a command buffer, otherwise under high
 //   load the GPU will run out of memory.
 // - It's important to distinguish between the workgroup size, and the number of workgroups, which I've called `workgroup_count` in the code.
 //   - workgroup size: fixed in the shader using `@workgroup_size`. The number of threads that execute in parallel within a workgroup.
 //     These threads all execute the same code in sync (even with branches - if one of the threads doesn't need to take a branch, it'll still
 //     fake-execute the code, i.e. do nothing useful) and can access typically faster shared workgroup memory. The idea is that these threads
 //     all execute the same code, but on different data (SIMD) and are phyiscally close together on the GPU.
-//   - workgroup count: set at dispatch time. The number of workgroups that execute in parallel. Each workgroup has its own set of threads,
+//   - workgroup count: set at dispatch time. The number of workgroups that are executed. Each workgroup has its own set of threads,
 //     so the total number of invocations of the shader is workgroup size * workgroup count. Workgroups may or may not be executed in parallel,
 //     this is decided by the GPU scheduler.
-// - There are limits in WebGPU on the number of workgroups that can be dispatched, the number of threads per workgroup.
+// - There are limits in WebGPU on the number of workgroups that can be dispatched, and the number of threads per workgroup.
 // - Both workgroup size and workgroup count can be specified separately in x,y, and z dimensions.
 
 /// Operations avoid copying the buffer if possible, but buffers are read-only,
@@ -42,7 +42,7 @@ pub struct WgpuRawTensor<'a, T> {
     buffer: Arc<wgpu::Buffer>,
     strider: ShapeStrider,
     context: &'a WgpuContext,
-    phantom: std::marker::PhantomData<T>,
+    element: std::marker::PhantomData<T>,
 }
 
 impl<T> Debug for WgpuRawTensor<'_, T> {
@@ -53,38 +53,7 @@ impl<T> Debug for WgpuRawTensor<'_, T> {
     }
 }
 
-impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
-    /// Creates a new `WgpuRawTensor` from a shape and CPU data.
-    /// The data is copied to the GPU.
-    /// # Panics
-    /// Panics if the shape and data size mismatch.
-    fn new(shape: &[usize], cpu_data: &[T], device: &'a WgpuContext) -> Self {
-        assert!(
-            shape.size() == cpu_data.len(),
-            "Shape and data size mismatch"
-        );
-
-        let strider = ShapeStrider::contiguous(shape);
-        let buffer = device
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Tensor (new)"),
-                contents: bytemuck::cast_slice(cpu_data),
-                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            });
-
-        Self {
-            buffer: Arc::new(buffer),
-            strider,
-            context: device,
-            phantom: std::marker::PhantomData,
-        }
-    }
-
-    fn byte_size(size: usize) -> u64 {
-        u64::try_from(size * std::mem::size_of::<T>()).unwrap()
-    }
-
+impl<'a, T> WgpuRawTensor<'a, T> {
     /// Return a new tensor with the same buffer as this one, but
     /// with a different shape. Assumes the new shape is compatible.
     fn with_strider(&self, strider: ShapeStrider) -> Self {
@@ -92,7 +61,7 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
             buffer: Arc::clone(&self.buffer),
             strider,
             context: self.context,
-            phantom: std::marker::PhantomData,
+            element: std::marker::PhantomData,
         }
     }
 
@@ -107,6 +76,120 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
     #[allow(dead_code)]
     fn strides(&self) -> &[usize] {
         self.strider.strides()
+    }
+}
+
+type ReduceInfo<'a> = (&'a [usize], &'a [usize], &'a [usize], usize);
+
+impl<'a, T: WgpuSupported> WgpuRawTensor<'a, T> {
+    fn byte_size(size: usize) -> u64 {
+        u64::try_from(size * T::WGPU_ELEMENT_SIZE).unwrap()
+    }
+
+    /// Creates a new `WgpuRawTensor` from a shape and CPU data.
+    /// The data is copied to the GPU.
+    /// # Panics
+    /// Panics if shape and data size do not match.
+    fn new(shape: &[usize], cpu_data: &[T], device: &'a WgpuContext) -> Self {
+        assert!(
+            shape.size() == cpu_data.len(),
+            "Shape and data size mismatch"
+        );
+
+        let strider = ShapeStrider::contiguous(shape);
+        match T::to_buffer(cpu_data) {
+            Cow::Borrowed(slice) => {
+                let buffer = device
+                    .device
+                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("Tensor (new)"),
+                        contents: slice,
+                        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+                    });
+
+                Self {
+                    buffer: Arc::new(buffer),
+                    strider,
+                    context: device,
+                    element: std::marker::PhantomData,
+                }
+            }
+            Cow::Owned(vec) => {
+                let buffer = device
+                    .device
+                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("Tensor (new)"),
+                        contents: vec.as_slice(),
+                        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+                    });
+
+                Self {
+                    buffer: Arc::new(buffer),
+                    strider,
+                    context: device,
+                    element: std::marker::PhantomData,
+                }
+            }
+        }
+    }
+
+    /// Get the buffer that encodes various strides and shapes of the inputs.
+    /// Is used for all operations, so is a mess of a signature.
+    fn get_strides_and_shapes_buffer(
+        &self,
+        chunk_size: usize,
+        other: Option<&ShapeStrider>,
+        output_strider: &ShapeStrider,
+        reduce: Option<ReduceInfo>,
+        padding: Option<&[(usize, usize)]>,
+    ) -> wgpu::Buffer {
+        let mut contents = Vec::with_capacity(8 * self.strider.shape().ndims() + 3);
+        contents.push(self.strider.shape().ndims());
+        contents.push(self.strider.offset());
+        if let Some(other) = other {
+            contents.push(other.offset());
+        }
+        contents.push(chunk_size);
+        if let Some((_, _, _, reduce_size)) = reduce {
+            contents.push(reduce_size);
+        }
+
+        contents.extend(self.strider.strides());
+        if let Some(other) = other {
+            contents.extend(other.strides());
+        }
+
+        contents.extend(output_strider.strides());
+        contents.extend(self.strider.shape());
+
+        if let Some((reduced_strides, reduced_shape, output_shape, _)) = reduce {
+            contents.extend(reduced_strides);
+            contents.extend(reduced_shape);
+            contents.extend(output_shape);
+        }
+
+        if let Some(padding) = padding {
+            for (start, _) in padding {
+                contents.push(*start);
+            }
+            for (_, end) in padding {
+                contents.push(*end);
+            }
+        }
+
+        let contents_u32: Vec<u32> = contents
+            .iter()
+            .map(|x| u32::try_from(*x).unwrap())
+            .collect();
+
+        let buffer = self
+            .device()
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                usage: wgpu::BufferUsages::STORAGE,
+                label: Some("shapes and strides buffer"),
+                contents: bytemuck::cast_slice(&contents_u32),
+            });
+        buffer
     }
 
     /// Make a new output buffer, to store the result of an operation,
@@ -221,9 +304,11 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
     fn pipeline_for(
         &self,
         operation: &'static str,
+        element_out: &'static str,
         workgroup_size: WorkgroupSize,
     ) -> Arc<wgpu::ComputePipeline> {
-        self.context.pipeline_for(operation, workgroup_size)
+        self.context
+            .pipeline_for(operation, T::WGPU_ELEMENT_NAME, element_out, workgroup_size)
     }
     /// Create a new tensor with given buffer and strider, passing self's context along.
     fn with_buffer_strider(&self, buffer: wgpu::Buffer, strider: ShapeStrider) -> Self {
@@ -231,7 +316,7 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
             buffer: Arc::new(buffer),
             strider,
             context: self.context,
-            phantom: self.phantom,
+            element: self.element,
         }
     }
 
@@ -321,80 +406,18 @@ impl<'a, T: NoUninit + Pod> WgpuRawTensor<'a, T> {
         // (this will check MAX_WORKGROUP_SIZE again, but ok)
         Self::counts_n_sizes(output_tensor_size)
     }
-}
-
-type ReduceInfo<'a> = (&'a [usize], &'a [usize], &'a [usize], usize);
-
-impl<'a, T: Float + NoUninit + Pod> WgpuRawTensor<'a, T> {
-    /// Get the buffer that encodes various strides and shapes of the inputs.
-    /// Is used for all operations, so is a mess of a signature.
-    fn get_strides_and_shapes_buffer(
-        &self,
-        chunk_size: usize,
-        other: Option<&ShapeStrider>,
-        output_strider: &ShapeStrider,
-        reduce: Option<ReduceInfo>,
-        padding: Option<&[(usize, usize)]>,
-    ) -> wgpu::Buffer {
-        let mut contents = Vec::with_capacity(8 * self.shape().ndims() + 3);
-        contents.push(self.shape().ndims());
-        contents.push(self.strider.offset());
-        if let Some(other) = other {
-            contents.push(other.offset());
-        }
-        contents.push(chunk_size);
-        if let Some((_, _, _, reduce_size)) = reduce {
-            contents.push(reduce_size);
-        }
-
-        contents.extend(self.strider.strides());
-        if let Some(other) = other {
-            contents.extend(other.strides());
-        }
-
-        contents.extend(output_strider.strides());
-        contents.extend(self.shape());
-
-        if let Some((reduced_strides, reduced_shape, output_shape, _)) = reduce {
-            contents.extend(reduced_strides);
-            contents.extend(reduced_shape);
-            contents.extend(output_shape);
-        }
-
-        if let Some(padding) = padding {
-            for (start, _) in padding {
-                contents.push(*start);
-            }
-            for (_, end) in padding {
-                contents.push(*end);
-            }
-        }
-
-        let contents_u32: Vec<u32> = contents
-            .iter()
-            .map(|x| u32::try_from(*x).unwrap())
-            .collect();
-
-        let buffer = self
-            .device()
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                usage: wgpu::BufferUsages::STORAGE,
-                label: Some("shapes and strides buffer"),
-                contents: bytemuck::cast_slice(&contents_u32),
-            });
-        buffer
-    }
 
     /// Return a new tensor with the same shape as self, after applying f to each element.
     /// Allocates a new buffer. Resulting tensor is contiguous.
     fn map(&self, operation: &'static str) -> Self {
-        let output_strider = ShapeStrider::contiguous(self.shape());
+        let output_strider = ShapeStrider::contiguous(self.strider.shape());
 
         let (workgroup_size, workgroup_count, chunk_size) =
             Self::counts_n_sizes(output_strider.size());
 
         let output_buffer = self.make_output_buffer(output_strider.size(), operation);
-        let compute_pipeline = self.pipeline_for(operation, workgroup_size);
+        // TODO
+        let compute_pipeline = self.pipeline_for(operation, T::WGPU_ELEMENT_NAME, workgroup_size);
         let strides_and_shapes =
             self.get_strides_and_shapes_buffer(chunk_size, None, &output_strider, None, None);
         let bind_group = self.get_bind_group_unary(
@@ -407,17 +430,49 @@ impl<'a, T: Float + NoUninit + Pod> WgpuRawTensor<'a, T> {
         self.with_buffer_strider(output_buffer, output_strider)
     }
 
+    /// Return a new tensor with the same shape as self, cast to the desired element type `TTo`.
+    /// Allocates a new buffer. Resulting tensor is contiguous.
+    fn cast<TTo: WgpuSupported>(&self) -> WgpuRawTensor<'a, TTo> {
+        let output_strider = ShapeStrider::contiguous(self.strider.shape());
+
+        let (workgroup_size, workgroup_count, chunk_size) =
+            Self::counts_n_sizes(output_strider.size());
+
+        let output_buffer = self.make_output_buffer(output_strider.size(), TTo::WGPU_ELEMENT_NAME);
+
+        let compute_pipeline = self.pipeline_for(
+            TTo::WGPU_ELEMENT_NAME,
+            TTo::WGPU_ELEMENT_NAME,
+            workgroup_size,
+        );
+        let strides_and_shapes =
+            self.get_strides_and_shapes_buffer(chunk_size, None, &output_strider, None, None);
+        let bind_group = self.get_bind_group_unary(
+            compute_pipeline.as_ref(),
+            &output_buffer,
+            &strides_and_shapes,
+        );
+        self.encode_and_submit(compute_pipeline.as_ref(), &bind_group, workgroup_count);
+
+        WgpuRawTensor {
+            buffer: Arc::new(output_buffer),
+            strider: output_strider,
+            context: self.context,
+            element: std::marker::PhantomData,
+        }
+    }
+
     /// Return a new tensor with the same shape as self and other, after applying f to each pair of elements.
     /// Allocates a new buffer. Resulting tensor is contiguous.
     fn zip(&self, other: &Self, operation: &'static str) -> Self {
         self.strider.validate_can_zip(&other.strider).unwrap();
 
-        let output_strider = ShapeStrider::contiguous(self.shape());
+        let output_strider = ShapeStrider::contiguous(self.strider.shape());
 
         let (workgroup_size, workgroup_count, chunk_size) =
             Self::counts_n_sizes(output_strider.size());
         let output_buffer = self.make_output_buffer(output_strider.size(), operation);
-        let compute_pipeline = self.pipeline_for(operation, workgroup_size);
+        let compute_pipeline = self.pipeline_for(operation, T::WGPU_ELEMENT_NAME, workgroup_size);
         let strides_and_shapes = self.get_strides_and_shapes_buffer(
             chunk_size,
             Some(&other.strider),
@@ -443,16 +498,16 @@ impl<'a, T: Float + NoUninit + Pod> WgpuRawTensor<'a, T> {
 
         let (output_strider, _) = self.strider.reduce(axes);
 
-        let mut reduced_shape = vec![1usize; self.shape().ndims()];
+        let mut reduced_shape = vec![1usize; self.strider.shape().ndims()];
         for &axis in axes {
-            reduced_shape[axis] = self.shape()[axis];
+            reduced_shape[axis] = self.strider.shape()[axis];
         }
         let reduced_strider = ShapeStrider::contiguous(&reduced_shape);
 
         let (workgroup_size, workgroup_count, chunk_size) =
             Self::counts_n_sizes_reduce(self.strider.size(), output_strider.size());
         let output_buffer = self.make_output_buffer(output_strider.size(), operation);
-        let compute_pipeline = self.pipeline_for(operation, workgroup_size);
+        let compute_pipeline = self.pipeline_for(operation, T::WGPU_ELEMENT_NAME, workgroup_size);
         let strides_and_shapes = self.get_strides_and_shapes_buffer(
             chunk_size,
             None,
@@ -485,7 +540,7 @@ impl<'a, T: Float + NoUninit + Pod> WgpuRawTensor<'a, T> {
 
         let (workgroup_size, workgroup_count, chunk_size) =
             Self::counts_n_sizes(output_strider.size());
-        let compute_pipeline = self.pipeline_for("pad", workgroup_size);
+        let compute_pipeline = self.pipeline_for("pad", T::WGPU_ELEMENT_NAME, workgroup_size);
         let strides_and_shapes = self.get_strides_and_shapes_buffer(
             chunk_size,
             None,
@@ -512,16 +567,17 @@ impl<'a, T: Float + NoUninit + Pod> WgpuRawTensor<'a, T> {
 
         let (output_strider, _) = self.strider.reduce(axes);
 
-        let mut reduced_shape = vec![1usize; self.shape().ndims()];
+        let mut reduced_shape = vec![1usize; self.strider.shape().ndims()];
         for &axis in axes {
-            reduced_shape[axis] = self.shape()[axis];
+            reduced_shape[axis] = self.strider.shape()[axis];
         }
         let reduced_strider = ShapeStrider::contiguous(&reduced_shape);
 
         let (workgroup_size, workgroup_count, chunk_size) =
             Self::counts_n_sizes(output_strider.size());
         let output_buffer = self.make_output_buffer(output_strider.size(), "fma");
-        let compute_pipeline = self.pipeline_for("fused_mul_add", workgroup_size);
+        let compute_pipeline =
+            self.pipeline_for("fused_mul_add", T::WGPU_ELEMENT_NAME, workgroup_size);
         let strides_and_shapes = self.get_strides_and_shapes_buffer(
             chunk_size,
             Some(&other.strider),
@@ -587,7 +643,7 @@ impl<'a, T: Float + NoUninit + Pod> WgpuRawTensor<'a, T> {
 
         if let Some(Ok(())) = poll_result {
             let data = buffer_slice.get_mapped_range();
-            let result = bytemuck::cast_slice(&data).to_vec();
+            let result = T::from_buffer(&data);
 
             // Resource cleanup dance - apparently needs to happen in this order.
             drop(data);
@@ -600,47 +656,128 @@ impl<'a, T: Float + NoUninit + Pod> WgpuRawTensor<'a, T> {
     }
 }
 
-// Float here because the shaders are written in terms of f32.
-impl<T: Float + NoUninit + Pod> RawTensor for WgpuRawTensor<'_, T> {
+pub trait WgpuSupported
+where
+    Self: Sized,
+{
+    const WGPU_ELEMENT_NAME: &'static str;
+    const WGPU_ELEMENT_SIZE: usize = std::mem::size_of::<Self>();
+    fn from_buffer(array: &[u8]) -> Vec<Self>;
+    fn to_buffer(array: &[Self]) -> Cow<'_, [u8]>;
+}
+
+impl WgpuSupported for f32 {
+    const WGPU_ELEMENT_NAME: &'static str = "f32";
+
+    fn from_buffer(array: &[u8]) -> Vec<Self> {
+        bytemuck::cast_slice(array).to_vec()
+    }
+
+    fn to_buffer(array: &[Self]) -> Cow<'_, [u8]> {
+        Cow::Borrowed(bytemuck::cast_slice(array))
+    }
+}
+
+impl WgpuSupported for i32 {
+    const WGPU_ELEMENT_NAME: &'static str = "i32";
+
+    fn from_buffer(array: &[u8]) -> Vec<Self> {
+        bytemuck::cast_slice(array).to_vec()
+    }
+
+    fn to_buffer(array: &[Self]) -> Cow<'_, [u8]> {
+        Cow::Borrowed(bytemuck::cast_slice(array))
+    }
+}
+
+// for bool, I could not get copying to a array<bool> buffer to work.
+// So we need to pick a different type on the GPU side. Since most usage
+// right now is eq followed cast to f32 in the diffable operation for max,
+// I'm picking f32 so that usage remains a no-op.
+impl WgpuSupported for bool {
+    const WGPU_ELEMENT_NAME: &'static str = "f32";
+    const WGPU_ELEMENT_SIZE: usize = 4;
+    fn from_buffer(array: &[u8]) -> Vec<Self> {
+        let f32s: &[f32] = bytemuck::cast_slice(array);
+        f32s.iter().map(|x| *x != 0.0).collect()
+    }
+
+    fn to_buffer(array: &[Self]) -> Cow<'_, [u8]> {
+        let f32s: Vec<f32> = array.iter().map(|i| f32::from(*i)).collect();
+        Cow::Owned(bytemuck::cast_slice(&f32s).to_vec())
+    }
+}
+
+impl<T: WgpuSupported> RawTensor for WgpuRawTensor<'_, T> {
     type E = T;
 
-    fn exp(&self) -> Self {
+    fn exp(&self) -> Self
+    where
+        Self::E: Float,
+    {
         self.map("exp")
     }
 
-    fn log(&self) -> Self {
+    fn log(&self) -> Self
+    where
+        Self::E: Float,
+    {
         self.map("log")
     }
 
-    fn add(&self, other: &Self) -> Self {
+    fn add(&self, other: &Self) -> Self
+    where
+        Self::E: Num,
+    {
         self.zip(other, "add")
     }
 
-    fn sub(&self, other: &Self) -> Self {
+    fn sub(&self, other: &Self) -> Self
+    where
+        Self::E: Num,
+    {
         self.zip(other, "sub")
     }
 
-    fn mul(&self, other: &Self) -> Self {
+    fn mul(&self, other: &Self) -> Self
+    where
+        Self::E: Num,
+    {
         self.zip(other, "mul")
     }
 
-    fn div(&self, other: &Self) -> Self {
+    fn div(&self, other: &Self) -> Self
+    where
+        Self::E: Num,
+    {
         self.zip(other, "div")
     }
 
-    fn pow(&self, other: &Self) -> Self {
+    fn pow(&self, other: &Self) -> Self
+    where
+        Self::E: Float,
+    {
         self.zip(other, "pow")
     }
 
-    fn eq(&self, other: &Self) -> Self {
+    fn eq(&self, other: &Self) -> Self
+    where
+        Self::E: ZeroOne,
+    {
         self.zip(other, "eq")
     }
 
-    fn sum(&self, axes: &[usize]) -> Self {
+    fn sum(&self, axes: &[usize]) -> Self
+    where
+        Self::E: Num,
+    {
         self.reduce(axes, "sum")
     }
 
-    fn max(&self, axes: &[usize]) -> Self {
+    fn max(&self, axes: &[usize]) -> Self
+    where
+        Self::E: ZeroOne,
+    {
         self.reduce(axes, "max")
     }
 
@@ -667,7 +804,10 @@ impl<T: Float + NoUninit + Pod> RawTensor for WgpuRawTensor<'_, T> {
         self.with_strider(strider)
     }
 
-    fn pad(&self, padding: &[(usize, usize)]) -> Self {
+    fn pad(&self, padding: &[(usize, usize)]) -> Self
+    where
+        Self::E: ZeroOne,
+    {
         self.strider.validate_can_pad(padding).unwrap();
 
         self.pad(padding)
@@ -688,7 +828,10 @@ impl<T: Float + NoUninit + Pod> RawTensor for WgpuRawTensor<'_, T> {
         self.strider.shape()
     }
 
-    fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self {
+    fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self
+    where
+        Self::E: Num,
+    {
         self.fused_multiply_add_impl(other, axes)
     }
 }
@@ -703,12 +846,23 @@ impl RealizedRawTensor for WgpuRawTensor<'_, f32> {
     }
 }
 
-// cast not yet possible yet for WpguRawTensor, since it only works for f32
-// impl<'a, EFro: Copy, ETo: From<EFro>> CastInto<WgpuRawTensor<'a, ETo>> for WgpuRawTensor<'a, EFro> {
-//     fn cast(&self) -> WgpuRawTensor<'a, ETo> {
-//         todo!("cast")
-//     }
-// }
+// concrete implementation for specialization: we just need to change phantom types for bool -> f32
+impl<'a> CastInto<WgpuRawTensor<'a, f32>> for WgpuRawTensor<'a, bool> {
+    fn cast(&self) -> WgpuRawTensor<'a, f32> {
+        WgpuRawTensor {
+            buffer: Arc::clone(&self.buffer),
+            strider: self.strider.clone(),
+            context: self.context,
+            element: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<'a> CastInto<WgpuRawTensor<'a, i32>> for WgpuRawTensor<'a, bool> {
+    fn cast(&self) -> WgpuRawTensor<'a, i32> {
+        self.cast()
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -724,6 +878,13 @@ mod tests {
             a.iter()
                 .zip(b.iter())
                 .all(|(a, b)| (a.is_nan() && b.is_nan()) || (a - b).abs() < 1e-2),
+            "\r\nleft : {a:?}\r\nright: {b:?}"
+        );
+    }
+
+    fn assert_vec_eq_num<T: Eq + Debug>(a: &[T], b: &[T]) {
+        assert!(
+            a.iter().zip(b.iter()).all(|(a, b)| a == b),
             "\r\nleft : {a:?}\r\nright: {b:?}"
         );
     }
@@ -765,22 +926,13 @@ mod tests {
             "sub" => a - b,
             "mul" => a * b,
             "div" => a / b,
-            "pow" =>
             // Rust returns something for powers of negative bases,
             // which in general, for real exponents, is a complex number.
             // WebGPU does not do that - depending on the device, it seems to
             // either return NaN (NVidia) or some number (Intel).
             // We just make sure to call it only with positive numbers.
-            {
-                a.powf(b)
-            }
-            "eq" => {
-                if a == b {
-                    1.0
-                } else {
-                    0.0
-                }
-            }
+            "pow" => a.powf(b),
+            "eq" => f32::from(a == b),
             _ => panic!("unknown op: {op}"),
         }
     }
@@ -804,6 +956,68 @@ mod tests {
                     .collect::<Vec<f32>>(),
             );
         }
+    }
+
+    fn apply_binary_op_i32(op: &str, a: i32, b: i32) -> i32 {
+        match op {
+            "add" => a + b,
+            "sub" => a - b,
+            "mul" => a * b,
+            "div" => a / b,
+            "eq" => i32::from(a == b),
+            _ => panic!("unknown op: {op}"),
+        }
+    }
+
+    #[test]
+    fn test_binary_ops_i32() {
+        let i1 = vec![1, 2, 3, -1, -2, -3];
+        let t1 = WgpuRawTensor::new(&[3, 2], &i1, get_wgpu_device());
+        let i2 = vec![6, 7, 8, -6, -7, -8];
+        let t2 = WgpuRawTensor::new(&[3, 2], &i2, get_wgpu_device());
+        for op in WgpuContext::ZIP_OPS {
+            if op == "pow" {
+                continue; // not for i32
+            }
+            let result = t1.zip(&t2, op).ravel();
+            assert_vec_eq_num(
+                &result,
+                &i1.iter()
+                    .zip(i2.iter())
+                    .map(|(a, b)| apply_binary_op_i32(op, *a, *b))
+                    .collect::<Vec<i32>>(),
+            );
+        }
+    }
+
+    #[test]
+    fn test_eq_bool() {
+        let i1 = vec![true, true, false, false, true, false];
+        let t1 = WgpuRawTensor::new(&[3, 2], &i1, get_wgpu_device());
+        let i2 = vec![true, false, false, true, true, false];
+        let t2 = WgpuRawTensor::new(&[3, 2], &i2, get_wgpu_device());
+
+        let result = t1.eq(&t2).ravel();
+        assert_vec_eq_num(
+            &result,
+            &i1.iter()
+                .zip(i2.iter())
+                .map(|(a, b)| a == b)
+                .collect::<Vec<bool>>(),
+        );
+    }
+
+    #[test]
+    fn test_cast() {
+        let b = WgpuRawTensor::new(
+            &[3, 2],
+            &[true, true, false, false, true, false],
+            get_wgpu_device(),
+        );
+        let i = b.cast::<i32>();
+        let f = b.cast::<f32>();
+        assert_eq!(i.ravel(), vec![1, 1, 0, 0, 1, 0]);
+        assert_eq!(f.ravel(), vec![1.0, 1.0, 0.0, 0.0, 1.0, 0.0]);
     }
 
     #[test]
