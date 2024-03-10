@@ -1,6 +1,6 @@
 use crate::{
     num::{Float, Num, ZeroOne},
-    raw_tensor::RealizedRawTensor,
+    raw_tensor::{CastInto, RealizedRawTensor},
     shape_strider::ShapeStrider,
     RawTensor, Shape,
 };
@@ -144,6 +144,15 @@ impl<TRaw: RealizedRawTensor> RealizedRawTensor for ShapeTracker<TRaw> {
 
     fn realize(&self) -> Self {
         Self(self.0.clone(), self.1.realize())
+    }
+}
+
+impl<TFro: 'static + RawTensor, TTo: RawTensor> CastInto<ShapeTracker<TTo>> for ShapeTracker<TFro>
+where
+    TFro: CastInto<TTo>,
+{
+    fn cast(&self) -> ShapeTracker<TTo> {
+        ShapeTracker(self.0.clone(), self.1.cast())
     }
 }
 

@@ -12,6 +12,7 @@ use crate::{
     ad_ops_reverse::{CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
     ad_trace::{Trace, TracedOp},
     num::{Float, Num},
+    raw_tensor::CastInto,
     Diffable, DiffableExt, IndexValue, Shape,
 };
 
@@ -186,6 +187,15 @@ where
 
     fn new(shape: &[usize], data: &[Self::Elem]) -> Self {
         Self::Lift(T::new(shape, data))
+    }
+}
+
+impl<'a, 't, TFro, TTo> CastInto<Reverse<'a, 't, TTo>> for Reverse<'a, 't, TFro>
+where
+    TFro: CastInto<TTo>,
+{
+    fn cast(&self) -> Reverse<'a, 't, TTo> {
+        Reverse::Lift(self.primal().cast())
     }
 }
 

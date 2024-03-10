@@ -10,6 +10,7 @@ use crate::{
     },
     ad_ops_forward::{CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
     num::{Float, Num, ZeroOne},
+    raw_tensor::CastInto,
     sl2, Axes, Diffable, DiffableExt, IndexValue, Shape,
 };
 
@@ -158,6 +159,13 @@ where
 
     fn new(shape: &[usize], data: &[Self::Elem]) -> Self {
         Self::Lift(T::new(shape, data))
+    }
+}
+
+// not derivable for the moment
+impl<TFro: Diffable + CastInto<TTo>, TTo: Diffable> CastInto<Forward<TTo>> for Forward<TFro> {
+    fn cast(&self) -> Forward<TTo> {
+        Forward::Lift(self.primal().cast())
     }
 }
 

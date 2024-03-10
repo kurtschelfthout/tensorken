@@ -1,6 +1,6 @@
-use crate::RawTensor;
+use crate::{raw_tensor::CastInto, RawTensor};
 
-/// An implementation of
+/// Rawtensor for String - a poor man's symbolic execution.
 impl RawTensor for String {
     type E = f32;
 
@@ -74,6 +74,12 @@ impl RawTensor for String {
 
     fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self {
         format!("{self}.fused_multiply_add({other}, {axes:?})")
+    }
+}
+
+impl CastInto<String> for String {
+    fn cast(&self) -> String {
+        format!("{self}.cast()")
     }
 }
 

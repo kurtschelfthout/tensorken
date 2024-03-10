@@ -1,7 +1,7 @@
 use rand::{rngs::StdRng, SeedableRng};
 use tensorken::{
-    num::Float, Axes, Cpu32, CpuRawTensor, Diffable, DiffableExt, IndexValue, RealizedRawTensor,
-    Tensor, TensorLike, TensorLikeRef, Wgpu32, WgpuRawTensor,
+    num::Float, Axes, CastInto, Cpu32, CpuBool, CpuI32, CpuRawTensor, Diffable, DiffableExt,
+    IndexValue, RealizedRawTensor, Tensor, TensorLike, TensorLikeRef, Wgpu32, WgpuRawTensor,
 };
 
 fn assert_tensor_eq<T1: RealizedRawTensor<E = f32>, T2: RealizedRawTensor<E = f32>>(
@@ -504,4 +504,13 @@ fn test_squeeze_expand_dims() {
     let r4 = r1.squeeze(Axes::Axis(0));
     assert_eq!(r3.shape(), &[2, 3]);
     assert_eq!(r4.shape(), &[2, 3]);
+}
+
+#[test]
+fn test_cast() {
+    let b = &CpuBool::new(&[2, 3], &[true, true, false, true, false, false]);
+    let i: CpuI32 = b.cast();
+    let f: Cpu32 = b.cast();
+    assert_eq!(i.ravel(), vec![1, 1, 0, 1, 0, 0]);
+    assert_eq!(f.ravel(), vec![1.0, 1.0, 0.0, 1.0, 0.0, 0.0]);
 }

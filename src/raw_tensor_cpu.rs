@@ -3,7 +3,7 @@ use std::ops::Add;
 use std::sync::Arc;
 
 use crate::num::{Float, Num, ZeroOne};
-use crate::raw_tensor::{RawTensor, RealizedRawTensor};
+use crate::raw_tensor::{CastInto, RawTensor, RealizedRawTensor};
 use crate::shape::Shape;
 use crate::shape_strider::{ShapeStrider, TensorIndexIterator};
 
@@ -357,6 +357,18 @@ impl<T: Copy> RealizedRawTensor for CpuRawTensor<T> {
     }
 }
 
+impl<EFro: Copy, ETo: From<EFro>> CastInto<CpuRawTensor<ETo>> for CpuRawTensor<EFro> {
+    fn cast(&self) -> CpuRawTensor<ETo> {
+        CpuRawTensor::new_into(
+            self.shape(),
+            self.ravel()
+                .into_iter()
+                .map(std::convert::Into::into)
+                .collect(),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -698,5 +710,14 @@ mod tests {
         let r = t1.fused_multiply_add(&t2, &[0, 1]);
         assert_eq!(r.shape(), &[1, 1]);
         assert_eq!(r.buffer.data, vec![110.0]);
+    }
+
+    #[test]
+    fn test_cast() {
+        let b = CpuRawTensor::new(&[2, 3], &[true, true, false, true, false, false]);
+        let i: CpuRawTensor<i32> = b.cast();
+        let f: CpuRawTensor<f32> = b.cast();
+        assert_eq!(i.ravel(), vec![1, 1, 0, 1, 0, 0]);
+        assert_eq!(f.ravel(), vec![1.0, 1.0, 0.0, 1.0, 0.0, 0.0]);
     }
 }

@@ -33,7 +33,7 @@ pub use ad_reverse::{
 pub use diffable::Diffable;
 pub use diffable_ext::{Axes, DiffableExt};
 pub use indexing::{sl, sl1, sl2, sl3, sl4, IndexValue, Slice, SliceIdx};
-pub use raw_tensor::{RawTensor, RealizedRawTensor};
+pub use raw_tensor::{CastInto, RawTensor, RealizedRawTensor};
 pub use raw_tensor_cpu::CpuRawTensor;
 pub use raw_tensor_wgpu::WgpuRawTensor;
 pub use shape::Shape;

@@ -157,3 +157,16 @@ pub trait RealizedRawTensor: RawTensor {
     #[must_use]
     fn realize(&self) -> Self;
 }
+
+// We need to be able to cast tensors from one element type to another.
+// From trait doesn't work because convenient definitions like:
+//
+//impl<EFro, ETo: From<EFro>> From<CpuRawTensor<EFro>> for CpuRawTensor<ETo> {}
+//
+//overlap with the core crate's implementation of From<T> for T, i.e. everything is convertible to itself.
+//Specifically, it overlaps for the case where EFro = ETo.
+
+// So, our own trait it is.
+pub trait CastInto<T> {
+    fn cast(&self) -> T;
+}

@@ -703,6 +703,13 @@ impl RealizedRawTensor for WgpuRawTensor<'_, f32> {
     }
 }
 
+// cast not yet possible yet for WpguRawTensor, since it only works for f32
+// impl<'a, EFro: Copy, ETo: From<EFro>> CastInto<WgpuRawTensor<'a, ETo>> for WgpuRawTensor<'a, EFro> {
+//     fn cast(&self) -> WgpuRawTensor<'a, ETo> {
+//         todo!("cast")
+//     }
+// }
+
 #[cfg(test)]
 mod tests {
 

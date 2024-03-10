@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use crate::{
     num::{Float, Num},
-    raw_tensor::RealizedRawTensor,
+    raw_tensor::{CastInto, RealizedRawTensor},
     RawTensor,
 };
 
@@ -210,6 +210,24 @@ where
 
     fn realize(&self) -> Self {
         Self::from_raw_tensor(self.run())
+    }
+}
+
+// TTo is Num here so the `sum` after `cast` is allowed. That should be fine,
+// means we'll be able to cast from bool -> i32 and bool -> f32 which is most
+// of what's needed.
+impl<TFro: 'static + RawTensor, TTo: RawTensor> CastInto<Fuse<TTo>> for Fuse<TFro>
+where
+    TFro: CastInto<TTo>,
+    TTo::E: Num,
+{
+    fn cast(&self) -> Fuse<TTo> {
+        let k = Rc::clone(&self.0);
+        let nextctx = FuseCtx::NotSum;
+        Fuse::new(move |ctx| match ctx {
+            FuseCtx::Sum(axes) => k(&nextctx).cast().sum(axes),
+            FuseCtx::NotSum => k(&nextctx).cast(),
+        })
     }
 }
 

@@ -2,7 +2,7 @@ use std::ops::{Add, Div, Mul, Neg, Sub};
 
 use crate::{
     num::{Float, Num, ZeroOne},
-    raw_tensor::{RawTensor, RealizedRawTensor},
+    raw_tensor::{CastInto, RawTensor, RealizedRawTensor},
     raw_tensor_cpu::CpuRawTensor,
     raw_tensor_fuse::Fuse,
     raw_tensor_shape_tracker::ShapeTracker,
@@ -175,18 +175,6 @@ impl<T: Copy, TRawTensor: RealizedRawTensor<E = T>> Tensor<TRawTensor> {
     }
 }
 
-impl From<&Wgpu32<'static>> for Cpu32 {
-    fn from(wgpu: &Wgpu32<'static>) -> Self {
-        Tensor::new(wgpu.shape(), &wgpu.ravel())
-    }
-}
-
-impl From<&Cpu32> for Wgpu32<'static> {
-    fn from(wgpu: &Cpu32) -> Self {
-        Tensor::new(wgpu.shape(), &wgpu.ravel())
-    }
-}
-
 impl<T: Diffable> Diffable for Tensor<T> {
     type Elem = T::Elem;
 
@@ -307,6 +295,15 @@ impl<T: Diffable> Diffable for Tensor<T> {
     }
 }
 
+impl<TTo, TFro> CastInto<Tensor<TTo>> for Tensor<TFro>
+where
+    TFro: CastInto<TTo>,
+{
+    fn cast(&self) -> Tensor<TTo> {
+        Tensor(self.0.cast())
+    }
+}
+
 crate::math_macros::impl_bin_op!(Add, add, Tensor<T: Diffable>);
 crate::math_macros::impl_bin_op!(Sub, sub, Tensor<T: Diffable>);
 crate::math_macros::impl_bin_op!(Mul, mul, Tensor<T: Diffable>);
@@ -318,6 +315,32 @@ pub type Cpu32 = Tensor<ShapeTracker<Fuse<CpuRawTensor<f32>>>>;
 pub type CpuI32 = Tensor<ShapeTracker<Fuse<CpuRawTensor<i32>>>>;
 pub type CpuBool = Tensor<CpuRawTensor<bool>>;
 pub type Wgpu32<'d> = Tensor<ShapeTracker<Fuse<WgpuRawTensor<'d, f32>>>>;
+
+impl From<&Wgpu32<'static>> for Cpu32 {
+    fn from(wgpu: &Wgpu32<'static>) -> Self {
+        Tensor::new(wgpu.shape(), &wgpu.ravel())
+    }
+}
+
+impl From<&Cpu32> for Wgpu32<'static> {
+    fn from(cpu: &Cpu32) -> Self {
+        Tensor::new(cpu.shape(), &cpu.ravel())
+    }
+}
+
+impl CastInto<CpuI32> for Tensor<CpuRawTensor<bool>> {
+    fn cast(&self) -> CpuI32 {
+        let c: Tensor<CpuRawTensor<i32>> = self.cast();
+        Tensor::new(c.shape(), &c.ravel())
+    }
+}
+
+impl CastInto<Cpu32> for Tensor<CpuRawTensor<bool>> {
+    fn cast(&self) -> Cpu32 {
+        let c: Tensor<CpuRawTensor<f32>> = self.cast();
+        Tensor::new(c.shape(), &c.ravel())
+    }
+}
 
 /// One of two traits to make it easy to write differentiable functions.
 /// The other one is [`TensorLikeRef`].
