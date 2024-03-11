@@ -37,7 +37,9 @@ pub use raw_tensor::{CastInto, RawTensor, RealizedRawTensor};
 pub use raw_tensor_cpu::CpuRawTensor;
 pub use raw_tensor_wgpu::WgpuRawTensor;
 pub use shape::Shape;
-pub use tensor::{Cpu32, CpuBool, CpuI32, Tensor, TensorLike, TensorLikeRef, Wgpu32};
+pub use tensor::{
+    Cpu32, CpuBool, CpuI32, Tensor, TensorLike, TensorLikeRef, Wgpu32, WgpuBool, WgpuI32,
+};
 
 // TODO of general interest
 // - Make vjp and jvp and friends all be N-to-N arguments instead of N-to-1.

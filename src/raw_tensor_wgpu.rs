@@ -836,7 +836,7 @@ impl<T: WgpuSupported> RawTensor for WgpuRawTensor<'_, T> {
     }
 }
 
-impl RealizedRawTensor for WgpuRawTensor<'_, f32> {
+impl<T: Clone + WgpuSupported> RealizedRawTensor for WgpuRawTensor<'_, T> {
     fn to_cpu(&self) -> crate::CpuRawTensor<Self::E> {
         CpuRawTensor::new_into(self.shape(), self.ravel())
     }

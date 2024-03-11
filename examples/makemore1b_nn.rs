@@ -42,7 +42,7 @@ fn read_names() -> Vec<String> {
 }
 
 // change this to Cpu32 to run on CPU. But it's very very slow.
-type Tr = Wgpu32<'static>;
+type Tr = Wgpu32;
 
 fn main() {
     // read and show some stats on names

@@ -314,32 +314,47 @@ crate::math_macros::impl_un_op!(Neg, neg, Tensor<T: Diffable>);
 pub type Cpu32 = Tensor<ShapeTracker<Fuse<CpuRawTensor<f32>>>>;
 pub type CpuI32 = Tensor<ShapeTracker<Fuse<CpuRawTensor<i32>>>>;
 pub type CpuBool = Tensor<CpuRawTensor<bool>>;
-pub type Wgpu32<'d> = Tensor<ShapeTracker<Fuse<WgpuRawTensor<'d, f32>>>>;
-// pub type WgpuI32<'d> = Tensor<ShapeTracker<Fuse<WgpuRawTensor<'d, i32>>>>;
-// pub type WgpuBool<'d> = Tensor<WgpuRawTensor<'d, bool>>;
+pub type Wgpu32 = Tensor<ShapeTracker<Fuse<WgpuRawTensor<'static, f32>>>>;
+pub type WgpuI32 = Tensor<ShapeTracker<Fuse<WgpuRawTensor<'static, i32>>>>;
+pub type WgpuBool = Tensor<WgpuRawTensor<'static, bool>>;
 
-impl From<&Wgpu32<'static>> for Cpu32 {
-    fn from(wgpu: &Wgpu32<'static>) -> Self {
+impl From<&Wgpu32> for Cpu32 {
+    fn from(wgpu: &Wgpu32) -> Self {
         Tensor::new(wgpu.shape(), &wgpu.ravel())
     }
 }
 
-impl From<&Cpu32> for Wgpu32<'static> {
+impl From<&Cpu32> for Wgpu32 {
     fn from(cpu: &Cpu32) -> Self {
         Tensor::new(cpu.shape(), &cpu.ravel())
     }
 }
 
-impl CastInto<CpuI32> for Tensor<CpuRawTensor<bool>> {
+// explicit implementations from bool, because the they don't have ShapeTracker and Fuse.
+impl CastInto<CpuI32> for CpuBool {
     fn cast(&self) -> CpuI32 {
         let c: Tensor<CpuRawTensor<i32>> = self.cast();
         Tensor::new(c.shape(), &c.ravel())
     }
 }
 
-impl CastInto<Cpu32> for Tensor<CpuRawTensor<bool>> {
+impl CastInto<Cpu32> for CpuBool {
     fn cast(&self) -> Cpu32 {
         let c: Tensor<CpuRawTensor<f32>> = self.cast();
+        Tensor::new(c.shape(), &c.ravel())
+    }
+}
+
+impl CastInto<WgpuI32> for WgpuBool {
+    fn cast(&self) -> WgpuI32 {
+        let c: Tensor<WgpuRawTensor<i32>> = self.cast();
+        Tensor::new(c.shape(), &c.ravel())
+    }
+}
+
+impl CastInto<Wgpu32> for WgpuBool {
+    fn cast(&self) -> Wgpu32 {
+        let c: Tensor<WgpuRawTensor<f32>> = self.cast();
         Tensor::new(c.shape(), &c.ravel())
     }
 }
