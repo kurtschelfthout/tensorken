@@ -1,7 +1,7 @@
 use std::{
     fmt::Debug,
     ops::{Add, Div, Index, Mul, Neg, Sub},
-    ptr,
+    rc::Rc,
 };
 
 use crate::{
@@ -19,12 +19,12 @@ use crate::{
 /// Reverse AD implementation.
 
 #[derive(Clone)] //needed for higher order derivatives
-pub enum Reverse<'a, 't, T> {
+pub enum Reverse<T> {
     Lift(T),
-    Reverse(&'a Trace<'t, T>, T, usize),
+    Reverse(Rc<Trace<T>>, T, usize),
 }
 
-impl<T> Reverse<'_, '_, T> {
+impl<T> Reverse<T> {
     fn into_primal(self) -> T {
         match self {
             Self::Lift(x) | Self::Reverse(_, x, _) => x,
@@ -45,13 +45,13 @@ impl<T> Reverse<'_, '_, T> {
     }
 }
 
-impl<T: Clone> Reverse<'_, '_, T> {
+impl<T: Clone> Reverse<T> {
     pub fn lift(x: &T) -> Self {
         Self::Lift(x.clone())
     }
 }
 
-impl<T: Debug> Debug for Reverse<'_, '_, T> {
+impl<T: Debug> Debug for Reverse<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Lift(x) => write!(f, "Lift({x:?})"),
@@ -60,19 +60,19 @@ impl<T: Debug> Debug for Reverse<'_, '_, T> {
     }
 }
 
-impl<T: PartialEq> PartialEq for Reverse<'_, '_, T> {
+impl<T: PartialEq> PartialEq for Reverse<T> {
     fn eq(&self, other: &Self) -> bool {
         self.primal() == other.primal()
     }
 }
 
-impl<'a, 't, T: Diffable> Reverse<'a, 't, T> {
-    fn push_op(trace: &'a Trace<'t, T>, primal: T, op: TracedOp<'t, T>) -> Self {
+impl<T: Diffable> Reverse<T> {
+    fn push_op(trace: &Rc<Trace<T>>, primal: T, op: TracedOp<T>) -> Self {
         let idx = trace.push_op(op);
-        Self::Reverse(trace, primal, idx)
+        Self::Reverse(Rc::clone(trace), primal, idx)
     }
 
-    fn unary<Op: UnaryOp<T, Args = TArgs> + UnaryDiffOp<T> + 't, TArgs: ?Sized>(
+    fn unary<Op: UnaryOp<T, Args = TArgs> + UnaryDiffOp<T> + 'static, TArgs: ?Sized>(
         &self,
         args: &TArgs,
     ) -> Self {
@@ -86,7 +86,7 @@ impl<'a, 't, T: Diffable> Reverse<'a, 't, T> {
         }
     }
 
-    fn binary<Op: BinaryOp<T> + BinaryDiffOp<T> + 't>(&self, rhs: &Self) -> Self {
+    fn binary<Op: BinaryOp<T> + BinaryDiffOp<T> + 'static>(&self, rhs: &Self) -> Self {
         let (primal, op) = Op::f(self.primal(), rhs.primal());
         match (self, rhs) {
             (Self::Lift(_), Self::Lift(_)) => Self::Lift(primal),
@@ -99,7 +99,7 @@ impl<'a, 't, T: Diffable> Reverse<'a, 't, T> {
                 Self::push_op(trace, primal, op)
             }
             (Self::Reverse(left_trace, _, left), Self::Reverse(right_trace, _, right)) => {
-                assert!(ptr::eq(*left_trace, *right_trace), "traces must be the same - likely perturbation confusion. Are lifts in the right place?");
+                assert!(Rc::ptr_eq(left_trace, right_trace), "traces must be the same - likely perturbation confusion. Are lifts in the right place?");
                 let op = TracedOp::Binary(Box::new(op), *left, *right);
                 Self::push_op(left_trace, primal, op)
             }
@@ -107,7 +107,7 @@ impl<'a, 't, T: Diffable> Reverse<'a, 't, T> {
     }
 }
 
-impl<T: Clone + Diffable> Diffable for Reverse<'_, '_, T>
+impl<T: Clone + Diffable + 'static> Diffable for Reverse<T>
 where
     T::Elem: Num,
 {
@@ -190,21 +190,21 @@ where
     }
 }
 
-impl<'a, 't, TFro, TTo> CastInto<Reverse<'a, 't, TTo>> for Reverse<'a, 't, TFro>
+impl<TFro, TTo> CastInto<Reverse<TTo>> for Reverse<TFro>
 where
     TFro: CastInto<TTo>,
 {
-    fn cast(&self) -> Reverse<'a, 't, TTo> {
+    fn cast(&self) -> Reverse<TTo> {
         Reverse::Lift(self.primal().cast())
     }
 }
 
-crate::math_macros::impl_bin_op!(Add, add, Reverse<'a, 't, T: Diffable + Clone>);
-crate::math_macros::impl_bin_op!(Sub, sub, Reverse<'a, 't, T: Diffable + Clone>);
-crate::math_macros::impl_bin_op!(Mul, mul, Reverse<'a, 't, T: Diffable + Clone>);
-crate::math_macros::impl_bin_op!(Div, div, Reverse<'a, 't, T: Diffable + Clone>);
+crate::math_macros::impl_bin_op!(Add, add, Reverse<T: Diffable + Clone + 'static>);
+crate::math_macros::impl_bin_op!(Sub, sub, Reverse<T: Diffable + Clone + 'static>);
+crate::math_macros::impl_bin_op!(Mul, mul, Reverse<T: Diffable + Clone + 'static>);
+crate::math_macros::impl_bin_op!(Div, div, Reverse<T: Diffable + Clone + 'static>);
 
-crate::math_macros::impl_un_op!(Neg, neg, Reverse<'a, 't, T: Diffable + Clone>);
+crate::math_macros::impl_un_op!(Neg, neg, Reverse<T: Diffable + Clone + 'static>);
 
 // somewhat wonky helper type to deal with optional adjoints
 #[derive(Debug)]
@@ -241,15 +241,15 @@ impl<T> Index<usize> for Adjoints<T> {
 
 /// `PullBack` is a function from a cotangent vector to a `Vec` of cotangent vectors.
 /// Use `call` to access it.
-pub struct PullBack<'t, T> {
-    trace: Trace<'t, T>,
+pub struct PullBack<T> {
+    trace: Rc<Trace<T>>,
     index_result: Option<usize>,
     zero_primals: Vec<T>,
     // only used to assert the shape matches with cotangent
     primal_out_shape: Vec<usize>,
 }
 
-impl<T: Diffable + Clone> PullBack<'_, T>
+impl<T: Diffable + Clone> PullBack<T>
 where
     T::Elem: Float,
 {
@@ -318,7 +318,7 @@ where
 
 // pub fn vjp1<'b, 't, T: Diffable + Clone + 't, F>(f: F, at: &T) -> (T, PullBack<'t, T>)
 // where
-//     for<'a> F: Fn(&'a Reverse<'a, 't, T>) -> Reverse<'a, 't, T>,
+//     for<'a> F: Fn(&'a Reverse< T>) -> Reverse< T>,
 // {
 //     let trace = Trace::new();
 //     let reverse = Reverse::Reverse(&trace, at.clone(), trace.var());
@@ -341,17 +341,17 @@ where
 /// Compute a reverse-mode vector-Jacobian product of a function `f` evaluated at the given primals.
 /// Returns a tuple of the result of `f` and a `PullBack` object. `PullBack.call` can be used to
 /// compute the vector-Jacobian product of `f` at any cotangent.
-pub fn vjpn<'b, 't, T: Diffable + Clone + 't, F>(f: F, at: &[&T]) -> (T, PullBack<'t, T>)
+pub fn vjpn<T: Diffable + Clone + 'static, F>(f: F, at: &[&T]) -> (T, PullBack<T>)
 where
     T::Elem: Float,
-    for<'a> F: Fn(&'a [Reverse<'a, 't, T>]) -> Reverse<'a, 't, T>,
+    for<'a> F: Fn(&'a [Reverse<T>]) -> Reverse<T>,
 {
-    let trace = Trace::new();
+    let trace = Rc::new(Trace::new());
     let vars: Vec<_> = at
         .iter()
         .map(|&ati| {
             let index = trace.var();
-            Reverse::Reverse(&trace, ati.clone(), index)
+            Reverse::Reverse(Rc::clone(&trace), ati.clone(), index)
         })
         .collect();
     let result = f(&vars);
@@ -362,7 +362,7 @@ where
     (
         result.into_primal(),
         PullBack {
-            trace,
+            trace: Rc::clone(&trace),
             index_result,
             zero_primals,
             primal_out_shape,
@@ -371,10 +371,10 @@ where
 }
 
 /// Compute the result and the gradient of a function at the given primals.
-pub fn value_and_gradn<'t, T: Diffable + Clone + 't, F>(f: F, at: &[&T]) -> (T, Vec<T>)
+pub fn value_and_gradn<T: Diffable + Clone + 'static, F>(f: F, at: &[&T]) -> (T, Vec<T>)
 where
     T::Elem: Float,
-    for<'a> F: Fn(&'a [Reverse<'a, 't, T>]) -> Reverse<'a, 't, T>,
+    for<'a> F: Fn(&'a [Reverse<T>]) -> Reverse<T>,
 {
     let (primal, pullback) = vjpn(f, at);
     let tangents = pullback.call(&primal.ones_like());
@@ -383,10 +383,10 @@ where
 
 /// Compute the result and the gradient of a function at the given primal.
 #[allow(clippy::missing_panics_doc)]
-pub fn value_and_grad1<'t, T: Diffable + Clone + 't, F>(f: F, at: &T) -> (T, T)
+pub fn value_and_grad1<T: Diffable + Clone + 'static, F>(f: F, at: &T) -> (T, T)
 where
     T::Elem: Float,
-    for<'a> F: Fn(&'a Reverse<'a, 't, T>) -> Reverse<'a, 't, T>,
+    for<'a> F: Fn(&'a Reverse<T>) -> Reverse<T>,
 {
     let (primal, tangents) = value_and_gradn(|s| f(&s[0]), &[at]);
     (primal, tangents.into_iter().next().unwrap())
@@ -394,10 +394,10 @@ where
 
 /// Compute the result and the gradient of a function at the given primals.
 #[allow(clippy::missing_panics_doc)]
-pub fn value_and_grad2<'t, T: Diffable + Clone + 't, F>(f: F, at0: &T, at1: &T) -> (T, (T, T))
+pub fn value_and_grad2<T: Diffable + Clone + 'static, F>(f: F, at0: &T, at1: &T) -> (T, (T, T))
 where
     T::Elem: Float,
-    for<'a> F: Fn(&'a Reverse<'a, 't, T>, &'a Reverse<'a, 't, T>) -> Reverse<'a, 't, T>,
+    for<'a> F: Fn(&'a Reverse<T>, &'a Reverse<T>) -> Reverse<T>,
 {
     let (primal, tangents) = value_and_gradn(|s| f(&s[0], &s[1]), &[at0, at1]);
     let mut dr_iter = tangents.into_iter();
@@ -406,30 +406,30 @@ where
 
 /// Compute the gradient of a function at the given primal.
 #[allow(clippy::missing_panics_doc)]
-pub fn grad1<'t, T: Diffable + Clone + 't, F>(f: F, at: &T) -> T
+pub fn grad1<T: Diffable + Clone + 'static, F>(f: F, at: &T) -> T
 where
     T::Elem: Float,
-    for<'a> F: Fn(&'a Reverse<'a, 't, T>) -> Reverse<'a, 't, T>,
+    for<'a> F: Fn(&'a Reverse<T>) -> Reverse<T>,
 {
     value_and_grad1(f, at).1
 }
 
 /// Compute the gradient of a function at the given primals.
 #[allow(clippy::missing_panics_doc)]
-pub fn grad2<'t, T: Diffable + Clone + 't, F>(f: F, at0: &T, at1: &T) -> (T, T)
+pub fn grad2<T: Diffable + Clone + 'static, F>(f: F, at0: &T, at1: &T) -> (T, T)
 where
     T::Elem: Float,
-    for<'a> F: Fn(&'a Reverse<'a, 't, T>, &'a Reverse<'a, 't, T>) -> Reverse<'a, 't, T>,
+    for<'a> F: Fn(&'a Reverse<T>, &'a Reverse<T>) -> Reverse<T>,
 {
     value_and_grad2(f, at0, at1).1
 }
 
 /// Jacobian of `f` evaluated row-by-row at `at` using reverse-mode AD.
 #[allow(clippy::missing_panics_doc)]
-pub fn jacrev<'b, 't, T: Diffable + Clone + 't, F>(f: F, at: &T) -> T
+pub fn jacrev<T: Diffable + Clone + 'static, F>(f: F, at: &T) -> T
 where
     T::Elem: Float,
-    for<'a> F: Fn(&'a Reverse<'a, 't, T>) -> Reverse<'a, 't, T>,
+    for<'a> F: Fn(&'a Reverse<T>) -> Reverse<T>,
 {
     let (primal, pullback) = vjpn(|s| f(&s[0]), &[at]);
 

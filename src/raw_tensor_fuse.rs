@@ -15,6 +15,12 @@ enum FuseCtx {
 #[derive(Clone)]
 pub struct Fuse<T>(Rc<dyn Fn(&FuseCtx) -> T>);
 
+impl<T> std::fmt::Debug for Fuse<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Fuse")
+    }
+}
+
 impl<T> Fuse<T> {
     fn new(f: impl Fn(&FuseCtx) -> T + 'static) -> Self {
         Self(Rc::new(f))
