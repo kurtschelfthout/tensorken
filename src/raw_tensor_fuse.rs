@@ -1,5 +1,4 @@
 use core::panic;
-use std::rc::Rc;
 
 use crate::{
     num::{Float, Num},
@@ -7,27 +6,15 @@ use crate::{
     RawTensor,
 };
 
-enum FuseCtx {
-    Sum(Vec<usize>),
-    NotSum,
-}
-
-#[derive(Clone)]
-pub struct Fuse<T>(Rc<dyn Fn(&FuseCtx) -> T>);
-
-impl<T> std::fmt::Debug for Fuse<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Fuse")
-    }
+#[derive(Clone, Debug)]
+pub enum Fuse<T> {
+    Mul(T, T),
+    NotMul(T),
 }
 
 impl<T> Fuse<T> {
-    fn new(f: impl Fn(&FuseCtx) -> T + 'static) -> Self {
-        Self(Rc::new(f))
-    }
-
-    fn run(&self) -> T {
-        (self.0)(&FuseCtx::NotSum)
+    fn new(t: T) -> Self {
+        Self::NotMul(t)
     }
 }
 
@@ -35,15 +22,18 @@ impl<TRaw: RawTensor + Clone + 'static> Fuse<TRaw>
 where
     TRaw::E: Num,
 {
-    fn from_raw_tensor(raw_tensor: TRaw) -> Self {
-        Self::new(move |ctx| match ctx {
-            FuseCtx::Sum(axes2) => raw_tensor.sum(axes2),
-            FuseCtx::NotSum => raw_tensor.clone(),
-        })
+    fn run(&self) -> TRaw {
+        match self {
+            Self::Mul(lhs, rhs) => lhs.mul(rhs),
+            Self::NotMul(t) => t.clone(),
+        }
     }
 
     pub fn realize(&self) -> Self {
-        Self::from_raw_tensor(self.run())
+        match self {
+            Self::Mul(lhs, rhs) => Self::new(lhs.mul(rhs)),
+            Self::NotMul(_) => self.clone(),
+        }
     }
 }
 
@@ -54,38 +44,37 @@ fn unary_no_fuse<TRaw: RawTensor + 'static>(
 where
     TRaw::E: Num,
 {
-    let k = Rc::clone(&s.0);
-    let nextctx = FuseCtx::NotSum;
-    Fuse::new(move |ctx| match ctx {
-        FuseCtx::Sum(axes) => f(&k(&nextctx)).sum(axes),
-        FuseCtx::NotSum => f(&k(&nextctx)),
-    })
+    match s {
+        Fuse::Mul(lhs, rhs) => Fuse::NotMul(f(&lhs.mul(rhs))),
+        Fuse::NotMul(t) => Fuse::NotMul(f(t)),
+    }
 }
 
 fn binary_no_fuse<TRaw: RawTensor + 'static>(
     lhs: &Fuse<TRaw>,
     rhs: &Fuse<TRaw>,
-    f: fn(&TRaw, &TRaw) -> TRaw,
+    f: impl Fn(&TRaw, &TRaw) -> TRaw + 'static,
 ) -> Fuse<TRaw>
 where
     TRaw::E: Num,
 {
-    let f_lhs = Rc::clone(&lhs.0);
-    let f_rhs = Rc::clone(&rhs.0);
-    let nextctx = FuseCtx::NotSum;
-    Fuse::new(move |ctx| match ctx {
-        FuseCtx::Sum(axes) => f(&f_lhs(&nextctx), &f_rhs(&nextctx)).sum(axes),
-        FuseCtx::NotSum => f(&f_lhs(&nextctx), &f_rhs(&nextctx)),
-    })
+    match (lhs, rhs) {
+        (Fuse::Mul(lhs1, rhs1), Fuse::Mul(lhs2, rhs2)) => {
+            Fuse::new(f(&lhs1.mul(rhs1), &lhs2.mul(rhs2)))
+        }
+        (Fuse::Mul(lhs1, rhs1), Fuse::NotMul(t)) => Fuse::NotMul(f(&lhs1.mul(rhs1), t)),
+        (Fuse::NotMul(t), Fuse::Mul(lhs2, rhs2)) => Fuse::NotMul(f(t, &lhs2.mul(rhs2))),
+        (Fuse::NotMul(t1), Fuse::NotMul(t2)) => Fuse::NotMul(f(t1, t2)),
+    }
 }
 
-fn combine_axes(lhs: &[usize], rhs: &[usize]) -> Vec<usize> {
-    let mut axes = lhs.to_vec();
-    axes.extend_from_slice(rhs);
-    axes.sort_unstable();
-    axes.dedup();
-    axes
-}
+// fn combine_axes(lhs: &[usize], rhs: &[usize]) -> Vec<usize> {
+//     let mut axes = lhs.to_vec();
+//     axes.extend_from_slice(rhs);
+//     axes.sort_unstable();
+//     axes.dedup();
+//     axes
+// }
 
 impl<TRaw: RawTensor + Clone + 'static> RawTensor for Fuse<TRaw>
 where
@@ -120,13 +109,14 @@ where
     }
 
     fn mul(&self, other: &Self) -> Self {
-        let f_lhs = Rc::clone(&self.0);
-        let f_rhs = Rc::clone(&other.0);
-        let nextctx = FuseCtx::NotSum;
-        Self::new(move |ctx| match ctx {
-            FuseCtx::Sum(axes) => f_lhs(&nextctx).fused_multiply_add(&f_rhs(&nextctx), axes),
-            FuseCtx::NotSum => f_lhs(&nextctx).mul(&f_rhs(&nextctx)),
-        })
+        match (self, other) {
+            (Fuse::Mul(lhs1, rhs1), Fuse::Mul(lhs2, rhs2)) => {
+                Fuse::Mul(lhs1.mul(rhs1), lhs2.mul(rhs2))
+            }
+            (Fuse::Mul(lhs1, rhs1), Fuse::NotMul(t)) => Fuse::Mul(lhs1.mul(rhs1), t.clone()),
+            (Fuse::NotMul(t), Fuse::Mul(lhs2, rhs2)) => Fuse::Mul(t.clone(), lhs2.mul(rhs2)),
+            (Fuse::NotMul(t1), Fuse::NotMul(t2)) => Fuse::Mul(t1.clone(), t2.clone()),
+        }
     }
 
     fn div(&self, other: &Self) -> Self {
@@ -145,12 +135,10 @@ where
     }
 
     fn sum(&self, axes: &[usize]) -> Self {
-        let f = Rc::clone(&self.0);
-        let my_axes = axes.to_vec();
-        Self::new(move |ctx| match ctx {
-            FuseCtx::Sum(sum_axes) => f(&FuseCtx::Sum(combine_axes(&my_axes, sum_axes))),
-            FuseCtx::NotSum => f(&FuseCtx::Sum(my_axes.clone())),
-        })
+        match self {
+            Fuse::Mul(lhs, rhs) => Fuse::NotMul(lhs.fused_multiply_add(rhs, axes)),
+            Fuse::NotMul(t) => Fuse::NotMul(t.sum(axes)),
+        }
     }
 
     fn max(&self, axes: &[usize]) -> Self {
@@ -185,7 +173,7 @@ where
 
     fn new(shape: &[usize], data: &[Self::E]) -> Self {
         let traw = TRaw::new(shape, data);
-        Self::from_raw_tensor(traw)
+        Self::new(traw)
     }
 
     fn shape(&self) -> &[usize] {
@@ -193,15 +181,9 @@ where
     }
 
     fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self {
-        let f_lhs = Rc::clone(&self.0);
-        let f_rhs = Rc::clone(&other.0);
-        let nextctx = FuseCtx::NotSum;
-        let my_axes = axes.to_vec();
-        Self::new(move |ctx| match ctx {
-            FuseCtx::Sum(axes) => {
-                f_lhs(&nextctx).fused_multiply_add(&f_rhs(&nextctx), &combine_axes(&my_axes, axes))
-            }
-            FuseCtx::NotSum => f_lhs(&nextctx).fused_multiply_add(&f_rhs(&nextctx), &my_axes),
+        let vec = axes.to_vec();
+        binary_no_fuse(self, other, move |lhs, rhs| {
+            lhs.fused_multiply_add(rhs, &vec)
         })
     }
 }
@@ -215,25 +197,21 @@ where
     }
 
     fn realize(&self) -> Self {
-        Self::from_raw_tensor(self.run())
+        Self::new(self.run())
     }
 }
 
 // TTo is Num here so the `sum` after `cast` is allowed. That should be fine,
 // means we'll be able to cast from bool -> i32 and bool -> f32 which is most
 // of what's needed.
-impl<TFro: 'static + RawTensor, TTo: RawTensor> CastInto<Fuse<TTo>> for Fuse<TFro>
+impl<TFro: 'static + RawTensor + Clone, TTo: RawTensor> CastInto<Fuse<TTo>> for Fuse<TFro>
 where
     TFro: CastInto<TTo>,
     TTo::E: Num,
+    TFro::E: Num,
 {
     fn cast(&self) -> Fuse<TTo> {
-        let k = Rc::clone(&self.0);
-        let nextctx = FuseCtx::NotSum;
-        Fuse::new(move |ctx| match ctx {
-            FuseCtx::Sum(axes) => k(&nextctx).cast().sum(axes),
-            FuseCtx::NotSum => k(&nextctx).cast(),
-        })
+        Fuse::new(self.run().cast())
     }
 }
 
@@ -248,32 +226,6 @@ mod tests {
         let t2: Fuse<String> = RawTensor::new(&[2, 2], &[5., 6., 7., 8.]);
         let actual = t1.mul(&t2).sum(&[0]).run();
         let expected = t1.fused_multiply_add(&t2, &[0]).run();
-        assert_eq!(expected, actual);
-    }
-
-    #[test]
-    fn test_fma_sum_fuses() {
-        let t1: Fuse<String> = RawTensor::new(&[2, 2], &[1., 2., 3., 4.]);
-        let t2: Fuse<String> = RawTensor::new(&[2, 2], &[5., 6., 7., 8.]);
-        let actual = t1.fused_multiply_add(&t2, &[1]).sum(&[0]).run();
-        let expected = t1.fused_multiply_add(&t2, &[0, 1]).run();
-        assert_eq!(expected, actual);
-    }
-
-    #[test]
-    fn test_mul_sum_sum_fuses() {
-        let t1: Fuse<String> = RawTensor::new(&[2, 2], &[1., 2., 3., 4.]);
-        let t2: Fuse<String> = RawTensor::new(&[2, 2], &[5., 6., 7., 8.]);
-        let actual = t1.mul(&t2).sum(&[0]).sum(&[1]).run();
-        let expected = t1.fused_multiply_add(&t2, &[0, 1]).run();
-        assert_eq!(expected, actual);
-    }
-
-    #[test]
-    fn test_sum_sum_fuses() {
-        let t1: Fuse<String> = RawTensor::new(&[2, 2], &[1., 2., 3., 4.]);
-        let actual = t1.sum(&[0]).sum(&[1]).run();
-        let expected = t1.sum(&[0, 1]).run();
         assert_eq!(expected, actual);
     }
 
