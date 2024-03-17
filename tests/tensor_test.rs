@@ -73,7 +73,7 @@ fn test_math_ops() {
     math_ops(t1, t2);
 }
 
-fn math_ops<T: RealizedRawTensor<E = f32>>(t1: &Tensor<T>, t2: &Tensor<T>) {
+fn math_ops<T: RealizedRawTensor<E = f32> + 'static>(t1: &Tensor<T>, t2: &Tensor<T>) {
     let r1 = t1.exp();
     assert_vec_eq(
         &r1.ravel(),
@@ -118,7 +118,11 @@ fn test_broadcasted_ops() {
     broadcasted_ops(t1, t2, t3);
 }
 
-fn broadcasted_ops<T: RealizedRawTensor<E = f32>>(t1: &Tensor<T>, t2: &Tensor<T>, t3: &Tensor<T>) {
+fn broadcasted_ops<T: RealizedRawTensor<E = f32> + 'static>(
+    t1: &Tensor<T>,
+    t2: &Tensor<T>,
+    t3: &Tensor<T>,
+) {
     let (r3, r3r) = (t1 + t2, t2 + t1);
     assert_eq!(r3.ravel(), vec![7.0, 9.0, 11.0, 10.0, 12.0, 14.0]);
     assert_eq!(r3r.ravel(), vec![7.0, 9.0, 11.0, 10.0, 12.0, 14.0]);

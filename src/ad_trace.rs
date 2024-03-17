@@ -2,15 +2,15 @@ use crate::ad_ops::{BinaryDiffOp, UnaryDiffOp};
 use std::cell::RefCell;
 use std::fmt::Debug;
 
-pub(crate) enum TracedOp<'t, TTensor: 't> {
+pub(crate) enum TracedOp<TTensor> {
     Var,
-    Unary(Box<dyn UnaryDiffOp<TTensor> + 't>, usize),
-    BinaryDA(Box<dyn BinaryDiffOp<TTensor> + 't>, usize),
-    BinaryDB(Box<dyn BinaryDiffOp<TTensor> + 't>, usize),
-    Binary(Box<dyn BinaryDiffOp<TTensor> + 't>, usize, usize),
+    Unary(Box<dyn UnaryDiffOp<TTensor>>, usize),
+    BinaryDA(Box<dyn BinaryDiffOp<TTensor>>, usize),
+    BinaryDB(Box<dyn BinaryDiffOp<TTensor>>, usize),
+    Binary(Box<dyn BinaryDiffOp<TTensor>>, usize, usize),
 }
 
-impl<T> Debug for TracedOp<'_, T> {
+impl<T> Debug for TracedOp<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Var => write!(f, "Var"),
@@ -23,11 +23,11 @@ impl<T> Debug for TracedOp<'_, T> {
 }
 
 #[derive(Debug)]
-pub struct Trace<'t, TTensor> {
-    trace: RefCell<Vec<TracedOp<'t, TTensor>>>,
+pub struct Trace<TTensor> {
+    trace: RefCell<Vec<TracedOp<TTensor>>>,
 }
 
-impl<'t, TTensor> Trace<'t, TTensor> {
+impl<TTensor> Trace<TTensor> {
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -35,7 +35,7 @@ impl<'t, TTensor> Trace<'t, TTensor> {
         }
     }
 
-    pub(crate) fn push_op(&self, node: TracedOp<'t, TTensor>) -> usize {
+    pub(crate) fn push_op(&self, node: TracedOp<TTensor>) -> usize {
         let mut trace = self.trace.borrow_mut();
         let index = trace.len();
         trace.push(node);
@@ -46,12 +46,12 @@ impl<'t, TTensor> Trace<'t, TTensor> {
         self.push_op(TracedOp::Var)
     }
 
-    pub(crate) fn borrow(&self) -> std::cell::Ref<'_, Vec<TracedOp<'t, TTensor>>> {
+    pub(crate) fn borrow(&self) -> std::cell::Ref<'_, Vec<TracedOp<TTensor>>> {
         self.trace.borrow()
     }
 }
 
-impl<T: Default> Default for Trace<'_, T> {
+impl<T: Default> Default for Trace<T> {
     fn default() -> Self {
         Self::new()
     }

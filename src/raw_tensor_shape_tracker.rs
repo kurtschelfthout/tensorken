@@ -5,7 +5,7 @@ use crate::{
     RawTensor, Shape,
 };
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ShapeTracker<T>(ShapeStrider, T);
 
 impl<TRaw: RawTensor> ShapeTracker<TRaw> {
