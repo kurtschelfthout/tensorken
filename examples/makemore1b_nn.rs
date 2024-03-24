@@ -9,10 +9,7 @@ use std::{
 };
 
 use rand::{distributions::WeightedIndex, prelude::Distribution, rngs::StdRng, SeedableRng};
-use tensorken::{
-    num::Float, value_and_grad1, Axes, Diffable, DiffableExt, Reverse, TensorLike, TensorLikeRef,
-    Wgpu32,
-};
+use tensorken::{num::Float, value_and_grad1, Axes, Diffable, Tensor, Wgpu32};
 
 // This example shows the first half of the first of Karpathy's from zero-to-hero tutorials on makemomre.
 // It builds a bigram, character-level language model from a set of names.
@@ -66,12 +63,10 @@ fn main() {
     let mut W = Tr::randn(&[27, 27], &mut rng);
 
     // run the neural net - just a single linear layer + softmax. No bias.
-    fn predict<'t, T>(W: &T, xenc: &T) -> T
-    where
-        T: TensorLike<'t>,
-        for<'s> &'s T: TensorLikeRef<T>,
-        T::Elem: Float,
-    {
+    fn predict<T, E: Float, I: Diffable<Repr<E> = T>>(
+        W: &Tensor<T, E, I>,
+        xenc: &Tensor<T, E, I>,
+    ) -> Tensor<T, E, I> {
         let logits = xenc.matmul(W);
         let counts = logits.exp();
         &counts / &counts.sum(&[1]) // 5, 27
@@ -81,25 +76,23 @@ fn main() {
     // println!("probs\n{probs:.3}");
 
     // Let's calculate the loss.
-    fn loss<'t, T>(probs: &T, yenc: &T) -> T
-    where
-        T: TensorLike<'t>,
-        T::Elem: From<f32> + Float,
-        for<'s> &'s T: TensorLikeRef<T>,
-    {
+    fn loss<T, E: Float + From<bool> + From<f32>, I: Diffable<Repr<E> = T>>(
+        probs: &Tensor<T, E, I>,
+        yenc: &Tensor<T, E, I>,
+    ) -> Tensor<T, E, I> {
         // the max here is a trick to get a columns vector of only the "correct" probabilities, as given by yenc
         // Karpathy does this with indexing one by one, or using pytorch's tensor indexing notation: probs[torch.arange(5), ys]
-        let ps = (yenc * probs).max(&[1]).squeeze(Axes::All);
+        let ps = (yenc * probs).max(&[1]).squeeze(&Axes::All);
         let nlls = -ps.log();
-        nlls.sum(&[0]) / T::scalar((nlls.shape()[0] as f32).into())
+        nlls.sum(&[0]) / Tensor::scalar((nlls.shape()[0] as f32).into())
     }
 
     // let l = loss(&probs, &yenc);
     // println!("loss={l}");
 
     // Now let's do the same thing, but with autodiff.
-    let rev_xenc = Reverse::lift(&xenc);
-    let rev_yenc = Reverse::lift(&yenc);
+    let rev_xenc = xenc.lift_rev();
+    let rev_yenc = yenc.lift_rev();
 
     // now let's put that all together and keep learning in a loop
     for k in 0..200 {
@@ -124,7 +117,7 @@ fn main() {
         let mut ix = 0;
         loop {
             let xenc = Tr::full(&[1], ix as f32).one_hot(27_u8);
-            let probs = predict(&W, &xenc).squeeze(Axes::All);
+            let probs = predict(&W, &xenc).squeeze(&Axes::All);
             // print!("probs\n{probs:.3}");
             let dist = WeightedIndex::new(probs.ravel()).unwrap();
             ix = dist.sample(&mut rng);

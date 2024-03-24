@@ -1,4 +1,4 @@
-use tensorken::{Cpu32, CpuBool, CpuI32, CpuRawTensor, Diffable, DiffableExt, IndexValue, Tensor};
+use tensorken::{Cpu32, CpuBool, CpuI32, IndexValue};
 
 /// A macro to print the result of an expression and the expression itself.
 macro_rules! do_example {
@@ -32,10 +32,7 @@ macro_rules! let_example {
 type Tr = Cpu32;
 
 fn main() {
-    do_example!(Tensor::<CpuRawTensor<f32>>::new(
-        &[3, 2],
-        &[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
-    ));
+    do_example!(Cpu32::new(&[3, 2], &[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]));
 
     // unary operations
     let_example!(t, &Tr::new(&[3, 2], &[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]));
@@ -119,7 +116,8 @@ fn main() {
     // an even smaller subset is possible with bool
     let_example!(tb1, &CpuBool::new(&[2, 2], &[true, false, true, false]));
     let_example!(tb2, &CpuBool::new(&[2, 2], &[false, true, false, true]));
-    do_example!(tb1.max(&[0]));
+    // TODO: make at least eq work
+    // do_example!(tb1.max(&[0]));
     do_example!(tb2.reshape(&[4]));
-    do_example!(tb1.eq(tb2));
+    // do_example!(tb1.eq(tb2));
 }

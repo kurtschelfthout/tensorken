@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use rand::{rngs::StdRng, SeedableRng};
-use tensorken::{tensor::Wgpu32, Cpu32, Diffable, DiffableExt};
+use tensorken::{Cpu32, Wgpu32};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     let mut rng = StdRng::seed_from_u64(12345u64);

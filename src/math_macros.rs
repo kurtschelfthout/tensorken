@@ -6,35 +6,35 @@ macro_rules! impl_bin_op {
     // See https://stackoverflow.com/a/61189128/72211 for some explanation.
     // Add          , add         , Reverse,    , <      'a or T :  B  + C                       >
     ($op_trait:ident, $op_fn:ident, $name:ident $(< $( $ps:tt $( : $pb:tt $(+ $pbb:tt )* )?  ),+ >)? ) => {
-        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait for $name$(< $( $ps ),+ >)? where T::Elem: Num{
+        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait for $name$(< $( $ps ),+ >)? where E: Num, I: Diffable<Repr<E> = T> {
             type Output = Self;
 
             fn $op_fn(self, rhs: Self) -> Self::Output {
-                DiffableExt::$op_fn(&self, &rhs)
+                Tensor::$op_fn(&self, &rhs)
             }
         }
 
-        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait for &$name$(< $( $ps ),+ >)? where T::Elem: Num{
+        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait for &$name$(< $( $ps ),+ >)? where E: Num, I: Diffable<Repr<E> = T> {
             type Output = $name$(< $( $ps ),+ >)?;
 
             fn $op_fn(self, rhs: Self) -> Self::Output {
-                DiffableExt::$op_fn(self, rhs)
+                Tensor::$op_fn(self, rhs)
             }
         }
 
-        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait<&$name$(< $( $ps ),+ >)?> for $name$(< $( $ps ),+ >)? where T::Elem: Num{
+        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait<&$name$(< $( $ps ),+ >)?> for $name$(< $( $ps ),+ >)? where E: Num, I: Diffable<Repr<E> = T> {
             type Output = Self;
 
             fn $op_fn(self, rhs: &$name$(< $( $ps ),+ >)?) -> Self::Output {
-                DiffableExt::$op_fn(&self, rhs)
+                Tensor::$op_fn(&self, rhs)
             }
         }
 
-        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait<$name$(< $( $ps ),+ >)?> for &$name$(< $( $ps ),+ >)? where T::Elem: Num{
+        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait<$name$(< $( $ps ),+ >)?> for &$name$(< $( $ps ),+ >)? where E: Num, I: Diffable<Repr<E> = T> {
             type Output = $name$(< $( $ps ),+ >)?;
 
             fn $op_fn(self, rhs: $name$(< $( $ps ),+ >)?) -> Self::Output {
-                DiffableExt::$op_fn(self, &rhs)
+                Tensor::$op_fn(self, &rhs)
             }
         }
     };
@@ -45,19 +45,19 @@ pub(crate) use impl_bin_op;
 macro_rules! impl_un_op {
     ($op_trait:ident, $op_fn:ident, $name:ident $(< $( $ps:tt $( : $pb:tt $(+ $pbb:tt )* )?  ),+ >)? ) => {
 
-        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait for $name$(< $( $ps ),+ >)? where T::Elem: Num{
+        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait for $name$(< $( $ps ),+ >)? where E: Num, I: Diffable<Repr<E> = T> {
             type Output = Self;
 
             fn $op_fn(self) -> Self::Output {
-                DiffableExt::$op_fn(&self)
+                Tensor::$op_fn(&self)
             }
         }
 
-        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait for &$name$(< $( $ps ),+ >)? where T::Elem: Num{
+        impl$(< $( $ps $( : $pb $(+ $pbb )* )?  ),+ >)? $op_trait for &$name$(< $( $ps ),+ >)? where E: Num, I: Diffable<Repr<E> = T> {
             type Output = $name$(< $( $ps ),+ >)?;
 
             fn $op_fn(self) -> Self::Output {
-                DiffableExt::$op_fn(self)
+                Tensor::$op_fn(self)
             }
         }
     }

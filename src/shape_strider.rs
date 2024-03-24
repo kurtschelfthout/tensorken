@@ -78,7 +78,10 @@ impl ShapeStrider {
 
     pub(crate) fn validate_can_zip(&self, other: &Self) -> Result<(), String> {
         if self.shape != other.shape {
-            return Err(format!("Shapes must match: {:?} != {:?}", self.shape, other.shape));
+            return Err(format!(
+                "Shapes must match: {:?} != {:?}",
+                self.shape, other.shape
+            ));
         }
         Ok(())
     }

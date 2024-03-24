@@ -5,7 +5,10 @@ use std::{
 
 use prettytable::{format, Cell, Table};
 
-use crate::{CpuRawTensor, Diffable, IndexValue, RealizedRawTensor, Tensor};
+use crate::{
+    num::ZeroOne, raw_tensor_cpu::CpuRawTensorImpl, CpuRawTensor, IndexValue, RealizedRawTensor,
+    Tensor,
+};
 
 static mut FORMAT_TENSOR: Option<format::TableFormat> = None;
 static INIT_FORMAT_TENSOR: Once = Once::new();
@@ -76,8 +79,8 @@ fn get_single_line_format() -> &'static format::TableFormat {
 //     }
 // }
 
-fn create_table<T: Copy + Display>(
-    tensor: &Tensor<CpuRawTensor<T>>,
+fn create_table<E: ZeroOne + Display>(
+    tensor: &Tensor<CpuRawTensor<E>, E, CpuRawTensorImpl>,
     table: &mut Table,
     precision: Option<usize>,
 ) {
@@ -117,10 +120,7 @@ fn create_table<T: Copy + Display>(
     }
 }
 
-impl<RT: RealizedRawTensor> Display for Tensor<RT>
-where
-    RT::E: Copy + Display,
-{
+impl<T, E: ZeroOne + Display, I: RealizedRawTensor<Repr<E> = T>> Display for Tensor<T, E, I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let cpu = if self.shape().len() % 2 == 0 {
             self.to_cpu()
