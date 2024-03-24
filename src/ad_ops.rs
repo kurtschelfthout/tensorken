@@ -1,199 +1,169 @@
+use std::marker::PhantomData;
+
 use crate::{
     num::{Float, Num},
-    Diffable, DiffableExt,
+    Diffable,
 };
 
 /// A trait that represents the operation on the primal value, and
 /// returns a `UnaryDiffOp`, which is the operation on the adjoints in the
 /// reverse pass.
 /// This design allows the derivative calculation to reuse result from the primal calculation.
-pub trait UnaryOp<TTensor> {
+pub trait UnaryOp<T> {
     type Args: ?Sized;
-    fn f(a: &TTensor, args: &Self::Args) -> (TTensor, Self);
+    fn f(a: &T, args: &Self::Args) -> (T, Self);
 }
 
 /// Same as `UnaryOp`, but for binary operations.
-pub trait BinaryOp<TTensor> {
-    fn f(a: &TTensor, b: &TTensor) -> (TTensor, Self);
+pub trait BinaryOp<T> {
+    fn f(a: &T, b: &T) -> (T, Self);
 }
 
 /// Propagate the derivative of a unary operation.
-pub trait UnaryDiffOp<TTensor> {
-    fn dfda(&self, d: &TTensor) -> TTensor;
+pub trait UnaryDiffOp<T> {
+    fn dfda(&self, d: &T) -> T;
 }
 
 /// Propagate the derivative of a binary operation.
-pub trait BinaryDiffOp<TTensor> {
-    fn dfda(&self, d: &TTensor) -> TTensor;
-    fn dfdb(&self, d: &TTensor) -> TTensor;
+pub trait BinaryDiffOp<T> {
+    fn dfda(&self, d: &T) -> T;
+    fn dfdb(&self, d: &T) -> T;
 }
 
 // The rest of this file are implementations of the above traits for element-wise operations.
 // They are the same for forward and reverse mode, and so we can share them.
 // Forward-mode specific ops are in ad_ops_forward, and reverse-mode specific ops are in ad_ops_reverse.
 
-pub(crate) struct AddOp;
+pub(crate) struct AddOp<E, I>(PhantomData<(E, I)>);
 
-impl<TTensor: Clone + Diffable> BinaryOp<TTensor> for AddOp
-where
-    TTensor::Elem: Num,
-{
-    fn f(a: &TTensor, b: &TTensor) -> (TTensor, Self) {
-        (a.elementwise_add(b), Self)
+impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> BinaryOp<T> for AddOp<E, I> {
+    fn f(a: &T, b: &T) -> (T, Self) {
+        (I::elementwise_add::<E>(a, b), AddOp(PhantomData))
     }
 }
 
-impl<TTensor: Clone + Diffable> BinaryDiffOp<TTensor> for AddOp {
-    fn dfda(&self, d: &TTensor) -> TTensor {
+impl<T: Clone, E: Clone, I: Diffable<Repr<E> = T>> BinaryDiffOp<T> for AddOp<E, I> {
+    fn dfda(&self, d: &T) -> T {
         d.clone()
     }
 
-    fn dfdb(&self, d: &TTensor) -> TTensor {
+    fn dfdb(&self, d: &T) -> T {
         d.clone()
     }
 }
 
-pub(crate) struct MulOp<TTensor>(TTensor, TTensor);
+pub(crate) struct MulOp<T, E, I>(T, T, PhantomData<(E, I)>);
 
-impl<TTensor: Clone + Diffable> BinaryOp<TTensor> for MulOp<TTensor>
-where
-    TTensor::Elem: Num,
-{
-    fn f(a: &TTensor, b: &TTensor) -> (TTensor, Self) {
-        (a.elementwise_mul(b), Self(a.clone(), b.clone()))
+impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> BinaryOp<T> for MulOp<T, E, I> {
+    fn f(a: &T, b: &T) -> (T, Self) {
+        (
+            I::elementwise_mul::<E>(a, b),
+            Self(a.clone(), b.clone(), PhantomData),
+        )
     }
 }
 
-impl<TTensor: Diffable> BinaryDiffOp<TTensor> for MulOp<TTensor>
-where
-    TTensor::Elem: Num,
-{
-    fn dfda(&self, d: &TTensor) -> TTensor {
-        d.elementwise_mul(&self.1)
+impl<T, E: Num, I: Diffable<Repr<E> = T>> BinaryDiffOp<T> for MulOp<T, E, I> {
+    fn dfda(&self, d: &T) -> T {
+        I::elementwise_mul::<E>(d, &self.1)
     }
 
-    fn dfdb(&self, d: &TTensor) -> TTensor {
-        d.elementwise_mul(&self.0)
+    fn dfdb(&self, d: &T) -> T {
+        I::elementwise_mul::<E>(d, &self.0)
     }
 }
 
-pub(crate) struct SubOp;
+pub(crate) struct SubOp<E, I>(PhantomData<(E, I)>);
 
-impl<TTensor: Clone + Diffable> BinaryOp<TTensor> for SubOp
-where
-    TTensor::Elem: Num,
-{
-    fn f(a: &TTensor, b: &TTensor) -> (TTensor, Self) {
-        (a.elementwise_sub(b), Self)
+impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> BinaryOp<T> for SubOp<E, I> {
+    fn f(a: &T, b: &T) -> (T, Self) {
+        (I::elementwise_sub::<E>(a, b), SubOp(PhantomData))
     }
 }
 
-impl<TTensor: Clone + DiffableExt> BinaryDiffOp<TTensor> for SubOp
-where
-    TTensor::Elem: Num,
-{
-    fn dfda(&self, d: &TTensor) -> TTensor {
+impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> BinaryDiffOp<T> for SubOp<E, I> {
+    fn dfda(&self, d: &T) -> T {
         d.clone()
     }
 
-    fn dfdb(&self, d: &TTensor) -> TTensor {
-        d.zeros_like().elementwise_sub(d)
+    fn dfdb(&self, d: &T) -> T {
+        I::neg::<E>(d)
     }
 }
 
-pub(crate) struct DivOp<TTensor>(TTensor, TTensor);
+pub(crate) struct DivOp<T, E, I>(T, T, PhantomData<(E, I)>);
 
-impl<TTensor: Clone + Diffable> BinaryOp<TTensor> for DivOp<TTensor>
-where
-    TTensor::Elem: Num,
-{
-    fn f(a: &TTensor, b: &TTensor) -> (TTensor, Self) {
-        (a.elementwise_div(b), Self(a.clone(), b.clone()))
+impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> BinaryOp<T> for DivOp<T, E, I> {
+    fn f(a: &T, b: &T) -> (T, Self) {
+        (
+            I::elementwise_div::<E>(a, b),
+            Self(a.clone(), b.clone(), PhantomData),
+        )
     }
 }
 
-impl<TTensor: Diffable> BinaryDiffOp<TTensor> for DivOp<TTensor>
-where
-    TTensor::Elem: Num,
-{
-    fn dfda(&self, d: &TTensor) -> TTensor {
-        d.elementwise_div(&self.1)
+impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> BinaryDiffOp<T> for DivOp<T, E, I> {
+    fn dfda(&self, d: &T) -> T {
+        I::elementwise_div::<E>(d, &self.1)
     }
 
-    fn dfdb(&self, d: &TTensor) -> TTensor {
-        let b2 = self.1.elementwise_mul(&self.1);
-        d.zeros_like()
-            .elementwise_sub(d)
-            .elementwise_mul(&self.0)
-            .elementwise_div(&b2)
+    fn dfdb(&self, d: &T) -> T {
+        let b_squared = I::elementwise_mul::<E>(&self.1, &self.1);
+        let mul_div = I::elementwise_mul::<E>(d, &self.0);
+        let mul_div = I::elementwise_div::<E>(&mul_div, &b_squared);
+        I::neg::<E>(&mul_div)
     }
 }
 
-pub(crate) struct PowOp<TTensor>(TTensor, TTensor, TTensor);
+pub(crate) struct PowOp<T, E, I>(T, T, T, PhantomData<(E, I)>);
 
-impl<TTensor: Clone + Diffable> BinaryOp<TTensor> for PowOp<TTensor>
-where
-    TTensor::Elem: Float,
-{
-    fn f(a: &TTensor, b: &TTensor) -> (TTensor, Self) {
-        let r = a.elementwise_pow(b);
-        (r.clone(), Self(a.clone(), b.clone(), r))
+impl<T: Clone, E: Float, I: Diffable<Repr<E> = T>> BinaryOp<T> for PowOp<T, E, I> {
+    fn f(a: &T, b: &T) -> (T, Self) {
+        let r = I::elementwise_pow::<E>(a, b);
+        (r.clone(), Self(a.clone(), b.clone(), r, PhantomData))
     }
 }
 
-impl<TTensor: Clone + Diffable> BinaryDiffOp<TTensor> for PowOp<TTensor>
-where
-    TTensor::Elem: Float,
-{
-    fn dfda(&self, d: &TTensor) -> TTensor {
-        d.elementwise_mul(&self.1.elementwise_mul(&self.2.elementwise_div(&self.0)))
+impl<T: Clone, E: 'static + Float, I: Diffable<Repr<E> = T>> BinaryDiffOp<T> for PowOp<T, E, I> {
+    fn dfda(&self, d: &T) -> T {
+        I::elementwise_mul::<E>(
+            d,
+            &I::elementwise_mul::<E>(&self.1, &I::elementwise_div::<E>(&self.2, &self.0)),
+        )
     }
 
-    fn dfdb(&self, d: &TTensor) -> TTensor {
-        // if d is zero, then this causes unnecessary computation which can also lead to NaNs.
-        d.elementwise_mul(&self.0.log().elementwise_mul(&self.2))
+    fn dfdb(&self, d: &T) -> T {
+        I::elementwise_mul::<E>(d, &I::elementwise_mul::<E>(&I::log::<E>(&self.0), &self.2))
     }
 }
 
-pub(crate) struct LogOp<TTensor>(TTensor);
+pub(crate) struct LogOp<T, E, I>(T, PhantomData<(E, I)>);
 
-impl<TTensor: Clone + Diffable> UnaryOp<TTensor> for LogOp<TTensor>
-where
-    TTensor::Elem: Float,
-{
+impl<T: Clone, E: Float, I: Diffable<Repr<E> = T>> UnaryOp<T> for LogOp<T, E, I> {
     type Args = ();
-    fn f(a: &TTensor, (): &Self::Args) -> (TTensor, Self) {
-        (a.log(), LogOp(a.clone()))
+    fn f(a: &T, (): &Self::Args) -> (T, Self) {
+        (I::log::<E>(a), LogOp(a.clone(), PhantomData))
     }
 }
 
-impl<TTensor: Diffable> UnaryDiffOp<TTensor> for LogOp<TTensor>
-where
-    TTensor::Elem: Num,
-{
-    fn dfda(&self, d: &TTensor) -> TTensor {
-        d.elementwise_div(&self.0)
+impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> UnaryDiffOp<T> for LogOp<T, E, I> {
+    fn dfda(&self, d: &T) -> T {
+        I::elementwise_div::<E>(d, &self.0)
     }
 }
 
-pub(crate) struct ExpOp<TTensor>(TTensor);
+pub(crate) struct ExpOp<T, E, I>(T, PhantomData<(E, I)>);
 
-impl<TTensor: Clone + Diffable> UnaryOp<TTensor> for ExpOp<TTensor>
-where
-    TTensor::Elem: Float,
-{
+impl<T: Clone, E: 'static + Float, I: Diffable<Repr<E> = T>> UnaryOp<T> for ExpOp<T, E, I> {
     type Args = ();
-    fn f(a: &TTensor, (): &Self::Args) -> (TTensor, Self) {
-        let r = a.exp();
-        (r.clone(), ExpOp(r))
+    fn f(a: &T, (): &Self::Args) -> (T, Self) {
+        let r = I::exp::<E>(a);
+        (r.clone(), ExpOp(r, PhantomData))
     }
 }
 
-impl<TTensor: Diffable> UnaryDiffOp<TTensor> for ExpOp<TTensor>
-where
-    TTensor::Elem: Num,
-{
-    fn dfda(&self, d: &TTensor) -> TTensor {
-        d.elementwise_mul(&self.0)
+impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> UnaryDiffOp<T> for ExpOp<T, E, I> {
+    fn dfda(&self, d: &T) -> T {
+        I::elementwise_mul::<E>(d, &self.0)
     }
 }

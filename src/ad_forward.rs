@@ -1,7 +1,4 @@
-use std::{
-    fmt::Debug,
-    ops::{Add, Div, Mul, Neg, Sub},
-};
+use std::{fmt::Debug, marker::PhantomData};
 
 use crate::{
     ad_ops::{
@@ -9,9 +6,8 @@ use crate::{
         UnaryOp,
     },
     ad_ops_forward::{CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
-    num::{Float, Num, ZeroOne},
-    raw_tensor::CastInto,
-    sl2, Axes, Diffable, DiffableExt, IndexValue, Shape,
+    num::{Elem, Float, Num, ZeroOne},
+    sl2, Axes, Diffable, IndexValue, Shape, Tensor,
 };
 
 /// Forward AD implementation.
@@ -30,12 +26,6 @@ impl<T> Forward<T> {
     }
 }
 
-impl<T: Clone> Forward<T> {
-    pub fn lift(x: &T) -> Self {
-        Self::Lift(x.clone())
-    }
-}
-
 impl<T: Debug> Debug for Forward<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -51,7 +41,7 @@ impl<T: PartialEq> PartialEq for Forward<T> {
     }
 }
 
-impl<T: Diffable> Forward<T> {
+impl<T> Forward<T> {
     fn unary<Op: UnaryOp<T, Args = TArgs> + UnaryDiffOp<T>, TArgs: ?Sized>(
         &self,
         args: &TArgs,
@@ -63,118 +53,102 @@ impl<T: Diffable> Forward<T> {
         }
     }
 
-    fn binary<Op: BinaryOp<T> + BinaryDiffOp<T>>(&self, rhs: &Self) -> Self
-    where
-        T::Elem: Num,
-    {
+    fn binary<Op: BinaryOp<T> + BinaryDiffOp<T>, E: Num, I: Diffable<Repr<E> = T>>(
+        &self,
+        rhs: &Self,
+    ) -> Self {
         let (primal, op) = Op::f(self.primal(), rhs.primal());
         match (self, rhs) {
             (Self::Lift(_), Self::Lift(_)) => Self::Lift(primal),
             (Self::Lift(_), Self::Forward(_, tan)) => Self::Forward(primal, op.dfdb(tan)),
             (Self::Forward(_, tan), Self::Lift(_)) => Self::Forward(primal, op.dfda(tan)),
-            (Self::Forward(_, left), Self::Forward(_, right)) => {
-                Self::Forward(primal, op.dfda(left).elementwise_add(&op.dfdb(right)))
-            }
+            (Self::Forward(_, left), Self::Forward(_, right)) => Self::Forward(
+                primal,
+                I::elementwise_add::<E>(&op.dfda(left), &op.dfdb(right)),
+            ),
         }
     }
 }
 
-impl<T: Clone + Diffable> Diffable for Forward<T>
-where
-    T::Elem: Num,
-{
-    type Elem = T::Elem;
-    fn log(&self) -> Self
-    where
-        T::Elem: Float,
-    {
-        self.unary::<LogOp<T>, _>(&())
+#[derive(Debug, Clone)]
+pub struct ForwardImpl<I>(PhantomData<I>);
+
+impl<I: Diffable> Diffable for ForwardImpl<I> {
+    type Repr<E: Clone> = Forward<I::Repr<E>>;
+
+    fn log<E: Float>(t: &Self::Repr<E>) -> Self::Repr<E> {
+        t.unary::<LogOp<I::Repr<E>, E, I>, _>(&())
     }
 
-    fn exp(&self) -> Self
-    where
-        T::Elem: Float,
-    {
-        self.unary::<ExpOp<T>, _>(&())
+    fn exp<E: Float>(t: &Self::Repr<E>) -> Self::Repr<E> {
+        t.unary::<ExpOp<I::Repr<E>, E, I>, _>(&())
     }
 
-    fn elementwise_add(&self, rhs: &Self) -> Self {
-        self.binary::<AddOp>(rhs)
+    fn elementwise_add<E: Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
+        lhs.binary::<AddOp<E, I>, E, I>(rhs)
     }
 
-    fn elementwise_sub(&self, rhs: &Self) -> Self {
-        self.binary::<SubOp>(rhs)
+    fn elementwise_sub<E: Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
+        lhs.binary::<SubOp<E, I>, E, I>(rhs)
     }
 
-    fn elementwise_mul(&self, rhs: &Self) -> Self {
-        self.binary::<MulOp<T>>(rhs)
+    fn elementwise_mul<E: Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
+        lhs.binary::<MulOp<I::Repr<E>, E, I>, E, I>(rhs)
     }
 
-    fn elementwise_div(&self, rhs: &Self) -> Self {
-        self.binary::<DivOp<T>>(rhs)
+    fn elementwise_div<E: Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
+        lhs.binary::<DivOp<I::Repr<E>, E, I>, E, I>(rhs)
     }
 
-    fn elementwise_pow(&self, rhs: &Self) -> Self
-    where
-        T::Elem: Float,
-    {
-        self.binary::<PowOp<T>>(rhs)
+    fn elementwise_pow<E: Float>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
+        lhs.binary::<PowOp<I::Repr<E>, E, I>, E, I>(rhs)
     }
 
-    fn elementwise_eq(&self, other: &Self) -> Self {
-        Self::Lift(self.primal().elementwise_eq(other.primal()))
+    fn eq<E: PartialEq + Elem>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<bool> {
+        Forward::Lift(I::eq::<E>(lhs.primal(), rhs.primal()))
     }
 
-    fn sum(&self, axes: &[usize]) -> Self {
-        self.unary::<SumOp, _>(axes)
+    fn sum<E: Num>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E> {
+        t.unary::<SumOp<E, I>, _>(axes)
     }
 
-    fn max(&self, axes: &[usize]) -> Self {
-        self.unary::<MaxOp<T>, _>(axes)
+    fn max<E: Num + From<bool>>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E> {
+        t.unary::<MaxOp<I::Repr<E>, E, I>, _>(axes)
     }
 
-    fn reshape(&self, shape: &[usize]) -> Self {
-        self.unary::<ReshapeOp, _>(shape)
+    fn reshape<E: Elem>(t: &Self::Repr<E>, shape: &[usize]) -> Self::Repr<E> {
+        t.unary::<ReshapeOp<E, I>, _>(shape)
     }
 
-    fn permute(&self, dims: &[usize]) -> Self {
-        self.unary::<PermuteOp, _>(dims)
+    fn permute<E: Elem>(t: &Self::Repr<E>, permutation: &[usize]) -> Self::Repr<E> {
+        t.unary::<PermuteOp<E, I>, _>(permutation)
     }
 
-    fn expand(&self, shape: &[usize]) -> Self {
-        self.unary::<ExpandOp, _>(shape)
+    fn expand<E: Num>(t: &Self::Repr<E>, shape: &[usize]) -> Self::Repr<E> {
+        t.unary::<ExpandOp<E, I>, _>(shape)
     }
 
-    fn pad(&self, padding: &[(usize, usize)]) -> Self {
-        self.unary::<PadOp, _>(padding)
+    fn pad<E: ZeroOne>(t: &Self::Repr<E>, padding: &[(usize, usize)]) -> Self::Repr<E> {
+        t.unary::<PadOp<E, I>, _>(padding)
     }
 
-    fn crop(&self, limits: &[(usize, usize)]) -> Self {
-        self.unary::<CropOp, _>(limits)
+    fn crop<E: ZeroOne>(t: &Self::Repr<E>, limits: &[(usize, usize)]) -> Self::Repr<E> {
+        t.unary::<CropOp<E, I>, _>(limits)
     }
 
-    fn shape(&self) -> &[usize] {
-        self.primal().shape()
+    fn new<E: Elem>(shape: &[usize], data: &[E]) -> Self::Repr<E> {
+        Forward::Lift(I::new::<E>(shape, data))
     }
 
-    fn new(shape: &[usize], data: &[Self::Elem]) -> Self {
-        Self::Lift(T::new(shape, data))
+    fn shape<E: Clone>(t: &Self::Repr<E>) -> &[usize] {
+        I::shape(t.primal())
+    }
+
+    fn cast<EFro: Elem, ETo: From<EFro> + Elem>(t: &Self::Repr<EFro>) -> Self::Repr<ETo> {
+        // TODO: implement cast for Forward AD
+        Forward::Lift(I::cast(t.primal()))
     }
 }
-
-// not derivable for the moment
-impl<TFro: Diffable + CastInto<TTo>, TTo: Diffable> CastInto<Forward<TTo>> for Forward<TFro> {
-    fn cast(&self) -> Forward<TTo> {
-        Forward::Lift(self.primal().cast())
-    }
-}
-
-crate::math_macros::impl_bin_op!(Add, add, Forward<T: Diffable + Clone>);
-crate::math_macros::impl_bin_op!(Sub, sub, Forward<T: Diffable + Clone>);
-crate::math_macros::impl_bin_op!(Mul, mul, Forward<T: Diffable + Clone>);
-crate::math_macros::impl_bin_op!(Div, div, Forward<T: Diffable + Clone>);
-
-crate::math_macros::impl_un_op!(Neg, neg, Forward<T: Diffable + Clone>);
 
 // /// Compute a forward-mode Jacobian-vector product of a function `f` evaluated at the given primals.
 // /// Returns a tuple of the result of `f` and the tangent of `f`.
@@ -193,21 +167,33 @@ crate::math_macros::impl_un_op!(Neg, neg, Forward<T: Diffable + Clone>);
 
 /// Compute a forward-mode Jacobian-vector product of a function `f` evaluated at the given primals.
 /// Returns a tuple of the result of `f` and the tangent of `f`.
-pub fn jvpn<T: Diffable + Clone, F>(f: F, at: &[&T], tangents: &[&T]) -> (T, T)
+pub fn jvpn<T: Clone, E: Num, I: Diffable<Repr<E> = T>, F>(
+    f: F,
+    at: &[&Tensor<T, E, I>],
+    tangents: &[&Tensor<T, E, I>],
+) -> (Tensor<T, E, I>, Tensor<T, E, I>)
 where
-    T::Elem: ZeroOne,
-    for<'a> F: Fn(&'a [Forward<T>]) -> Forward<T>,
+    for<'a> F:
+        Fn(&'a [Tensor<Forward<T>, E, ForwardImpl<I>>]) -> Tensor<Forward<T>, E, ForwardImpl<I>>,
 {
     let vars: Vec<_> = at
         .iter()
         .zip(tangents.iter())
-        .map(|(&ati, &tani)| Forward::Forward(ati.clone(), tani.clone()))
+        .map(|(&ati, &tani)| {
+            Tensor(
+                Forward::Forward(ati.0.clone(), tani.0.clone()),
+                PhantomData::<(E, ForwardImpl<I>)>,
+            )
+        })
         .collect();
     let result = f(&vars);
 
-    match result {
-        Forward::Lift(p) => (p.clone(), p.zeros_like()),
-        Forward::Forward(p, t) => (p, t),
+    match result.0 {
+        Forward::Lift(p) => (
+            Tensor(p.clone(), PhantomData),
+            Tensor(I::zeros_like::<E>(&p), PhantomData),
+        ),
+        Forward::Forward(p, t) => (Tensor(p, PhantomData), Tensor(t, PhantomData)),
     }
 }
 
@@ -219,10 +205,14 @@ where
 // }
 
 /// Compute the result and the gradient of a function at the given primals.
-pub fn value_and_diffn<T: Diffable + Clone, F>(f: F, at: &[&T]) -> (T, Vec<T>)
+#[allow(clippy::type_complexity)]
+pub fn value_and_diffn<T: Clone, E: Num, I: Diffable<Repr<E> = T>, F>(
+    f: F,
+    at: &[&Tensor<T, E, I>],
+) -> (Tensor<T, E, I>, Vec<Tensor<T, E, I>>)
 where
-    T::Elem: ZeroOne,
-    for<'a> F: Fn(&'a [Forward<T>]) -> Forward<T>,
+    for<'a> F:
+        Fn(&'a [Tensor<Forward<T>, E, ForwardImpl<I>>]) -> Tensor<Forward<T>, E, ForwardImpl<I>>,
 {
     let args: Vec<_> = at.iter().map(|&ati| ati.zeros_like()).collect();
 
@@ -242,21 +232,30 @@ where
 
 /// Compute the result and the gradient of a function at the given primal.
 #[allow(clippy::missing_panics_doc)]
-pub fn value_and_diff1<T: Diffable + Clone, F>(f: F, at: &T) -> (T, T)
+pub fn value_and_diff1<T: Clone, E: Num, I: Diffable<Repr<E> = T>, F>(
+    f: F,
+    at: &Tensor<T, E, I>,
+) -> (Tensor<T, E, I>, Tensor<T, E, I>)
 where
-    T::Elem: ZeroOne,
-    for<'a> F: Fn(&'a Forward<T>) -> Forward<T>,
+    for<'a> F:
+        Fn(&'a Tensor<Forward<T>, E, ForwardImpl<I>>) -> Tensor<Forward<T>, E, ForwardImpl<I>>,
 {
     let (primal, tangents) = value_and_diffn(|s| f(&s[0]), &[at]);
     (primal, tangents.into_iter().next().unwrap())
 }
 
 /// Compute the result and the gradient of a function at the given primals.
-#[allow(clippy::missing_panics_doc)]
-pub fn value_and_diff2<T: Diffable + Clone, F>(f: F, at0: &T, at1: &T) -> (T, (T, T))
+#[allow(clippy::missing_panics_doc, clippy::type_complexity)]
+pub fn value_and_diff2<T: Clone, E: Num, I: Diffable<Repr<E> = T>, F>(
+    f: F,
+    at0: &Tensor<T, E, I>,
+    at1: &Tensor<T, E, I>,
+) -> (Tensor<T, E, I>, (Tensor<T, E, I>, Tensor<T, E, I>))
 where
-    T::Elem: ZeroOne,
-    for<'a> F: Fn(&'a Forward<T>, &'a Forward<T>) -> Forward<T>,
+    for<'a> F: Fn(
+        &'a Tensor<Forward<T>, E, ForwardImpl<I>>,
+        &'a Tensor<Forward<T>, E, ForwardImpl<I>>,
+    ) -> Tensor<Forward<T>, E, ForwardImpl<I>>,
 {
     let (primal, tangents) = value_and_diffn(|s| f(&s[0], &s[1]), &[at0, at1]);
     let mut dr_iter = tangents.into_iter();
@@ -265,41 +264,53 @@ where
 
 /// Compute the gradient of a function at the given primal.
 #[allow(clippy::missing_panics_doc)]
-pub fn diff1<T: Diffable + Clone, F>(f: F, at: &T) -> T
+pub fn diff1<T: Clone, E: Num, I: Diffable<Repr<E> = T>, F>(
+    f: F,
+    at: &Tensor<T, E, I>,
+) -> Tensor<T, E, I>
 where
-    T::Elem: ZeroOne,
-    for<'a> F: Fn(&'a Forward<T>) -> Forward<T>,
+    for<'a> F:
+        Fn(&'a Tensor<Forward<T>, E, ForwardImpl<I>>) -> Tensor<Forward<T>, E, ForwardImpl<I>>,
 {
     value_and_diff1(f, at).1
 }
 
 /// Compute the gradient of a function at the given primals.
 #[allow(clippy::missing_panics_doc)]
-pub fn diff2<T: Diffable + Clone, F>(f: F, at0: &T, at1: &T) -> (T, T)
+pub fn diff2<T: Clone, E: Num, I: Diffable<Repr<E> = T>, F>(
+    f: F,
+    at0: &Tensor<T, E, I>,
+    at1: &Tensor<T, E, I>,
+) -> (Tensor<T, E, I>, Tensor<T, E, I>)
 where
-    T::Elem: ZeroOne,
-    for<'a> F: Fn(&'a Forward<T>, &'a Forward<T>) -> Forward<T>,
+    for<'a> F: Fn(
+        &'a Tensor<Forward<T>, E, ForwardImpl<I>>,
+        &'a Tensor<Forward<T>, E, ForwardImpl<I>>,
+    ) -> Tensor<Forward<T>, E, ForwardImpl<I>>,
 {
     value_and_diff2(f, at0, at1).1
 }
 
 /// Jacobian of `f` evaluated column-by-column at `at` using forward-mode AD.
 #[allow(clippy::missing_panics_doc)]
-pub fn jacfwd<T: Diffable + Clone, F>(f: F, at: &T) -> T
+pub fn jacfwd<T: Clone, E: Num, I: Diffable<Repr<E> = T>, F>(
+    f: F,
+    at: &Tensor<T, E, I>,
+) -> Tensor<T, E, I>
 where
-    T::Elem: Num,
-    for<'a> F: Fn(&'a Forward<T>) -> Forward<T>,
+    for<'a> F:
+        Fn(&'a Tensor<Forward<T>, E, ForwardImpl<I>>) -> Tensor<Forward<T>, E, ForwardImpl<I>>,
 {
     let mut s = vec![at.shape().size()];
     s.extend(at.shape());
-    let i = T::eye(at.shape().size()).reshape(&s);
+    let i = Tensor::eye(at.shape().size()).reshape(&s);
 
-    let mut tangents: Vec<T> = Vec::with_capacity(i.shape()[1]);
+    let mut tangents: Vec<_> = Vec::with_capacity(i.shape()[1]);
     for col_idx in 0..i.shape()[1] {
-        let col = i.at(sl2(.., col_idx)).squeeze(Axes::Axis(1));
+        let col = i.at(sl2(.., col_idx)).squeeze(&Axes::Axis(1));
         let (_, col_tangent) = jvpn(|s| f(&s[0]), &[at], &[&col]);
         tangents.push(col_tangent);
     }
     let t_refs: Vec<_> = tangents.iter().collect();
-    T::stack(&t_refs, 1)
+    Tensor::stack(&t_refs, 1)
 }

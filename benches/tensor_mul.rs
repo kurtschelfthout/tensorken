@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use rand::{rngs::StdRng, SeedableRng};
-use tensorken::{tensor::Wgpu32, Cpu32, Diffable, DiffableExt};
+use tensorken::{Cpu32, Wgpu32};
 
 // not much here on GPU that made much difference.
 // - Using vec2 in the input/output index function didn't make much of a difference.

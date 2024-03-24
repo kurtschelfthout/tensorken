@@ -1,4 +1,4 @@
-use tensorken::{Cpu32, Diffable, DiffableExt};
+use tensorken::Cpu32;
 
 /// A macro to print the result of an expression and the expression itself.
 macro_rules! do_example {

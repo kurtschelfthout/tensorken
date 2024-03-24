@@ -1,18 +1,19 @@
 use std::{
     borrow::Cow,
     fmt::{Debug, Formatter},
+    marker::PhantomData,
     sync::Arc,
 };
 
 use wgpu::util::DeviceExt;
 
 use crate::{
-    num::{Float, Num, ZeroOne},
+    num::{Elem, Float, Num, ZeroOne},
     raw_tensor::{RawTensor, RealizedRawTensor},
     shape::Shape,
     shape_strider::ShapeStrider,
     wgpu_context::{get_wgpu_device, WgpuContext, WorkgroupSize},
-    CastInto, CpuRawTensor,
+    CpuRawTensor,
 };
 
 // Misc WGSL notes/tips:
@@ -38,22 +39,22 @@ use crate::{
 /// As a result, buffers are reference counted. Cloning a `WgpuRawTensor` is cheap.
 /// The buffer lives in GPU memory.
 #[derive(Clone)]
-pub struct WgpuRawTensor<'a, T> {
+pub struct WgpuRawTensor<'a, E> {
     buffer: Arc<wgpu::Buffer>,
     strider: ShapeStrider,
     context: &'a WgpuContext,
-    element: std::marker::PhantomData<T>,
+    element: std::marker::PhantomData<E>,
 }
 
-impl<T> Debug for WgpuRawTensor<'_, T> {
+impl<E> Debug for WgpuRawTensor<'_, E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct(format!("WgpuRawTensor<{}>", std::any::type_name::<T>()).as_str())
+        f.debug_struct(format!("WgpuRawTensor<{}>", std::any::type_name::<E>()).as_str())
             .field("strider", &self.strider)
             .finish()
     }
 }
 
-impl<'a, T> WgpuRawTensor<'a, T> {
+impl<'a, E> WgpuRawTensor<'a, E> {
     /// Return a new tensor with the same buffer as this one, but
     /// with a different shape. Assumes the new shape is compatible.
     fn with_strider(&self, strider: ShapeStrider) -> Self {
@@ -81,23 +82,23 @@ impl<'a, T> WgpuRawTensor<'a, T> {
 
 type ReduceInfo<'a> = (&'a [usize], &'a [usize], &'a [usize], usize);
 
-impl<'a, T: WgpuSupported> WgpuRawTensor<'a, T> {
+impl<'a, E: Elem> WgpuRawTensor<'a, E> {
     fn byte_size(size: usize) -> u64 {
-        u64::try_from(size * T::WGPU_ELEMENT_SIZE).unwrap()
+        u64::try_from(size * E::WGPU_ELEMENT_SIZE).unwrap()
     }
 
     /// Creates a new `WgpuRawTensor` from a shape and CPU data.
     /// The data is copied to the GPU.
     /// # Panics
     /// Panics if shape and data size do not match.
-    fn new(shape: &[usize], cpu_data: &[T], device: &'a WgpuContext) -> Self {
+    fn new(shape: &[usize], cpu_data: &[E], device: &'a WgpuContext) -> Self {
         assert!(
             shape.size() == cpu_data.len(),
             "Shape and data size mismatch"
         );
 
         let strider = ShapeStrider::contiguous(shape);
-        match T::to_buffer(cpu_data) {
+        match E::to_buffer(cpu_data) {
             Cow::Borrowed(slice) => {
                 let buffer = device
                     .device
@@ -308,7 +309,7 @@ impl<'a, T: WgpuSupported> WgpuRawTensor<'a, T> {
         workgroup_size: WorkgroupSize,
     ) -> Arc<wgpu::ComputePipeline> {
         self.context
-            .pipeline_for(operation, T::WGPU_ELEMENT_NAME, element_out, workgroup_size)
+            .pipeline_for(operation, E::WGPU_ELEMENT_NAME, element_out, workgroup_size)
     }
     /// Create a new tensor with given buffer and strider, passing self's context along.
     fn with_buffer_strider(&self, buffer: wgpu::Buffer, strider: ShapeStrider) -> Self {
@@ -417,7 +418,7 @@ impl<'a, T: WgpuSupported> WgpuRawTensor<'a, T> {
 
         let output_buffer = self.make_output_buffer(output_strider.size(), operation);
         // TODO
-        let compute_pipeline = self.pipeline_for(operation, T::WGPU_ELEMENT_NAME, workgroup_size);
+        let compute_pipeline = self.pipeline_for(operation, E::WGPU_ELEMENT_NAME, workgroup_size);
         let strides_and_shapes =
             self.get_strides_and_shapes_buffer(chunk_size, None, &output_strider, None, None);
         let bind_group = self.get_bind_group_unary(
@@ -432,7 +433,7 @@ impl<'a, T: WgpuSupported> WgpuRawTensor<'a, T> {
 
     /// Return a new tensor with the same shape as self, cast to the desired element type `TTo`.
     /// Allocates a new buffer. Resulting tensor is contiguous.
-    fn cast<TTo: WgpuSupported>(&self) -> WgpuRawTensor<'a, TTo> {
+    fn cast<TTo: Elem>(&self) -> WgpuRawTensor<'a, TTo> {
         let output_strider = ShapeStrider::contiguous(self.strider.shape());
 
         let (workgroup_size, workgroup_count, chunk_size) =
@@ -472,7 +473,7 @@ impl<'a, T: WgpuSupported> WgpuRawTensor<'a, T> {
         let (workgroup_size, workgroup_count, chunk_size) =
             Self::counts_n_sizes(output_strider.size());
         let output_buffer = self.make_output_buffer(output_strider.size(), operation);
-        let compute_pipeline = self.pipeline_for(operation, T::WGPU_ELEMENT_NAME, workgroup_size);
+        let compute_pipeline = self.pipeline_for(operation, E::WGPU_ELEMENT_NAME, workgroup_size);
         let strides_and_shapes = self.get_strides_and_shapes_buffer(
             chunk_size,
             Some(&other.strider),
@@ -488,7 +489,12 @@ impl<'a, T: WgpuSupported> WgpuRawTensor<'a, T> {
         );
         self.encode_and_submit(compute_pipeline.as_ref(), &bind_group, workgroup_count);
 
-        self.with_buffer_strider(output_buffer, output_strider)
+        WgpuRawTensor {
+            buffer: Arc::new(output_buffer),
+            strider: output_strider,
+            context: self.context,
+            element: PhantomData,
+        }
     }
 
     /// Return a new tensor with the given axes reduced.
@@ -507,7 +513,7 @@ impl<'a, T: WgpuSupported> WgpuRawTensor<'a, T> {
         let (workgroup_size, workgroup_count, chunk_size) =
             Self::counts_n_sizes_reduce(self.strider.size(), output_strider.size());
         let output_buffer = self.make_output_buffer(output_strider.size(), operation);
-        let compute_pipeline = self.pipeline_for(operation, T::WGPU_ELEMENT_NAME, workgroup_size);
+        let compute_pipeline = self.pipeline_for(operation, E::WGPU_ELEMENT_NAME, workgroup_size);
         let strides_and_shapes = self.get_strides_and_shapes_buffer(
             chunk_size,
             None,
@@ -540,7 +546,7 @@ impl<'a, T: WgpuSupported> WgpuRawTensor<'a, T> {
 
         let (workgroup_size, workgroup_count, chunk_size) =
             Self::counts_n_sizes(output_strider.size());
-        let compute_pipeline = self.pipeline_for("pad", T::WGPU_ELEMENT_NAME, workgroup_size);
+        let compute_pipeline = self.pipeline_for("pad", E::WGPU_ELEMENT_NAME, workgroup_size);
         let strides_and_shapes = self.get_strides_and_shapes_buffer(
             chunk_size,
             None,
@@ -577,7 +583,7 @@ impl<'a, T: WgpuSupported> WgpuRawTensor<'a, T> {
             Self::counts_n_sizes(output_strider.size());
         let output_buffer = self.make_output_buffer(output_strider.size(), "fma");
         let compute_pipeline =
-            self.pipeline_for("fused_mul_add", T::WGPU_ELEMENT_NAME, workgroup_size);
+            self.pipeline_for("fused_mul_add", E::WGPU_ELEMENT_NAME, workgroup_size);
         let strides_and_shapes = self.get_strides_and_shapes_buffer(
             chunk_size,
             Some(&other.strider),
@@ -609,13 +615,13 @@ impl<'a, T: WgpuSupported> WgpuRawTensor<'a, T> {
     /// Returns a contiguous vector of the tensor's elements, on the CPU.
     #[must_use]
     #[allow(clippy::missing_panics_doc)]
-    pub fn ravel(&self) -> Vec<T> {
+    pub fn ravel(&self) -> Vec<E> {
         if !self.strider.is_contiguous() {
             let t = self.contiguous();
             return t.ravel();
         }
 
-        let size = Self::byte_size(self.shape().size());
+        let size = Self::byte_size(self.strider.shape().size());
         let offset = Self::byte_size(self.strider.offset());
         let staging_buffer = self.device().create_buffer(&wgpu::BufferDescriptor {
             label: None,
@@ -643,7 +649,7 @@ impl<'a, T: WgpuSupported> WgpuRawTensor<'a, T> {
 
         if let Some(Ok(())) = poll_result {
             let data = buffer_slice.get_mapped_range();
-            let result = T::from_buffer(&data);
+            let result = E::from_buffer(&data);
 
             // Resource cleanup dance - apparently needs to happen in this order.
             drop(data);
@@ -656,211 +662,116 @@ impl<'a, T: WgpuSupported> WgpuRawTensor<'a, T> {
     }
 }
 
-pub trait WgpuSupported
-where
-    Self: Sized,
-{
-    const WGPU_ELEMENT_NAME: &'static str;
-    const WGPU_ELEMENT_SIZE: usize = std::mem::size_of::<Self>();
-    fn from_buffer(array: &[u8]) -> Vec<Self>;
-    fn to_buffer(array: &[Self]) -> Cow<'_, [u8]>;
-}
+#[derive(Debug, Clone)]
+pub struct WgpuRawTensorImpl;
 
-impl WgpuSupported for f32 {
-    const WGPU_ELEMENT_NAME: &'static str = "f32";
+impl RawTensor for WgpuRawTensorImpl {
+    type Repr<E: Clone> = WgpuRawTensor<'static, E>;
 
-    fn from_buffer(array: &[u8]) -> Vec<Self> {
-        bytemuck::cast_slice(array).to_vec()
+    fn exp<E: Float>(t: &Self::Repr<E>) -> Self::Repr<E> {
+        t.map("exp")
     }
 
-    fn to_buffer(array: &[Self]) -> Cow<'_, [u8]> {
-        Cow::Borrowed(bytemuck::cast_slice(array))
-    }
-}
-
-impl WgpuSupported for i32 {
-    const WGPU_ELEMENT_NAME: &'static str = "i32";
-
-    fn from_buffer(array: &[u8]) -> Vec<Self> {
-        bytemuck::cast_slice(array).to_vec()
+    fn log<E: Float>(t: &Self::Repr<E>) -> Self::Repr<E> {
+        t.map("log")
     }
 
-    fn to_buffer(array: &[Self]) -> Cow<'_, [u8]> {
-        Cow::Borrowed(bytemuck::cast_slice(array))
-    }
-}
-
-// for bool, I could not get copying to a array<bool> buffer to work.
-// So we need to pick a different type on the GPU side. Since most usage
-// right now is eq followed cast to f32 in the diffable operation for max,
-// I'm picking f32 so that usage remains a no-op.
-impl WgpuSupported for bool {
-    const WGPU_ELEMENT_NAME: &'static str = "f32";
-    const WGPU_ELEMENT_SIZE: usize = 4;
-    fn from_buffer(array: &[u8]) -> Vec<Self> {
-        let f32s: &[f32] = bytemuck::cast_slice(array);
-        f32s.iter().map(|x| *x != 0.0).collect()
+    fn cast<EFro: Elem, ETo: From<EFro> + Elem>(t: &Self::Repr<EFro>) -> Self::Repr<ETo> {
+        t.cast()
     }
 
-    fn to_buffer(array: &[Self]) -> Cow<'_, [u8]> {
-        let f32s: Vec<f32> = array.iter().map(|i| f32::from(*i)).collect();
-        Cow::Owned(bytemuck::cast_slice(&f32s).to_vec())
-    }
-}
-
-impl<T: WgpuSupported> RawTensor for WgpuRawTensor<'_, T> {
-    type E = T;
-
-    fn exp(&self) -> Self
-    where
-        Self::E: Float,
-    {
-        self.map("exp")
+    fn add<E: Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
+        lhs.zip(rhs, "add")
     }
 
-    fn log(&self) -> Self
-    where
-        Self::E: Float,
-    {
-        self.map("log")
+    fn sub<E: Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
+        lhs.zip(rhs, "sub")
     }
 
-    fn add(&self, other: &Self) -> Self
-    where
-        Self::E: Num,
-    {
-        self.zip(other, "add")
+    fn mul<E: Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
+        lhs.zip(rhs, "mul")
     }
 
-    fn sub(&self, other: &Self) -> Self
-    where
-        Self::E: Num,
-    {
-        self.zip(other, "sub")
+    fn div<E: Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
+        lhs.zip(rhs, "div")
     }
 
-    fn mul(&self, other: &Self) -> Self
-    where
-        Self::E: Num,
-    {
-        self.zip(other, "mul")
+    fn pow<E: Float>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
+        lhs.zip(rhs, "pow")
     }
 
-    fn div(&self, other: &Self) -> Self
-    where
-        Self::E: Num,
-    {
-        self.zip(other, "div")
+    fn eq<E: PartialEq + Elem>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<bool> {
+        lhs.zip(rhs, "eq").cast()
     }
 
-    fn pow(&self, other: &Self) -> Self
-    where
-        Self::E: Float,
-    {
-        self.zip(other, "pow")
+    fn sum<E: Num>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E> {
+        t.reduce(axes, "sum")
     }
 
-    fn eq(&self, other: &Self) -> Self
-    where
-        Self::E: ZeroOne,
-    {
-        self.zip(other, "eq")
+    fn max<E: ZeroOne>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E> {
+        t.reduce(axes, "max")
     }
 
-    fn sum(&self, axes: &[usize]) -> Self
-    where
-        Self::E: Num,
-    {
-        self.reduce(axes, "sum")
-    }
+    fn reshape<E: Elem>(t: &Self::Repr<E>, shape: &[usize]) -> Self::Repr<E> {
+        t.strider.validate_can_reshape(shape).unwrap();
 
-    fn max(&self, axes: &[usize]) -> Self
-    where
-        Self::E: ZeroOne,
-    {
-        self.reduce(axes, "max")
-    }
-
-    fn reshape(&self, shape: &[usize]) -> Self {
-        self.strider.validate_can_reshape(shape).unwrap();
-
-        if let Ok(strider) = self.strider.reshape(shape) {
-            return self.with_strider(strider);
+        if let Ok(strider) = t.strider.reshape(shape) {
+            return t.with_strider(strider);
         }
-        self.contiguous().reshape(shape)
+        WgpuRawTensorImpl::reshape(&t.contiguous(), shape)
     }
 
-    fn permute(&self, permutation: &[usize]) -> Self {
-        self.strider.validate_can_permute(permutation).unwrap();
+    fn permute<E: Clone>(t: &Self::Repr<E>, permutation: &[usize]) -> Self::Repr<E> {
+        t.strider.validate_can_permute(permutation).unwrap();
 
-        let strider = self.strider.permute(permutation);
-        self.with_strider(strider)
+        let strider = t.strider.permute(permutation);
+        t.with_strider(strider)
     }
 
-    fn expand(&self, shape: &[usize]) -> Self {
-        self.strider.validate_can_expand(shape).unwrap();
+    fn expand<E: Clone>(t: &Self::Repr<E>, shape: &[usize]) -> Self::Repr<E> {
+        t.strider.validate_can_expand(shape).unwrap();
 
-        let strider = self.strider.expand(shape).unwrap();
-        self.with_strider(strider)
+        let strider = t.strider.expand(shape).unwrap();
+        t.with_strider(strider)
     }
 
-    fn pad(&self, padding: &[(usize, usize)]) -> Self
-    where
-        Self::E: ZeroOne,
-    {
-        self.strider.validate_can_pad(padding).unwrap();
+    fn pad<E: ZeroOne>(t: &Self::Repr<E>, padding: &[(usize, usize)]) -> Self::Repr<E> {
+        t.strider.validate_can_pad(padding).unwrap();
 
-        self.pad(padding)
+        t.pad(padding)
     }
 
-    fn crop(&self, limits: &[(usize, usize)]) -> Self {
-        self.strider.validate_can_crop(limits).unwrap();
+    fn crop<E: Clone>(t: &Self::Repr<E>, limits: &[(usize, usize)]) -> Self::Repr<E> {
+        t.strider.validate_can_crop(limits).unwrap();
 
-        let strider = self.strider.crop(limits);
-        self.with_strider(strider)
+        let strider = t.strider.crop(limits);
+        t.with_strider(strider)
     }
 
-    fn new(shape: &[usize], data: &[Self::E]) -> Self {
-        Self::new(shape, data, get_wgpu_device())
+    fn new<E: Elem>(shape: &[usize], data: &[E]) -> Self::Repr<E> {
+        WgpuRawTensor::new(shape, data, get_wgpu_device())
     }
 
-    fn shape(&self) -> &[usize] {
-        self.strider.shape()
+    fn shape<E: Clone>(t: &Self::Repr<E>) -> &[usize] {
+        t.strider.shape()
     }
 
-    fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self
-    where
-        Self::E: Num,
-    {
-        self.fused_multiply_add_impl(other, axes)
+    fn fused_multiply_add<E: Num>(
+        lhs: &Self::Repr<E>,
+        rhs: &Self::Repr<E>,
+        axes: &[usize],
+    ) -> Self::Repr<E> {
+        lhs.fused_multiply_add_impl(rhs, axes)
     }
 }
 
-impl<T: Clone + WgpuSupported> RealizedRawTensor for WgpuRawTensor<'_, T> {
-    fn to_cpu(&self) -> crate::CpuRawTensor<Self::E> {
-        CpuRawTensor::new_into(self.shape(), self.ravel())
+impl RealizedRawTensor for WgpuRawTensorImpl {
+    fn to_cpu<E: Elem>(t: &Self::Repr<E>) -> crate::CpuRawTensor<E> {
+        CpuRawTensor::new_into(Self::shape(t), t.ravel())
     }
 
-    fn realize(&self) -> Self {
-        self.clone()
-    }
-}
-
-// concrete implementation for specialization: we just need to change phantom types for bool -> f32
-impl<'a> CastInto<WgpuRawTensor<'a, f32>> for WgpuRawTensor<'a, bool> {
-    fn cast(&self) -> WgpuRawTensor<'a, f32> {
-        WgpuRawTensor {
-            buffer: Arc::clone(&self.buffer),
-            strider: self.strider.clone(),
-            context: self.context,
-            element: std::marker::PhantomData,
-        }
-    }
-}
-
-impl<'a> CastInto<WgpuRawTensor<'a, i32>> for WgpuRawTensor<'a, bool> {
-    fn cast(&self) -> WgpuRawTensor<'a, i32> {
-        self.cast()
+    fn realize<E: Clone>(t: &Self::Repr<E>) -> Self::Repr<E> {
+        t.clone()
     }
 }
 
@@ -872,6 +783,8 @@ mod tests {
     use crate::wgpu_context::get_wgpu_device;
 
     use super::*;
+
+    type I = WgpuRawTensorImpl;
 
     fn assert_vec_eq(a: &[f32], b: &[f32]) {
         assert!(
@@ -997,7 +910,7 @@ mod tests {
         let i2 = vec![true, false, false, true, true, false];
         let t2 = WgpuRawTensor::new(&[3, 2], &i2, get_wgpu_device());
 
-        let result = t1.eq(&t2).ravel();
+        let result = I::eq(&t1, &t2).ravel();
         assert_vec_eq_num(
             &result,
             &i1.iter()
@@ -1044,13 +957,13 @@ mod tests {
             &[1.0, 2.0, 3.0, -1.0, -2.0, -3.0],
             get_wgpu_device(),
         );
-        let t1 = t1.permute(&[1, 0]);
+        let t1 = I::permute(&t1, &[1, 0]);
         let t2 = WgpuRawTensor::new(
             &[3, 2],
             &[6.0, 7.0, 8.0, -6.0, -7.0, -8.0],
             get_wgpu_device(),
         );
-        let t2 = t2.reshape(&[2, 3]);
+        let t2 = I::reshape(&t2, &[2, 3]);
         for op in WgpuContext::ZIP_OPS {
             if op == "pow" {
                 continue; // see separate test
@@ -1069,13 +982,13 @@ mod tests {
     #[test]
     fn test_non_contiguous_pow() {
         let t1 = WgpuRawTensor::new(&[3, 2], &[1.0, 2.0, 3.0, 7.0, 8.0, 9.0], get_wgpu_device());
-        let t1 = t1.permute(&[1, 0]);
+        let t1 = I::permute(&t1, &[1, 0]);
         let t2 = WgpuRawTensor::new(
             &[3, 2],
             &[6.0, 7.0, 8.0, -6.0, -7.0, -8.0],
             get_wgpu_device(),
         );
-        let t2 = t2.reshape(&[2, 3]);
+        let t2 = I::reshape(&t2, &[2, 3]);
 
         let op = "pow";
         let actual = t1.zip(&t2, op).ravel();
@@ -1102,8 +1015,8 @@ mod tests {
     fn test_reshape_24(orig_shape: &[usize], new_shape: &[usize], expected_strides: &[usize]) {
         let input = make_vec(24);
         let t = WgpuRawTensor::new(orig_shape, &input, get_wgpu_device());
-        let t = t.reshape(new_shape);
-        assert_eq!(t.shape(), new_shape);
+        let t = I::reshape(&t, new_shape);
+        assert_eq!(I::shape(&t), new_shape);
         assert_eq!(t.strides(), expected_strides);
         assert_eq!(t.ravel(), make_vec(24));
     }
@@ -1118,15 +1031,15 @@ mod tests {
     fn test_permute_24(orig_shape: &[usize], permutation: &[usize], expected_shape: &[usize]) {
         let input = make_vec(24);
         let t = WgpuRawTensor::new(orig_shape, &input, get_wgpu_device());
-        let tp = t.permute(permutation);
-        assert_eq!(tp.shape(), expected_shape);
+        let tp = I::permute(&t, permutation);
+        assert_eq!(I::shape(&tp), expected_shape);
         assert_ne!(tp.strides(), t.strides());
 
         let rev_perm = (0..permutation.len())
             .map(|i| permutation.iter().position(|&x| x == i).unwrap())
             .collect::<Vec<_>>();
-        let tpp = tp.permute(&rev_perm);
-        assert_eq!(tpp.shape(), orig_shape);
+        let tpp = I::permute(&tp, &rev_perm);
+        assert_eq!(I::shape(&tpp), orig_shape);
         assert_eq!(tpp.strides(), t.strides());
         assert_eq!(&tpp.ravel(), &t.ravel());
     }
@@ -1140,9 +1053,9 @@ mod tests {
     #[test]
     fn test_expand() {
         let t = WgpuRawTensor::new(&[1, 1], &[42.0], get_wgpu_device());
-        let t = t.expand(&[5, 4]);
+        let t = I::expand(&t, &[5, 4]);
 
-        assert_eq!(t.shape(), &[5, 4]);
+        assert_eq!(I::shape(&t), &[5, 4]);
         assert_eq!(t.strides(), &[0, 0]);
         assert_eq!(t.ravel(), repeat(42.0).take(20).collect::<Vec<_>>());
     }
@@ -1150,95 +1063,98 @@ mod tests {
     #[test]
     fn test_reduce_ops() {
         let t = WgpuRawTensor::new(&[2, 3], &make_vec(6), get_wgpu_device());
-        let s = t.sum(&[0]);
-        assert_eq!(s.shape(), &[1, 3]);
+        let s = I::sum(&t, &[0]);
+        assert_eq!(I::shape(&s), &[1, 3]);
         assert_eq!(s.ravel(), vec![3.0, 5.0, 7.0]);
-        let s = t.sum(&[1]);
-        assert_eq!(s.shape(), &[2, 1]);
+        let s = I::sum(&t, &[1]);
+        assert_eq!(I::shape(&s), &[2, 1]);
         assert_eq!(s.ravel(), vec![3.0, 12.0]);
-        let s = t.sum(&[0, 1]);
-        assert_eq!(s.shape(), &[1, 1]);
+        let s = I::sum(&t, &[0, 1]);
+        assert_eq!(I::shape(&s), &[1, 1]);
         assert_eq!(s.ravel(), vec![15.0]);
 
-        let s = t.max(&[0]);
-        assert_eq!(s.shape(), &[1, 3]);
+        let s = I::max(&t, &[0]);
+        assert_eq!(I::shape(&s), &[1, 3]);
         assert_eq!(s.ravel(), vec![3.0, 4.0, 5.0]);
-        let s = t.max(&[1]);
-        assert_eq!(s.shape(), &[2, 1]);
+        let s = I::max(&t, &[1]);
+        assert_eq!(I::shape(&s), &[2, 1]);
         assert_eq!(s.ravel(), vec![2.0, 5.0]);
-        let s = t.max(&[0, 1]);
-        assert_eq!(s.shape(), &[1, 1]);
+        let s = I::max(&t, &[0, 1]);
+        assert_eq!(I::shape(&s), &[1, 1]);
         assert_eq!(s.ravel(), vec![5.0]);
 
-        let t = WgpuRawTensor::new(&[1, 1, 1], &[1.0], get_wgpu_device()).expand(&[4, 2, 4]);
+        let t = WgpuRawTensor::new(&[1, 1, 1], &[1.0], get_wgpu_device());
+        let t = I::expand(&t, &[4, 2, 4]);
         assert_eq!(t.ravel(), vec![1.0; 32]);
-        let s = t.sum(&[0]);
-        assert_eq!(s.shape(), &[1, 2, 4]);
+        let s = I::sum(&t, &[0]);
+        assert_eq!(I::shape(&s), &[1, 2, 4]);
         assert_eq!(s.ravel(), vec![4.0; 8]);
     }
 
     #[test]
     fn test_reduce_ops_non_contiguous() {
-        let t = WgpuRawTensor::new(&[2, 3], &make_vec(6), get_wgpu_device()).permute(&[1, 0]);
-        let s = t.sum(&[0]);
-        assert_eq!(s.shape(), &[1, 2]);
+        let t = WgpuRawTensor::new(&[2, 3], &make_vec(6), get_wgpu_device());
+        let t = I::permute(&t, &[1, 0]);
+        let s = I::sum(&t, &[0]);
+        assert_eq!(I::shape(&s), &[1, 2]);
         assert_eq!(s.ravel(), vec![3.0, 12.0]);
-        let s = t.sum(&[1]);
-        assert_eq!(s.shape(), &[3, 1]);
+        let s = I::sum(&t, &[1]);
+        assert_eq!(I::shape(&s), &[3, 1]);
         assert_eq!(s.ravel(), vec![3.0, 5.0, 7.0]);
-        let s = t.sum(&[0, 1]);
-        assert_eq!(s.shape(), &[1, 1]);
+        let s = I::sum(&t, &[0, 1]);
+        assert_eq!(I::shape(&s), &[1, 1]);
         assert_eq!(s.ravel(), vec![15.0]);
     }
 
     #[test]
     fn test_reduce_ops_parallel() {
         let t = WgpuRawTensor::new(&[2, 128], &make_vec(256), get_wgpu_device());
-        let s = t.sum(&[0]);
-        assert_eq!(s.shape(), &[1, 128]);
+        let s = I::sum(&t, &[0]);
+        assert_eq!(I::shape(&s), &[1, 128]);
         let expected: Vec<_> = (128i16..128 + 256).step_by(2).map(f32::from).collect();
         assert_eq!(s.ravel(), expected);
 
-        let s = t.sum(&[1]);
-        assert_eq!(s.shape(), &[2, 1]);
+        let s = I::sum(&t, &[1]);
+        assert_eq!(I::shape(&s), &[2, 1]);
         assert_eq!(s.ravel(), vec![8128.0, 24512.0]);
 
-        let s = t.sum(&[0, 1]);
-        assert_eq!(s.shape(), &[1, 1]);
+        let s = I::sum(&t, &[0, 1]);
+        assert_eq!(I::shape(&s), &[1, 1]);
         assert_eq!(s.ravel(), vec![8128.0 + 24512.0]);
 
         // No powers of two
         let t = WgpuRawTensor::new(&[60, 60], &make_vec(3600), get_wgpu_device());
-        let s = t.max(&[0]);
-        assert_eq!(s.shape(), &[1, 60]);
+        let s = I::max(&t, &[0]);
+        assert_eq!(I::shape(&s), &[1, 60]);
         let expected: Vec<_> = (3540i16..3600).map(f32::from).collect();
         assert_eq!(s.ravel(), expected);
 
-        let s = t.max(&[1]);
-        assert_eq!(s.shape(), &[60, 1]);
+        let s = I::max(&t, &[1]);
+        assert_eq!(I::shape(&s), &[60, 1]);
         let expected: Vec<_> = (59i16..3600).step_by(60).map(f32::from).collect();
         assert_eq!(s.ravel(), expected);
 
-        let s = t.sum(&[0, 1]);
-        assert_eq!(s.shape(), &[1, 1]);
+        let s = I::sum(&t, &[0, 1]);
+        assert_eq!(I::shape(&s), &[1, 1]);
         assert_eq!(s.ravel(), vec![6_478_200.0]);
     }
 
     #[test]
     fn test_reduce_ops_non_contiguous_parallel() {
-        let t = WgpuRawTensor::new(&[2, 128], &make_vec(256), get_wgpu_device()).permute(&[1, 0]);
-        let s = t.sum(&[0]);
-        assert_eq!(s.shape(), &[1, 2]);
+        let t = WgpuRawTensor::new(&[2, 128], &make_vec(256), get_wgpu_device());
+        let t = I::permute(&t, &[1, 0]);
+        let s = I::sum(&t, &[0]);
+        assert_eq!(I::shape(&s), &[1, 2]);
         assert_eq!(s.ravel(), vec![8128.0, 24512.0]);
 
-        let s = t.sum(&[1]);
-        assert_eq!(s.shape(), &[128, 1]);
+        let s = I::sum(&t, &[1]);
+        assert_eq!(I::shape(&s), &[128, 1]);
 
         let expected: Vec<_> = (128i16..128 + 256).step_by(2).map(f32::from).collect();
         assert_eq!(s.ravel(), expected);
 
-        let s = t.sum(&[0, 1]);
-        assert_eq!(s.shape(), &[1, 1]);
+        let s = I::sum(&t, &[0, 1]);
+        assert_eq!(I::shape(&s), &[1, 1]);
         assert_eq!(s.ravel(), vec![8128.0 + 24512.0]);
     }
 
@@ -1248,23 +1164,23 @@ mod tests {
         let t = WgpuRawTensor::new(orig_shape, &make_vec(24), get_wgpu_device());
 
         // crop single dimension
-        let s = t.crop(&[(0, 1), (0, 3), (0, 4)]);
+        let s = I::crop(&t, &[(0, 1), (0, 3), (0, 4)]);
         assert_eq!(s.ravel(), make_vec(12));
 
-        let s = t.crop(&[(1, 2), (0, 3), (0, 4)]);
+        let s = I::crop(&t, &[(1, 2), (0, 3), (0, 4)]);
         assert_eq!(
             s.ravel(),
             make_vec(12).iter().map(|x| x + 12.0).collect::<Vec<_>>()
         );
 
         // crop nothing
-        let s = t.crop(&[(0, 2), (0, 3), (0, 4)]);
-        assert_eq!(s.shape(), orig_shape);
+        let s = I::crop(&t, &[(0, 2), (0, 3), (0, 4)]);
+        assert_eq!(I::shape(&s), orig_shape);
         assert_eq!(s.strides(), t.strides());
         assert_eq!(s.ravel(), t.ravel());
 
-        let s = t.crop(&[(0, 2), (0, 3), (1, 3)]);
-        assert_eq!(s.shape(), &[2, 3, 2]);
+        let s = I::crop(&t, &[(0, 2), (0, 3), (1, 3)]);
+        assert_eq!(I::shape(&s), &[2, 3, 2]);
         assert_eq!(s.strides(), t.strides());
         assert_eq!(
             s.ravel(),
@@ -1272,14 +1188,14 @@ mod tests {
         );
 
         // keep cropping
-        let s = s.crop(&[(0, 1), (1, 2), (0, 2)]);
-        assert_eq!(s.shape(), &[1, 1, 2]);
+        let s = I::crop(&s, &[(0, 1), (1, 2), (0, 2)]);
+        assert_eq!(I::shape(&s), &[1, 1, 2]);
         assert_eq!(s.strides(), t.strides());
         assert_eq!(s.ravel(), vec![5.0, 6.0]);
 
         // crop to single element
-        let s = s.crop(&[(0, 1), (0, 1), (1, 2)]);
-        assert_eq!(s.shape(), &[1, 1, 1]);
+        let s = I::crop(&s, &[(0, 1), (0, 1), (1, 2)]);
+        assert_eq!(I::shape(&s), &[1, 1, 1]);
         assert_eq!(s.strides(), t.strides());
         assert_eq!(s.ravel(), vec![6.0]);
     }
@@ -1292,17 +1208,17 @@ mod tests {
 
         // pad nothing
         let s = t.pad(&[(0, 0), (0, 0), (0, 0)]);
-        assert_eq!(s.shape(), orig_shape);
+        assert_eq!(I::shape(&s), orig_shape);
         assert_eq!(s.strides(), t.strides());
         assert_eq!(s.ravel(), t.ravel());
 
         // pad a little
         let padding = &[(1, 1), (1, 1), (1, 1)];
         let s = t.pad(padding);
-        assert_eq!(s.shape(), &[4, 5, 6]);
+        assert_eq!(I::shape(&s), &[4, 5, 6]);
         assert_eq!(s.strides(), &[30, 6, 1]);
         let s_raveled = s.ravel();
-        assert_eq!(s_raveled.len(), s.shape().size());
+        assert_eq!(s_raveled.len(), I::shape(&s).size());
         assert_eq!(s_raveled.iter().filter(|&&x| x != 0.0).count(), 23);
         assert_eq!(s_raveled[s.strider.buffer_index(&[1, 1, 2])], 1.0);
         assert_eq!(s_raveled[s.strider.buffer_index(&[1, 1, 3])], 2.0);
@@ -1310,7 +1226,7 @@ mod tests {
         // pad a lot in one dimension
         let padding = &[(20, 0), (0, 0), (0, 0)];
         let s = t.pad(padding);
-        assert_eq!(s.shape(), &[22, 3, 4]);
+        assert_eq!(I::shape(&s), &[22, 3, 4]);
         assert_eq!(s.strides(), &[12, 4, 1]);
         let s_raveled = s.ravel();
         assert_eq!(s_raveled.iter().filter(|&&x| x != 0.0).count(), 23);
@@ -1320,7 +1236,7 @@ mod tests {
         // pad a lot
         let padding = &[(1, 2), (3, 4), (5, 6)];
         let s = t.pad(padding);
-        assert_eq!(s.shape(), &[5, 10, 15]);
+        assert_eq!(I::shape(&s), &[5, 10, 15]);
         assert_eq!(s.strides(), &[150, 15, 1]);
         let s_raveled = s.ravel();
         assert_eq!(s_raveled.iter().filter(|&&x| x != 0.0).count(), 23);
@@ -1332,13 +1248,12 @@ mod tests {
     fn test_pad_reshape_expand_crop() {
         let dim = 2;
         let t = WgpuRawTensor::new(&[1], &[1.0], get_wgpu_device());
-        let t = t
-            .pad(&[(0, dim)])
-            .reshape(&[1, dim + 1])
-            .expand(&[dim, dim + 1])
-            .reshape(&[dim * (dim + 1)])
-            .crop(&[(0, dim * dim)]);
-        assert_eq!(t.shape(), &[4]);
+        let t = I::pad(&t, &[(0, dim)]);
+        let t = I::reshape(&t, &[1, dim + 1]);
+        let t = I::expand(&t, &[dim, dim + 1]);
+        let t = I::reshape(&t, &[dim * (dim + 1)]);
+        let t = I::crop(&t, &[(0, dim * dim)]);
+        assert_eq!(I::shape(&t), &[4]);
         assert_eq!(t.ravel(), vec![1.0, 0.0, 0.0, 1.0]);
     }
 
@@ -1346,54 +1261,57 @@ mod tests {
     fn test_fused_multiply_add() {
         // contiguous
         let t1 = WgpuRawTensor::new(&[2, 3], &make_vec(6), get_wgpu_device());
-        let t2 = t1.add(&WgpuRawTensor::new(
-            &[2, 3],
-            &make_vec(6),
-            get_wgpu_device(),
-        ));
+        let t2 = I::add(
+            &t1,
+            &WgpuRawTensor::new(&[2, 3], &make_vec(6), get_wgpu_device()),
+        );
 
-        let r = t1.fused_multiply_add(&t2, &[0]);
-        assert_eq!(r.shape(), &[1, 3]);
+        let r = I::fused_multiply_add(&t1, &t2, &[0]);
+        assert_eq!(I::shape(&r), &[1, 3]);
         assert_eq!(r.ravel(), vec![18.0, 34.0, 58.0]);
 
-        let r = t1.fused_multiply_add(&t2, &[1]);
-        assert_eq!(r.shape(), &[2, 1]);
+        let r = I::fused_multiply_add(&t1, &t2, &[1]);
+        assert_eq!(I::shape(&r), &[2, 1]);
         assert_eq!(r.ravel(), vec![10.0, 100.0]);
 
-        let r = t1.fused_multiply_add(&t2, &[0, 1]);
-        assert_eq!(r.shape(), &[1, 1]);
+        let r = I::fused_multiply_add(&t1, &t2, &[0, 1]);
+        assert_eq!(I::shape(&r), &[1, 1]);
         assert_eq!(r.ravel(), vec![110.0]);
 
         // different strides
-        let t1 = WgpuRawTensor::new(&[1, 1], &[8.0], get_wgpu_device()).expand(&[2, 3]);
+        let t1 = WgpuRawTensor::new(&[1, 1], &[8.0], get_wgpu_device());
+        let t1 = I::expand(&t1, &[2, 3]);
         let t2 = WgpuRawTensor::new(&[2, 3], &make_vec(6), get_wgpu_device());
 
-        let r = t1.fused_multiply_add(&t2, &[0]);
-        assert_eq!(r.shape(), &[1, 3]);
+        let r = I::fused_multiply_add(&t1, &t2, &[0]);
+        assert_eq!(I::shape(&r), &[1, 3]);
         assert_eq!(r.ravel(), vec![24.0, 40.0, 56.0]);
 
-        let r = t1.fused_multiply_add(&t2, &[1]);
-        assert_eq!(r.shape(), &[2, 1]);
+        let r = I::fused_multiply_add(&t1, &t2, &[1]);
+        assert_eq!(I::shape(&r), &[2, 1]);
         assert_eq!(r.ravel(), vec![24.0, 96.0]);
 
-        let r = t1.fused_multiply_add(&t2, &[0, 1]);
-        assert_eq!(r.shape(), &[1, 1]);
+        let r = I::fused_multiply_add(&t1, &t2, &[0, 1]);
+        assert_eq!(I::shape(&r), &[1, 1]);
         assert_eq!(r.ravel(), vec![120.0]);
 
         // non_contiguous
-        let t1 = WgpuRawTensor::new(&[2, 3], &make_vec(6), get_wgpu_device()).permute(&[1, 0]);
-        let t2 =
-            t1.add(&WgpuRawTensor::new(&[2, 3], &make_vec(6), get_wgpu_device()).permute(&[1, 0]));
-        let r = t1.fused_multiply_add(&t2, &[0]);
-        assert_eq!(r.shape(), &[1, 2]);
+        let t1 = WgpuRawTensor::new(&[2, 3], &make_vec(6), get_wgpu_device());
+        let t1 = I::permute(&t1, &[1, 0]);
+        let t2 = WgpuRawTensor::new(&[2, 3], &make_vec(6), get_wgpu_device());
+        let t2 = I::permute(&t2, &[1, 0]);
+        let t2 = I::add(&t1, &t2);
+
+        let r = I::fused_multiply_add(&t1, &t2, &[0]);
+        assert_eq!(I::shape(&r), &[1, 2]);
         assert_eq!(r.ravel(), vec![10.0, 100.0]);
 
-        let r = t1.fused_multiply_add(&t2, &[1]);
-        assert_eq!(r.shape(), &[3, 1]);
+        let r = I::fused_multiply_add(&t1, &t2, &[1]);
+        assert_eq!(I::shape(&r), &[3, 1]);
         assert_eq!(r.ravel(), vec![18.0, 34.0, 58.0]);
 
-        let r = t1.fused_multiply_add(&t2, &[0, 1]);
-        assert_eq!(r.shape(), &[1, 1]);
+        let r = I::fused_multiply_add(&t1, &t2, &[0, 1]);
+        assert_eq!(I::shape(&r), &[1, 1]);
         assert_eq!(r.ravel(), vec![110.0]);
     }
 }

@@ -1,85 +1,90 @@
-use crate::{raw_tensor::CastInto, RawTensor};
+use crate::RawTensor;
+
+pub(crate) struct StringImpl;
 
 /// Rawtensor for String - a poor man's symbolic execution.
-impl RawTensor for String {
-    type E = f32;
+impl RawTensor for StringImpl {
+    type Repr<E: Clone> = String;
 
-    fn exp(&self) -> Self {
-        format!("{self}.exp()")
+    fn exp<E: crate::num::Float>(t: &Self::Repr<E>) -> Self::Repr<E> {
+        format!("{t}.exp()")
     }
 
-    fn log(&self) -> Self {
-        format!("{self}.log()")
+    fn log<E: crate::num::Float>(t: &Self::Repr<E>) -> Self::Repr<E> {
+        format!("{t}.log()")
     }
 
-    fn add(&self, other: &Self) -> Self {
-        format!("({self} + {other})")
+    fn cast<EFro: Clone, ETo: From<EFro> + Clone>(t: &Self::Repr<EFro>) -> Self::Repr<ETo> {
+        format!("{t}.cast()")
     }
 
-    fn sub(&self, other: &Self) -> Self {
-        format!("({self} - {other})")
+    fn add<E: crate::num::Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
+        format!("({lhs} + {rhs})")
     }
 
-    fn mul(&self, other: &Self) -> Self {
-        format!("({self} * {other})")
+    fn sub<E: crate::num::Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
+        format!("({lhs} - {rhs})")
     }
 
-    fn div(&self, other: &Self) -> Self {
-        format!("({self} / {other})")
+    fn mul<E: crate::num::Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
+        format!("({lhs} * {rhs})")
     }
 
-    fn pow(&self, other: &Self) -> Self {
-        format!("{self}.pow({other})")
+    fn div<E: crate::num::Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
+        format!("({lhs} / {rhs})")
     }
 
-    fn eq(&self, other: &Self) -> Self {
-        format!("({self} == {other})")
+    fn pow<E: crate::num::Float>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
+        format!("{lhs}.pow({rhs})")
     }
 
-    fn sum(&self, axes: &[usize]) -> Self {
-        format!("{self}.sum({axes:?})")
+    fn eq<E: PartialEq + Clone>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<bool> {
+        format!("{lhs}.eq({rhs})")
     }
 
-    fn max(&self, axes: &[usize]) -> Self {
-        format!("{self}.max({axes:?})")
+    fn sum<E: crate::num::Num>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E> {
+        format!("{t}.sum({axes:?})")
     }
 
-    fn reshape(&self, shape: &[usize]) -> Self {
-        format!("{self}.reshape({shape:?})")
+    fn max<E: crate::num::ZeroOne>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E> {
+        format!("{t}.max({axes:?})")
     }
 
-    fn permute(&self, permutation: &[usize]) -> Self {
-        format!("{self}.permute({permutation:?})")
+    fn reshape<E: Clone>(t: &Self::Repr<E>, shape: &[usize]) -> Self::Repr<E> {
+        format!("{t}.reshape({shape:?})")
     }
 
-    fn expand(&self, shape: &[usize]) -> Self {
-        format!("{self}.expand({shape:?})")
+    fn permute<E: Clone>(t: &Self::Repr<E>, permutation: &[usize]) -> Self::Repr<E> {
+        format!("{t}.permute({permutation:?})")
     }
 
-    fn pad(&self, padding: &[(usize, usize)]) -> Self {
-        format!("{self}.pad({padding:?})")
+    fn expand<E: Clone>(t: &Self::Repr<E>, shape: &[usize]) -> Self::Repr<E> {
+        format!("{t}.expand({shape:?})")
     }
 
-    fn crop(&self, limits: &[(usize, usize)]) -> Self {
-        format!("{self}.crop({limits:?})")
+    fn pad<E: crate::num::ZeroOne>(t: &Self::Repr<E>, padding: &[(usize, usize)]) -> Self::Repr<E> {
+        format!("{t}.pad({padding:?})")
     }
 
-    fn new(shape: &[usize], data: &[Self::E]) -> Self {
-        format!("new({shape:?}, {data:?})")
+    fn crop<E: Clone>(t: &Self::Repr<E>, limits: &[(usize, usize)]) -> Self::Repr<E> {
+        format!("{t}.crop({limits:?})")
     }
 
-    fn shape(&self) -> &[usize] {
-        panic!("shape() not implemented for String. Try ShapeTracker<String> instead.")
+    fn new<E: Clone>(shape: &[usize], data: &[E]) -> Self::Repr<E> {
+        // TODO: consider adding E: Debug so we can print the data here.
+        format!("new({shape:?}, {:?})", data.len())
     }
 
-    fn fused_multiply_add(&self, other: &Self, axes: &[usize]) -> Self {
-        format!("{self}.fused_multiply_add({other}, {axes:?})")
+    fn shape<E: Clone>(_: &Self::Repr<E>) -> &[usize] {
+        panic!("shape() not implemented for String.")
     }
-}
 
-impl CastInto<String> for String {
-    fn cast(&self) -> String {
-        format!("{self}.cast()")
+    fn fused_multiply_add<E: crate::num::Num>(
+        lhs: &Self::Repr<E>,
+        rhs: &Self::Repr<E>,
+        axes: &[usize],
+    ) -> Self::Repr<E> {
+        format!("{lhs}.fused_multiply_add({rhs}, {axes:?})")
     }
 }
 
@@ -88,22 +93,21 @@ mod tests {
 
     use super::*;
 
+    type I = StringImpl;
+
     #[test]
     fn test_shape_tracks() {
-        let t1: String = RawTensor::new(&[2, 2], &[1., 2., 3., 4.]);
-        let t2: String = RawTensor::new(&[2, 2], &[5., 6., 7., 8.]);
-        let r = t1.exp().add(&t2.log());
-        assert_eq!(
-            r,
-            "(new([2, 2], [1.0, 2.0, 3.0, 4.0]).exp() + new([2, 2], [5.0, 6.0, 7.0, 8.0]).log())"
-        );
+        let t1: &String = &I::new(&[2, 2], &[1., 2., 3., 4.]);
+        let t2: &String = &I::new(&[2, 2], &[5., 6., 7., 8.]);
+        let r = I::log::<f32>(&I::add::<f32>(&I::exp::<f32>(t1), t2));
+        assert_eq!(r, "(new([2, 2], 4).exp() + new([2, 2], 4)).log()");
     }
 
     #[test]
     fn test_symbolic() {
-        let t1: String = "A".to_string();
-        let t2: String = "B".to_string();
-        let r = t1.exp().add(&t2.log());
+        let t1: &String = &"A".to_string();
+        let t2: &String = &"B".to_string();
+        let r = I::add::<f32>(&I::exp::<f32>(t1), &I::log::<f32>(t2));
         assert_eq!(r, "(A.exp() + B.log())");
     }
 }

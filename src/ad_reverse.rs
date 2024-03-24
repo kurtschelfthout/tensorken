@@ -1,8 +1,4 @@
-use std::{
-    fmt::Debug,
-    ops::{Add, Div, Index, Mul, Neg, Sub},
-    rc::Rc,
-};
+use std::{fmt::Debug, marker::PhantomData, ops::Index, rc::Rc};
 
 use crate::{
     ad_ops::{
@@ -11,9 +7,8 @@ use crate::{
     },
     ad_ops_reverse::{CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
     ad_trace::{Trace, TracedOp},
-    num::{Float, Num},
-    raw_tensor::CastInto,
-    Diffable, DiffableExt, IndexValue, Shape,
+    num::{Elem, Float, Num, ZeroOne},
+    Diffable, IndexValue, Shape, Tensor,
 };
 
 /// Reverse AD implementation.
@@ -45,12 +40,6 @@ impl<T> Reverse<T> {
     }
 }
 
-impl<T: Clone> Reverse<T> {
-    pub fn lift(x: &T) -> Self {
-        Self::Lift(x.clone())
-    }
-}
-
 impl<T: Debug> Debug for Reverse<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -66,7 +55,7 @@ impl<T: PartialEq> PartialEq for Reverse<T> {
     }
 }
 
-impl<T: Diffable> Reverse<T> {
+impl<T> Reverse<T> {
     fn push_op(trace: &Rc<Trace<T>>, primal: T, op: TracedOp<T>) -> Self {
         let idx = trace.push_op(op);
         Self::Reverse(Rc::clone(trace), primal, idx)
@@ -107,104 +96,85 @@ impl<T: Diffable> Reverse<T> {
     }
 }
 
-impl<T: Clone + Diffable + 'static> Diffable for Reverse<T>
-where
-    T::Elem: Num,
-{
-    type Elem = T::Elem;
-    fn log(&self) -> Self
-    where
-        T::Elem: Float,
-    {
-        self.unary::<LogOp<T>, _>(&())
+#[derive(Debug, Clone)]
+pub struct ReverseImpl<I>(PhantomData<I>);
+
+impl<I: 'static + Diffable> Diffable for ReverseImpl<I> {
+    type Repr<E: Clone> = Reverse<I::Repr<E>>;
+
+    fn log<E: Float>(t: &Self::Repr<E>) -> Self::Repr<E> {
+        t.unary::<LogOp<I::Repr<E>, E, I>, _>(&())
     }
 
-    fn exp(&self) -> Self
-    where
-        T::Elem: Float,
-    {
-        self.unary::<ExpOp<T>, _>(&())
+    fn exp<E: Float>(t: &Self::Repr<E>) -> Self::Repr<E> {
+        t.unary::<ExpOp<I::Repr<E>, E, I>, _>(&())
     }
 
-    fn elementwise_add(&self, rhs: &Self) -> Self {
-        self.binary::<AddOp>(rhs)
+    fn elementwise_add<E: Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
+        lhs.binary::<AddOp<E, I>>(rhs)
     }
 
-    fn elementwise_sub(&self, rhs: &Self) -> Self {
-        self.binary::<SubOp>(rhs)
+    fn elementwise_sub<E: Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
+        lhs.binary::<SubOp<E, I>>(rhs)
     }
 
-    fn elementwise_mul(&self, rhs: &Self) -> Self {
-        self.binary::<MulOp<T>>(rhs)
+    fn elementwise_mul<E: Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
+        lhs.binary::<MulOp<I::Repr<E>, E, I>>(rhs)
     }
 
-    fn elementwise_div(&self, rhs: &Self) -> Self {
-        self.binary::<DivOp<T>>(rhs)
+    fn elementwise_div<E: Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
+        lhs.binary::<DivOp<I::Repr<E>, E, I>>(rhs)
     }
 
-    fn elementwise_pow(&self, rhs: &Self) -> Self
-    where
-        T::Elem: Float,
-    {
-        self.binary::<PowOp<T>>(rhs)
+    fn elementwise_pow<E: Float>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
+        lhs.binary::<PowOp<I::Repr<E>, E, I>>(rhs)
     }
 
-    fn elementwise_eq(&self, other: &Self) -> Self {
-        Self::Lift(self.primal().elementwise_eq(other.primal()))
+    fn eq<E: PartialEq + Elem>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<bool> {
+        Reverse::Lift(I::eq::<E>(lhs.primal(), rhs.primal()))
     }
 
-    fn sum(&self, axes: &[usize]) -> Self {
-        self.unary::<SumOp, _>(axes)
+    fn sum<E: Num>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E> {
+        t.unary::<SumOp<E, I>, _>(axes)
     }
 
-    fn max(&self, axes: &[usize]) -> Self {
-        self.unary::<MaxOp<T>, _>(axes)
+    fn max<E: Num + From<bool>>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E> {
+        t.unary::<MaxOp<I::Repr<E>, E, I>, _>(axes)
     }
 
-    fn reshape(&self, shape: &[usize]) -> Self {
-        self.unary::<ReshapeOp, _>(shape)
+    fn reshape<E: Elem>(t: &Self::Repr<E>, shape: &[usize]) -> Self::Repr<E> {
+        t.unary::<ReshapeOp<E, I>, _>(shape)
     }
 
-    fn permute(&self, dims: &[usize]) -> Self {
-        self.unary::<PermuteOp, _>(dims)
+    fn permute<E: Elem>(t: &Self::Repr<E>, permutation: &[usize]) -> Self::Repr<E> {
+        t.unary::<PermuteOp<E, I>, _>(permutation)
     }
 
-    fn expand(&self, shape: &[usize]) -> Self {
-        self.unary::<ExpandOp, _>(shape)
+    fn expand<E: Num>(t: &Self::Repr<E>, shape: &[usize]) -> Self::Repr<E> {
+        t.unary::<ExpandOp<E, I>, _>(shape)
     }
 
-    fn pad(&self, padding: &[(usize, usize)]) -> Self {
-        self.unary::<PadOp, _>(padding)
+    fn pad<E: ZeroOne>(t: &Self::Repr<E>, padding: &[(usize, usize)]) -> Self::Repr<E> {
+        t.unary::<PadOp<E, I>, _>(padding)
     }
 
-    fn crop(&self, limits: &[(usize, usize)]) -> Self {
-        self.unary::<CropOp, _>(limits)
+    fn crop<E: ZeroOne>(t: &Self::Repr<E>, limits: &[(usize, usize)]) -> Self::Repr<E> {
+        t.unary::<CropOp<E, I>, _>(limits)
     }
 
-    fn shape(&self) -> &[usize] {
-        self.primal().shape()
+    fn new<E: Elem>(shape: &[usize], data: &[E]) -> Self::Repr<E> {
+        Reverse::Lift(I::new::<E>(shape, data))
     }
 
-    fn new(shape: &[usize], data: &[Self::Elem]) -> Self {
-        Self::Lift(T::new(shape, data))
+    fn shape<E: Clone>(t: &Self::Repr<E>) -> &[usize] {
+        I::shape(t.primal())
+    }
+
+    fn cast<EFro: Elem, ETo: From<EFro> + Elem>(t: &Self::Repr<EFro>) -> Self::Repr<ETo> {
+        // TODO: make cast actuallly diffable
+        Reverse::Lift(I::cast(t.primal()))
     }
 }
-
-impl<TFro, TTo> CastInto<Reverse<TTo>> for Reverse<TFro>
-where
-    TFro: CastInto<TTo>,
-{
-    fn cast(&self) -> Reverse<TTo> {
-        Reverse::Lift(self.primal().cast())
-    }
-}
-
-crate::math_macros::impl_bin_op!(Add, add, Reverse<T: Diffable + Clone + 'static>);
-crate::math_macros::impl_bin_op!(Sub, sub, Reverse<T: Diffable + Clone + 'static>);
-crate::math_macros::impl_bin_op!(Mul, mul, Reverse<T: Diffable + Clone + 'static>);
-crate::math_macros::impl_bin_op!(Div, div, Reverse<T: Diffable + Clone + 'static>);
-
-crate::math_macros::impl_un_op!(Neg, neg, Reverse<T: Diffable + Clone + 'static>);
 
 // somewhat wonky helper type to deal with optional adjoints
 #[derive(Debug)]
@@ -212,19 +182,16 @@ struct Adjoints<T> {
     adjoints: Vec<Option<T>>,
 }
 
-impl<T: Diffable + Clone> Adjoints<T>
-where
-    T::Elem: Float,
-{
+impl<T: Clone> Adjoints<T> {
     fn new(len: usize) -> Self {
         Self {
             adjoints: vec![None; len],
         }
     }
-    fn update(&mut self, idx: usize, df: T) {
+    fn update<E: Num, I: Diffable<Repr<E> = T>>(&mut self, idx: usize, df: T) {
         self.adjoints[idx] = self.adjoints[idx]
             .as_ref()
-            .map(|c| c.elementwise_add(&df))
+            .map(|c| I::elementwise_add::<E>(c, &df))
             .or(Some(df));
     }
     fn pop(&mut self) {
@@ -241,21 +208,19 @@ impl<T> Index<usize> for Adjoints<T> {
 
 /// `PullBack` is a function from a cotangent vector to a `Vec` of cotangent vectors.
 /// Use `call` to access it.
-pub struct PullBack<T> {
+pub struct PullBack<T, E: Clone, I: Diffable<Repr<E> = T>> {
     trace: Rc<Trace<T>>,
     index_result: Option<usize>,
     zero_primals: Vec<T>,
     // only used to assert the shape matches with cotangent
     primal_out_shape: Vec<usize>,
+    phantom: PhantomData<(E, I)>,
 }
 
-impl<T: Diffable + Clone> PullBack<T>
-where
-    T::Elem: Float,
-{
+impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> PullBack<T, E, I> {
     fn reverse(&self, var: usize, adjoint: &T) -> Vec<T> {
         assert!(
-            self.primal_out_shape == adjoint.shape(),
+            self.primal_out_shape == I::shape::<E>(adjoint),
             "cotangent shape must match primal shape"
         );
         let trace = self.trace.borrow();
@@ -274,16 +239,18 @@ where
                         // We can't pop this adjoint, so we must break.
                         break;
                     }
-                    TracedOp::Unary(op, a) => adjoints_acc.update(*a, op.dfda(&adjoints_acc[i])),
+                    TracedOp::Unary(op, a) => {
+                        adjoints_acc.update::<E, I>(*a, op.dfda(&adjoints_acc[i]));
+                    }
                     TracedOp::Binary(op, a, b) => {
-                        adjoints_acc.update(*a, op.dfda(&adjoints_acc[i]));
-                        adjoints_acc.update(*b, op.dfdb(&adjoints_acc[i]));
+                        adjoints_acc.update::<E, I>(*a, op.dfda(&adjoints_acc[i]));
+                        adjoints_acc.update::<E, I>(*b, op.dfdb(&adjoints_acc[i]));
                     }
                     TracedOp::BinaryDA(op, a) => {
-                        adjoints_acc.update(*a, op.dfda(&adjoints_acc[i]));
+                        adjoints_acc.update::<E, I>(*a, op.dfda(&adjoints_acc[i]));
                     }
                     TracedOp::BinaryDB(op, b) => {
-                        adjoints_acc.update(*b, op.dfdb(&adjoints_acc[i]));
+                        adjoints_acc.update::<E, I>(*b, op.dfdb(&adjoints_acc[i]));
                     }
                 }
             }
@@ -305,14 +272,12 @@ where
     /// Takes a cotangent tensor with the same shape as the result of this `PullBack`'s originating vjp function,
     /// and returns a `Vec` of cotangent vectors with the same number and shapes as vjp's primals,
     /// representing the vector-Jacobian product of vjp's function evaluated at primals.
-    pub fn call(&self, cotangent: &T) -> Vec<T>
-    where
-        T: Diffable + Clone,
-    {
-        match self.index_result {
+    pub fn call(&self, cotangent: &Tensor<T, E, I>) -> Vec<Tensor<T, E, I>> {
+        let ts = match self.index_result {
             None => self.zero_primals.clone(),
-            Some(var) => self.reverse(var, cotangent),
-        }
+            Some(var) => self.reverse(var, &cotangent.0),
+        };
+        ts.into_iter().map(|t| Tensor(t, PhantomData)).collect()
     }
 }
 
@@ -341,40 +306,51 @@ where
 /// Compute a reverse-mode vector-Jacobian product of a function `f` evaluated at the given primals.
 /// Returns a tuple of the result of `f` and a `PullBack` object. `PullBack.call` can be used to
 /// compute the vector-Jacobian product of `f` at any cotangent.
-pub fn vjpn<T: Diffable + Clone + 'static, F>(f: F, at: &[&T]) -> (T, PullBack<T>)
+pub fn vjpn<T: Clone, E: Num, I: 'static + Diffable<Repr<E> = T>, F>(
+    f: F,
+    at: &[&Tensor<T, E, I>],
+) -> (Tensor<T, E, I>, PullBack<T, E, I>)
 where
-    T::Elem: Float,
-    for<'a> F: Fn(&'a [Reverse<T>]) -> Reverse<T>,
+    for<'a> F:
+        Fn(&'a [Tensor<Reverse<T>, E, ReverseImpl<I>>]) -> Tensor<Reverse<T>, E, ReverseImpl<I>>,
 {
     let trace = Rc::new(Trace::new());
     let vars: Vec<_> = at
         .iter()
         .map(|&ati| {
             let index = trace.var();
-            Reverse::Reverse(Rc::clone(&trace), ati.clone(), index)
+            Tensor(
+                Reverse::Reverse(Rc::clone(&trace), ati.0.clone(), index),
+                PhantomData,
+            )
         })
         .collect();
     let result = f(&vars);
 
-    let index_result = result.try_get_adjoint_index();
-    let zero_primals: Vec<_> = at.iter().map(|&ati| ati.zeros_like()).collect();
+    let index_result = result.0.try_get_adjoint_index();
+    let zero_primals: Vec<_> = at.iter().map(|&ati| ati.zeros_like().0).collect();
     let primal_out_shape = result.shape().to_vec();
     (
-        result.into_primal(),
+        Tensor(result.0.into_primal(), PhantomData),
         PullBack {
             trace: Rc::clone(&trace),
             index_result,
             zero_primals,
             primal_out_shape,
+            phantom: PhantomData,
         },
     )
 }
 
 /// Compute the result and the gradient of a function at the given primals.
-pub fn value_and_gradn<T: Diffable + Clone + 'static, F>(f: F, at: &[&T]) -> (T, Vec<T>)
+#[allow(clippy::type_complexity)]
+pub fn value_and_gradn<T: Clone, E: Num, I: 'static + Diffable<Repr<E> = T>, F>(
+    f: F,
+    at: &[&Tensor<T, E, I>],
+) -> (Tensor<T, E, I>, Vec<Tensor<T, E, I>>)
 where
-    T::Elem: Float,
-    for<'a> F: Fn(&'a [Reverse<T>]) -> Reverse<T>,
+    for<'a> F:
+        Fn(&'a [Tensor<Reverse<T>, E, ReverseImpl<I>>]) -> Tensor<Reverse<T>, E, ReverseImpl<I>>,
 {
     let (primal, pullback) = vjpn(f, at);
     let tangents = pullback.call(&primal.ones_like());
@@ -383,21 +359,30 @@ where
 
 /// Compute the result and the gradient of a function at the given primal.
 #[allow(clippy::missing_panics_doc)]
-pub fn value_and_grad1<T: Diffable + Clone + 'static, F>(f: F, at: &T) -> (T, T)
+pub fn value_and_grad1<T: Clone, E: Num, I: 'static + Diffable<Repr<E> = T>, F>(
+    f: F,
+    at: &Tensor<T, E, I>,
+) -> (Tensor<T, E, I>, Tensor<T, E, I>)
 where
-    T::Elem: Float,
-    for<'a> F: Fn(&'a Reverse<T>) -> Reverse<T>,
+    for<'a> F:
+        Fn(&'a Tensor<Reverse<T>, E, ReverseImpl<I>>) -> Tensor<Reverse<T>, E, ReverseImpl<I>>,
 {
     let (primal, tangents) = value_and_gradn(|s| f(&s[0]), &[at]);
     (primal, tangents.into_iter().next().unwrap())
 }
 
 /// Compute the result and the gradient of a function at the given primals.
-#[allow(clippy::missing_panics_doc)]
-pub fn value_and_grad2<T: Diffable + Clone + 'static, F>(f: F, at0: &T, at1: &T) -> (T, (T, T))
+#[allow(clippy::missing_panics_doc, clippy::type_complexity)]
+pub fn value_and_grad2<T: Clone, E: Num, I: 'static + Diffable<Repr<E> = T>, F>(
+    f: F,
+    at0: &Tensor<T, E, I>,
+    at1: &Tensor<T, E, I>,
+) -> (Tensor<T, E, I>, (Tensor<T, E, I>, Tensor<T, E, I>))
 where
-    T::Elem: Float,
-    for<'a> F: Fn(&'a Reverse<T>, &'a Reverse<T>) -> Reverse<T>,
+    for<'a> F: Fn(
+        &'a Tensor<Reverse<T>, E, ReverseImpl<I>>,
+        &'a Tensor<Reverse<T>, E, ReverseImpl<I>>,
+    ) -> Tensor<Reverse<T>, E, ReverseImpl<I>>,
 {
     let (primal, tangents) = value_and_gradn(|s| f(&s[0], &s[1]), &[at0, at1]);
     let mut dr_iter = tangents.into_iter();
@@ -406,43 +391,55 @@ where
 
 /// Compute the gradient of a function at the given primal.
 #[allow(clippy::missing_panics_doc)]
-pub fn grad1<T: Diffable + Clone + 'static, F>(f: F, at: &T) -> T
+pub fn grad1<T: Clone, E: Num, I: 'static + Diffable<Repr<E> = T>, F>(
+    f: F,
+    at: &Tensor<T, E, I>,
+) -> Tensor<T, E, I>
 where
-    T::Elem: Float,
-    for<'a> F: Fn(&'a Reverse<T>) -> Reverse<T>,
+    for<'a> F:
+        Fn(&'a Tensor<Reverse<T>, E, ReverseImpl<I>>) -> Tensor<Reverse<T>, E, ReverseImpl<I>>,
 {
     value_and_grad1(f, at).1
 }
 
 /// Compute the gradient of a function at the given primals.
 #[allow(clippy::missing_panics_doc)]
-pub fn grad2<T: Diffable + Clone + 'static, F>(f: F, at0: &T, at1: &T) -> (T, T)
+pub fn grad2<T: Clone, E: Num, I: 'static + Diffable<Repr<E> = T>, F>(
+    f: F,
+    at0: &Tensor<T, E, I>,
+    at1: &Tensor<T, E, I>,
+) -> (Tensor<T, E, I>, Tensor<T, E, I>)
 where
-    T::Elem: Float,
-    for<'a> F: Fn(&'a Reverse<T>, &'a Reverse<T>) -> Reverse<T>,
+    for<'a> F: Fn(
+        &'a Tensor<Reverse<T>, E, ReverseImpl<I>>,
+        &'a Tensor<Reverse<T>, E, ReverseImpl<I>>,
+    ) -> Tensor<Reverse<T>, E, ReverseImpl<I>>,
 {
     value_and_grad2(f, at0, at1).1
 }
 
 /// Jacobian of `f` evaluated row-by-row at `at` using reverse-mode AD.
 #[allow(clippy::missing_panics_doc)]
-pub fn jacrev<T: Diffable + Clone + 'static, F>(f: F, at: &T) -> T
+pub fn jacrev<T: Clone, E: Num, I: 'static + Diffable<Repr<E> = T>, F>(
+    f: F,
+    at: &Tensor<T, E, I>,
+) -> Tensor<T, E, I>
 where
-    T::Elem: Float,
-    for<'a> F: Fn(&'a Reverse<T>) -> Reverse<T>,
+    for<'a> F:
+        Fn(&'a Tensor<Reverse<T>, E, ReverseImpl<I>>) -> Tensor<Reverse<T>, E, ReverseImpl<I>>,
 {
     let (primal, pullback) = vjpn(|s| f(&s[0]), &[at]);
 
     let mut s = vec![primal.shape().size()];
     s.extend(primal.shape());
-    let i = T::eye(primal.shape().size()).reshape(&s);
+    let i = Tensor::<T, E, I>::eye(primal.shape().size()).reshape(&s);
 
-    let mut tangents: Vec<T> = Vec::with_capacity(i.shape()[0]);
+    let mut tangents: Vec<Tensor<T, E, I>> = Vec::with_capacity(i.shape()[0]);
     for row_idx in 0..i.shape()[0] {
         let row = i.at(row_idx);
         let row_tangent = pullback.call(&row).into_iter().next().unwrap();
         tangents.push(row_tangent);
     }
     let t_refs: Vec<_> = tangents.iter().collect();
-    T::stack(&t_refs[..], 0)
+    Tensor::stack(&t_refs[..], 0)
 }
