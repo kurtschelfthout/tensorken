@@ -1,4 +1,7 @@
-use crate::RawTensor;
+use crate::{
+    num::{Bool, Float, Num},
+    RawTensor,
+};
 
 pub(crate) struct StringImpl;
 
@@ -6,11 +9,11 @@ pub(crate) struct StringImpl;
 impl RawTensor for StringImpl {
     type Repr<E: Clone> = String;
 
-    fn exp<E: crate::num::Float>(t: &Self::Repr<E>) -> Self::Repr<E> {
+    fn exp<E: Float>(t: &Self::Repr<E>) -> Self::Repr<E> {
         format!("{t}.exp()")
     }
 
-    fn log<E: crate::num::Float>(t: &Self::Repr<E>) -> Self::Repr<E> {
+    fn log<E: Float>(t: &Self::Repr<E>) -> Self::Repr<E> {
         format!("{t}.log()")
     }
 
@@ -18,23 +21,23 @@ impl RawTensor for StringImpl {
         format!("{t}.cast()")
     }
 
-    fn add<E: crate::num::Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
+    fn add<E: Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
         format!("({lhs} + {rhs})")
     }
 
-    fn sub<E: crate::num::Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
+    fn sub<E: Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
         format!("({lhs} - {rhs})")
     }
 
-    fn mul<E: crate::num::Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
+    fn mul<E: Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
         format!("({lhs} * {rhs})")
     }
 
-    fn div<E: crate::num::Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
+    fn div<E: Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
         format!("({lhs} / {rhs})")
     }
 
-    fn pow<E: crate::num::Float>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
+    fn pow<E: Float>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
         format!("{lhs}.pow({rhs})")
     }
 
@@ -42,11 +45,11 @@ impl RawTensor for StringImpl {
         format!("{lhs}.eq({rhs})")
     }
 
-    fn sum<E: crate::num::Num>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E> {
+    fn sum<E: Num>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E> {
         format!("{t}.sum({axes:?})")
     }
 
-    fn max<E: crate::num::ZeroOne>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E> {
+    fn max<E: Bool>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E> {
         format!("{t}.max({axes:?})")
     }
 
@@ -62,7 +65,7 @@ impl RawTensor for StringImpl {
         format!("{t}.expand({shape:?})")
     }
 
-    fn pad<E: crate::num::ZeroOne>(t: &Self::Repr<E>, padding: &[(usize, usize)]) -> Self::Repr<E> {
+    fn pad<E: Bool>(t: &Self::Repr<E>, padding: &[(usize, usize)]) -> Self::Repr<E> {
         format!("{t}.pad({padding:?})")
     }
 
@@ -79,7 +82,7 @@ impl RawTensor for StringImpl {
         panic!("shape() not implemented for String.")
     }
 
-    fn fused_multiply_add<E: crate::num::Num>(
+    fn fused_multiply_add<E: Num>(
         lhs: &Self::Repr<E>,
         rhs: &Self::Repr<E>,
         axes: &[usize],

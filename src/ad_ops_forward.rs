@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use crate::{
     ad_ops::{UnaryDiffOp, UnaryOp},
-    num::{Elem, Num, ZeroOne},
+    num::{Bool, Elem, Num},
     Diffable,
 };
 
@@ -91,7 +91,7 @@ impl<T: Clone, E: Elem, I: Diffable<Repr<E> = T>> UnaryDiffOp<T> for PermuteOp<E
 
 pub(crate) struct PadOp<E, I>(Vec<(usize, usize)>, PhantomData<(E, I)>);
 
-impl<T: Clone, E: ZeroOne, I: Diffable<Repr<E> = T>> UnaryOp<T> for PadOp<E, I> {
+impl<T: Clone, E: Bool, I: Diffable<Repr<E> = T>> UnaryOp<T> for PadOp<E, I> {
     type Args = [(usize, usize)];
     fn f(a: &T, padding: &Self::Args) -> (T, Self) {
         let r = I::pad::<E>(a, padding);
@@ -99,7 +99,7 @@ impl<T: Clone, E: ZeroOne, I: Diffable<Repr<E> = T>> UnaryOp<T> for PadOp<E, I> 
     }
 }
 
-impl<T: Clone, E: ZeroOne, I: Diffable<Repr<E> = T>> UnaryDiffOp<T> for PadOp<E, I> {
+impl<T: Clone, E: Bool, I: Diffable<Repr<E> = T>> UnaryDiffOp<T> for PadOp<E, I> {
     fn dfda(&self, d: &T) -> T {
         I::pad::<E>(d, &self.0)
     }
@@ -107,7 +107,7 @@ impl<T: Clone, E: ZeroOne, I: Diffable<Repr<E> = T>> UnaryDiffOp<T> for PadOp<E,
 
 pub(crate) struct CropOp<E, I>(Vec<(usize, usize)>, PhantomData<(E, I)>);
 
-impl<T: Clone, E: ZeroOne, I: Diffable<Repr<E> = T>> UnaryOp<T> for CropOp<E, I> {
+impl<T: Clone, E: Bool, I: Diffable<Repr<E> = T>> UnaryOp<T> for CropOp<E, I> {
     type Args = [(usize, usize)];
     fn f(a: &T, limits: &Self::Args) -> (T, Self) {
         let r = I::crop::<E>(a, limits);
@@ -115,7 +115,7 @@ impl<T: Clone, E: ZeroOne, I: Diffable<Repr<E> = T>> UnaryOp<T> for CropOp<E, I>
     }
 }
 
-impl<T: Clone, E: ZeroOne, I: Diffable<Repr<E> = T>> UnaryDiffOp<T> for CropOp<E, I> {
+impl<T: Clone, E: Bool, I: Diffable<Repr<E> = T>> UnaryDiffOp<T> for CropOp<E, I> {
     fn dfda(&self, d: &T) -> T {
         I::crop::<E>(d, &self.0)
     }

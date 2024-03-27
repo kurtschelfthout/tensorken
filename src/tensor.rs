@@ -1,4 +1,5 @@
 use std::{
+    fmt::Debug,
     marker::PhantomData,
     ops::{Add, Div, Mul, Neg, Sub},
 };
@@ -7,7 +8,7 @@ use rand::Rng;
 use rand_distr::Distribution;
 
 use crate::{
-    num::{Elem, Float, Num, ZeroOne},
+    num::{Bool, Elem, Float, Num},
     raw_tensor::{RawTensor, RealizedRawTensor},
     raw_tensor_cpu::{CpuRawTensor, CpuRawTensorImpl},
     tensor_mut::TensorMut,
@@ -70,7 +71,7 @@ impl<I: RawTensor> Diffable for I {
         I::expand(t, shape)
     }
 
-    fn pad<E: ZeroOne>(t: &Self::Repr<E>, padding: &[(usize, usize)]) -> Self::Repr<E> {
+    fn pad<E: Bool>(t: &Self::Repr<E>, padding: &[(usize, usize)]) -> Self::Repr<E> {
         I::pad(t, padding)
     }
 
@@ -160,7 +161,7 @@ impl<T, E: Num, I: Diffable<Repr<E> = T>> Tensor<T, E, I> {
     }
 }
 
-impl<T, E: ZeroOne, I: Diffable<Repr<E> = T>> Tensor<T, E, I> {
+impl<T, E: Bool, I: Diffable<Repr<E> = T>> Tensor<T, E, I> {
     #[must_use]
     pub fn pad(&self, padding: &[(usize, usize)]) -> Self {
         Self(I::pad::<E>(&self.0, padding), PhantomData)
@@ -350,14 +351,14 @@ impl<T, E: Elem, I: Diffable<Repr<E> = T>> Tensor<T, E, I> {
         let mut data = Vec::with_capacity(num_usize);
         let step = if num_usize > 1 {
             let nf: E = num.into();
-            (end - start) / (nf - E::ONE)
+            (end - start.clone()) / (nf - E::ONE)
         } else {
             E::ZERO
         };
         let mut point = start;
         for _i in 0..num_usize {
-            data.push(point);
-            point = point + step;
+            data.push(point.clone());
+            point = point + step.clone();
         }
         Self::new(&[num_usize], &data)
     }
@@ -736,20 +737,24 @@ impl<T, E: Clone, I: RealizedRawTensor<Repr<E> = T>> Tensor<T, E, I> {
         self.ravel()[0].clone()
     }
 
-    /// Returns a new tensor with a new axis inserted at the front of size `num_classes`.
+    /// Returns a new tensor with a new axis inserted at the back, of size `num_classes`.
     /// All elements are assumed to be integers in the range [0, `num_classes`).
     /// The new axis is used as a one-hot encoding of the elements.
+    ///
+    /// # Panics
+    /// If any element can't be converted to a usize.
     #[must_use]
-    pub fn one_hot<N: Into<usize>>(&self, num_classes: N) -> Self
+    pub fn one_hot<N>(&self, num_classes: N) -> Self
     where
+        usize: From<N>,
         E: Num,
     {
         let nc: usize = num_classes.into();
         let mut data = vec![E::ZERO; self.shape().size() * nc];
-        for (i, &x) in self.ravel().iter().enumerate() {
+        for (i, x) in self.ravel().iter().enumerate() {
             data[i * nc + x.to_usize()] = E::ONE;
         }
-        let mut new_shape = vec![];
+        let mut new_shape = Vec::with_capacity(self.shape().ndims() + 1);
         new_shape.extend(self.shape());
         new_shape.push(nc);
         Self::new(&new_shape, &data)

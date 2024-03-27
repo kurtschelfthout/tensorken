@@ -3,7 +3,7 @@ use std::{
     ops::{Range, RangeFrom, RangeFull, RangeTo},
 };
 
-use crate::{num::ZeroOne, Diffable, Tensor};
+use crate::{num::Bool, Diffable, Tensor};
 
 /// A variation of `Index` and `IndexMut`, that returns the output
 /// by value. Sadly, we can't use the standard Index trait, because
@@ -18,7 +18,7 @@ pub trait IndexValue<Idx> {
     fn at(&self, index: Idx) -> Self::Output;
 }
 
-impl<T, E: ZeroOne, I: Diffable<Repr<E> = T>> IndexValue<usize> for Tensor<T, E, I> {
+impl<T, E: Bool, I: Diffable<Repr<E> = T>> IndexValue<usize> for Tensor<T, E, I> {
     type Output = Self;
 
     /// Slices the tensor at the given index, in the first dimension, and removes the dimension.
@@ -35,7 +35,7 @@ impl<T, E: ZeroOne, I: Diffable<Repr<E> = T>> IndexValue<usize> for Tensor<T, E,
     }
 }
 
-impl<T, E: ZeroOne, I: Diffable<Repr<E> = T>, const N: usize> IndexValue<&[usize; N]>
+impl<T, E: Bool, I: Diffable<Repr<E> = T>, const N: usize> IndexValue<&[usize; N]>
     for Tensor<T, E, I>
 {
     type Output = Self;
@@ -179,7 +179,7 @@ where
     sl3(index1, index2, index3).idx(index4)
 }
 
-impl<E: ZeroOne, I: Diffable> IndexValue<Slice> for Tensor<I::Repr<E>, E, I> {
+impl<E: Bool, I: Diffable> IndexValue<Slice> for Tensor<I::Repr<E>, E, I> {
     type Output = Self;
 
     /// Slice the tensor.

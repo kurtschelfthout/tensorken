@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::ops::Add;
 use std::sync::Arc;
 
-use crate::num::{Elem, Float, Num, ZeroOne};
+use crate::num::{Bool, Elem, Float, Num};
 use crate::raw_tensor::{RawTensor, RealizedRawTensor};
 use crate::shape::Shape;
 use crate::shape_strider::{ShapeStrider, TensorIndexIterator};
@@ -249,7 +249,7 @@ impl RawTensor for CpuRawTensorImpl {
         t.reduce(E::ZERO, Add::add, axes)
     }
 
-    fn max<E: ZeroOne>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E> {
+    fn max<E: Bool>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E> {
         t.reduce(E::MIN, |x, y| if x > y { x } else { y }, axes)
     }
 
@@ -278,14 +278,14 @@ impl RawTensor for CpuRawTensorImpl {
         t.with_strider(strider)
     }
 
-    fn pad<E: ZeroOne>(t: &Self::Repr<E>, padding: &[(usize, usize)]) -> Self::Repr<E> {
+    fn pad<E: Bool>(t: &Self::Repr<E>, padding: &[(usize, usize)]) -> Self::Repr<E> {
         t.strider.validate_can_pad(padding).unwrap();
 
         let strider = t.strider.pad(padding);
         let mut buffer = vec![E::ZERO; strider.size()];
         for mut index in t.strider.iter_tensor_index() {
             // first get the value in the unpadded tensor
-            let value = t.buffer.data[t.strider.buffer_index(&index)];
+            let value = t.buffer.data[t.strider.buffer_index(&index)].clone();
             // change the index to take padding into account
             for (i, (l, _)) in index.iter_mut().zip(padding) {
                 *i += l;

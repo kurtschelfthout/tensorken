@@ -1,4 +1,4 @@
-use crate::num::{Elem, Float, Num, ZeroOne};
+use crate::num::{Bool, Elem, Float, Num};
 
 /// Counterpart for tinygrad's "low-level" operations (ops.py).
 /// Represents the operations that a tensor implementation, be it on CPU or GPU, must implement.
@@ -48,7 +48,7 @@ pub trait RawTensor {
     fn sum<E: Num>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E>;
 
     /// Find the maximum of elements along the given axes.
-    fn max<E: ZeroOne>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E>;
+    fn max<E: Bool>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E>;
 
     // movement ops
     // ------------
@@ -72,7 +72,7 @@ pub trait RawTensor {
     /// Pad the tensor with zeros according to the given padding.
     /// Like numpy's `pad`, but simpler - needs as many elements in `padding` as there
     /// are dimensions in the tensor.
-    fn pad<E: ZeroOne>(t: &Self::Repr<E>, padding: &[(usize, usize)]) -> Self::Repr<E>;
+    fn pad<E: Bool>(t: &Self::Repr<E>, padding: &[(usize, usize)]) -> Self::Repr<E>;
 
     /// Crop the tensor according to the given limits - taking a contiguous slice in each axis.
     /// Needs as many limits as there are dimensions in the tensor.

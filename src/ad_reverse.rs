@@ -7,7 +7,7 @@ use crate::{
     },
     ad_ops_reverse::{CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
     ad_trace::{Trace, TracedOp},
-    num::{Elem, Float, Num, ZeroOne},
+    num::{Bool, Elem, Float, Num},
     Diffable, IndexValue, Shape, Tensor,
 };
 
@@ -154,11 +154,11 @@ impl<I: 'static + Diffable> Diffable for ReverseImpl<I> {
         t.unary::<ExpandOp<E, I>, _>(shape)
     }
 
-    fn pad<E: ZeroOne>(t: &Self::Repr<E>, padding: &[(usize, usize)]) -> Self::Repr<E> {
+    fn pad<E: Bool>(t: &Self::Repr<E>, padding: &[(usize, usize)]) -> Self::Repr<E> {
         t.unary::<PadOp<E, I>, _>(padding)
     }
 
-    fn crop<E: ZeroOne>(t: &Self::Repr<E>, limits: &[(usize, usize)]) -> Self::Repr<E> {
+    fn crop<E: Bool>(t: &Self::Repr<E>, limits: &[(usize, usize)]) -> Self::Repr<E> {
         t.unary::<CropOp<E, I>, _>(limits)
     }
 

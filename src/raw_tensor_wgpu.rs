@@ -8,7 +8,7 @@ use std::{
 use wgpu::util::DeviceExt;
 
 use crate::{
-    num::{Elem, Float, Num, ZeroOne},
+    num::{Bool, Elem, Float, Num},
     raw_tensor::{RawTensor, RealizedRawTensor},
     shape::Shape,
     shape_strider::ShapeStrider,
@@ -708,7 +708,7 @@ impl RawTensor for WgpuRawTensorImpl {
         t.reduce(axes, "sum")
     }
 
-    fn max<E: ZeroOne>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E> {
+    fn max<E: Bool>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E> {
         t.reduce(axes, "max")
     }
 
@@ -735,7 +735,7 @@ impl RawTensor for WgpuRawTensorImpl {
         t.with_strider(strider)
     }
 
-    fn pad<E: ZeroOne>(t: &Self::Repr<E>, padding: &[(usize, usize)]) -> Self::Repr<E> {
+    fn pad<E: Bool>(t: &Self::Repr<E>, padding: &[(usize, usize)]) -> Self::Repr<E> {
         t.strider.validate_can_pad(padding).unwrap();
 
         t.pad(padding)

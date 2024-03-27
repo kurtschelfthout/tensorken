@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use crate::{
-    num::{Elem, Float, Num, ZeroOne},
+    num::{Bool, Elem, Float, Num},
     raw_tensor::RealizedRawTensor,
     RawTensor,
 };
@@ -124,7 +124,7 @@ impl<I: RawTensor> RawTensor for FuseImpl<I> {
         }
     }
 
-    fn max<E: ZeroOne>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E> {
+    fn max<E: Bool>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E> {
         let vec = axes.to_vec();
         unary_no_fuse(t, move |x| I::max(x, &vec))
     }
@@ -144,7 +144,7 @@ impl<I: RawTensor> RawTensor for FuseImpl<I> {
         unary_no_fuse(t, move |x| I::expand(x, &vec))
     }
 
-    fn pad<E: ZeroOne>(t: &Self::Repr<E>, padding: &[(usize, usize)]) -> Self::Repr<E> {
+    fn pad<E: Bool>(t: &Self::Repr<E>, padding: &[(usize, usize)]) -> Self::Repr<E> {
         let vec = padding.to_vec();
         unary_no_fuse(t, move |x| I::pad(x, &vec))
     }

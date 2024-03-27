@@ -1,5 +1,5 @@
 use crate::{
-    num::{Elem, Float, Num, ZeroOne},
+    num::{Bool, Elem, Float, Num},
     Shape,
 };
 
@@ -48,9 +48,9 @@ pub trait Diffable {
 
     fn expand<E: Num>(t: &Self::Repr<E>, shape: &[usize]) -> Self::Repr<E>;
 
-    fn pad<E: ZeroOne>(t: &Self::Repr<E>, padding: &[(usize, usize)]) -> Self::Repr<E>;
+    fn pad<E: Bool>(t: &Self::Repr<E>, padding: &[(usize, usize)]) -> Self::Repr<E>;
 
-    fn crop<E: ZeroOne>(t: &Self::Repr<E>, limits: &[(usize, usize)]) -> Self::Repr<E>;
+    fn crop<E: Bool>(t: &Self::Repr<E>, limits: &[(usize, usize)]) -> Self::Repr<E>;
 
     /// Create a new tensor with the given shape and elements.
     /// The order of the elements is in increasing order of the last axis, then the second last, etc.

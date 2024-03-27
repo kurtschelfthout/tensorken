@@ -1,6 +1,6 @@
 use tensorken::{
     jacrev,
-    num::{Elem, Float, Num, ZeroOne},
+    num::{Bool, Elem, Float, Num},
     value_and_grad1, value_and_grad2, vjpn, Cpu32, Diff, RealizedRawTensor, Shape, Tensor,
     TensorRev, Tensorken, Wgpu32,
 };
@@ -470,7 +470,7 @@ where
 
 fn f_crop<T: Diff>(a: &Tensorken<T>) -> Tensorken<T>
 where
-    T::E: ZeroOne,
+    T::E: Bool,
 {
     a.crop(&[(0, 1), (1, 2)])
 }
@@ -501,7 +501,7 @@ where
 
 fn f_pad<T: Diff>(a: &Tensorken<T>) -> Tensorken<T>
 where
-    T::E: ZeroOne,
+    T::E: Bool,
 {
     a.pad(&[(1, 2), (3, 4)])
 }

@@ -6,7 +6,7 @@ use std::{
 use prettytable::{format, Cell, Table};
 
 use crate::{
-    num::ZeroOne, raw_tensor_cpu::CpuRawTensorImpl, CpuRawTensor, IndexValue, RealizedRawTensor,
+    num::Bool, raw_tensor_cpu::CpuRawTensorImpl, CpuRawTensor, IndexValue, RealizedRawTensor,
     Tensor,
 };
 
@@ -79,7 +79,7 @@ fn get_single_line_format() -> &'static format::TableFormat {
 //     }
 // }
 
-fn create_table<E: ZeroOne + Display>(
+fn create_table<E: Bool + Display>(
     tensor: &Tensor<CpuRawTensor<E>, E, CpuRawTensorImpl>,
     table: &mut Table,
     precision: Option<usize>,
@@ -120,7 +120,7 @@ fn create_table<E: ZeroOne + Display>(
     }
 }
 
-impl<T, E: ZeroOne + Display, I: RealizedRawTensor<Repr<E> = T>> Display for Tensor<T, E, I> {
+impl<T, E: Bool + Display, I: RealizedRawTensor<Repr<E> = T>> Display for Tensor<T, E, I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let cpu = if self.shape().len() % 2 == 0 {
             self.to_cpu()

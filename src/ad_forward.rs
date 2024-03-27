@@ -6,7 +6,7 @@ use crate::{
         UnaryOp,
     },
     ad_ops_forward::{CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
-    num::{Elem, Float, Num, ZeroOne},
+    num::{Bool, Elem, Float, Num},
     sl2, Axes, Diffable, IndexValue, Shape, Tensor,
 };
 
@@ -128,11 +128,11 @@ impl<I: Diffable> Diffable for ForwardImpl<I> {
         t.unary::<ExpandOp<E, I>, _>(shape)
     }
 
-    fn pad<E: ZeroOne>(t: &Self::Repr<E>, padding: &[(usize, usize)]) -> Self::Repr<E> {
+    fn pad<E: Bool>(t: &Self::Repr<E>, padding: &[(usize, usize)]) -> Self::Repr<E> {
         t.unary::<PadOp<E, I>, _>(padding)
     }
 
-    fn crop<E: ZeroOne>(t: &Self::Repr<E>, limits: &[(usize, usize)]) -> Self::Repr<E> {
+    fn crop<E: Bool>(t: &Self::Repr<E>, limits: &[(usize, usize)]) -> Self::Repr<E> {
         t.unary::<CropOp<E, I>, _>(limits)
     }
 

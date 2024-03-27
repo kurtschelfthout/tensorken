@@ -2,14 +2,21 @@ use std::{
     borrow::Cow,
     ops::{Add, Div, Mul, Sub},
 };
-
+/// The basic requirements for anything stored in a tensor.
+/// This is all WGPU-specific for the moment. It would be better
+/// to put these requirements on `WgpuRawTensor`, but that's not easily
+/// possible with the GAT-based `RawTensor` trait.
 pub trait Elem: 'static + Clone
 where
     Self: Sized,
 {
+    /// The name of the corresponding WGSL type.
     const WGPU_ELEMENT_NAME: &'static str;
+    /// The size in bytes of the corresponding WGSL type.
     const WGPU_ELEMENT_SIZE: usize = std::mem::size_of::<Self>();
+    /// Convert a byte buffer to a vector of elements. For loading from the GPU.
     fn from_buffer(array: &[u8]) -> Vec<Self>;
+    /// Convert a slice of elements to a byte buffer. For storage to the GPU.
     fn to_buffer(array: &[Self]) -> Cow<'_, [u8]>;
 }
 
@@ -39,8 +46,8 @@ impl Elem for i32 {
 
 // for bool, I could not get copying to a array<bool> buffer to work.
 // So we need to pick a different type on the GPU side. Since most usage
-// right now is eq followed cast to f32 in the diffable operation for max,
-// I'm picking f32 so that usage remains a no-op.
+// is `eq`` followed by `cast`` to f32 in the AD operation for max,
+// I'm picking f32 so that particular usage remains a no-op.
 impl Elem for bool {
     const WGPU_ELEMENT_NAME: &'static str = "f32";
     const WGPU_ELEMENT_SIZE: usize = 4;
@@ -55,8 +62,9 @@ impl Elem for bool {
     }
 }
 
-/// A number that has both zero and one values.
-pub trait ZeroOne: 'static + Copy + PartialEq + PartialOrd + Elem {
+/// A number that has zero and one values, a minimum value, can be compared,
+/// and has addition and multiplication.
+pub trait Bool: 'static + Elem + PartialEq + PartialOrd {
     /// The zero value.
     const ZERO: Self;
     /// The one value.
@@ -65,21 +73,21 @@ pub trait ZeroOne: 'static + Copy + PartialEq + PartialOrd + Elem {
     const MIN: Self;
 }
 
-/// A trait with basic requirements of numbers stored in tensors.
-/// Currently only f32 is supported.
+/// In addition to `ZeroOne`, support arithmetic operations.
 pub trait Num:
-    ZeroOne
+    Bool
     + Add<Self, Output = Self>
     + Sub<Self, Output = Self>
     + Mul<Self, Output = Self>
     + Div<Self, Output = Self>
 {
     /// Convert to usize.
-    /// This is really only so Tensor can implement `one_hot`.
-    /// TODO: remove once we have int tensors.
-    fn to_usize(self) -> usize;
+    /// This is only so Tensor can implement `one_hot`.
+    /// TODO: remove once we have i16 tensors.
+    fn to_usize(&self) -> usize;
 }
 
+/// In addition to `Num`, support floating point operations.
 pub trait Float: Num {
     /// Apply exponential function.
     #[must_use]
@@ -92,7 +100,7 @@ pub trait Float: Num {
     fn powf(self, exponent: Self) -> Self;
 }
 
-impl ZeroOne for f32 {
+impl Bool for f32 {
     const ZERO: Self = 0.0;
     const ONE: Self = 1.0;
     const MIN: Self = f32::MIN;
@@ -100,8 +108,8 @@ impl ZeroOne for f32 {
 
 impl Num for f32 {
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    fn to_usize(self) -> usize {
-        self as _
+    fn to_usize(&self) -> usize {
+        *self as _
     }
 }
 
@@ -119,7 +127,7 @@ impl Float for f32 {
     }
 }
 
-impl ZeroOne for i32 {
+impl Bool for i32 {
     const ZERO: Self = 0;
     const ONE: Self = 1;
     const MIN: Self = i32::MIN;
@@ -127,12 +135,12 @@ impl ZeroOne for i32 {
 
 impl Num for i32 {
     #[allow(clippy::cast_sign_loss)]
-    fn to_usize(self) -> usize {
-        self as _
+    fn to_usize(&self) -> usize {
+        *self as _
     }
 }
 
-impl ZeroOne for bool {
+impl Bool for bool {
     const ZERO: Self = false;
     const ONE: Self = true;
     const MIN: Self = false;
