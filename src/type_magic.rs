@@ -1,17 +1,32 @@
 use crate::{
     CpuRawTensor, CpuRawTensorImpl, Diffable, Forward, ForwardImpl, Fuse, FuseImpl, Reverse,
-    ReverseImpl, Tensor, WgpuRawTensor, WgpuRawTensorImpl,
+    ReverseImpl, ShapeStrider, StringImpl, Tensor, WgpuRawTensor, WgpuRawTensorImpl,
 };
 
+/// A type alias for a tensor on the CPU with element type `E`.
 pub type Cpu<E> = Tensor<Fuse<CpuRawTensor<E>>, E, FuseImpl<CpuRawTensorImpl>>;
+
+/// A type alias for a tensor on the CPU with element type `f32`.
 pub type Cpu32 = Cpu<f32>;
+
+/// A type alias for a tensor on the CPU with element type `i32`.
 pub type CpuI32 = Cpu<i32>;
+
+/// A type alias for a tensor on the CPU with element type `bool`.
 pub type CpuBool = Cpu<bool>;
 
+/// A type alias for a tensor on the GPU with element type `E`.
 pub type Wgpu<E> = Tensor<Fuse<WgpuRawTensor<'static, E>>, E, FuseImpl<WgpuRawTensorImpl>>;
+/// A type alias for a tensor on the GPU with element type `f32`.
 pub type Wgpu32 = Wgpu<f32>;
+/// A type alias for a tensor on the GPU with element type `i32`.
 pub type WgpuI32 = Wgpu<i32>;
+/// A type alias for a tensor on the GPU with element type `bool`.
 pub type WgpuBool = Wgpu<bool>;
+
+/// A type alias for a tensor that is abstractly executed. It tracks its shape, strides, and offset,
+/// and the operations that are applied to it as a string.
+pub type Sym = Tensor<Fuse<(ShapeStrider, String)>, i32, FuseImpl<StringImpl>>;
 
 impl From<&Wgpu32> for Cpu32 {
     fn from(wgpu: &Wgpu32) -> Self {

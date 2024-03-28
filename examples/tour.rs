@@ -1,4 +1,4 @@
-use tensorken::{Cpu32, CpuBool, CpuI32, IndexValue};
+use tensorken::{Cpu32, CpuBool, CpuI32, IndexValue, Sym};
 
 /// A macro to print the result of an expression and the expression itself.
 macro_rules! do_example {
@@ -119,5 +119,10 @@ fn main() {
     // TODO: make at least eq work
     // do_example!(tb1.max(&[0]));
     do_example!(tb2.reshape(&[4]));
-    // do_example!(tb1.eq(tb2));
+    //do_example!(tb1.eq(tb2));
+
+    let ti1 = &Sym::new(&[2, 2], &[0, 1, 2, 3]);
+    let ti2 = &Sym::new(&[2, 2], &[4, 5, 6, 7]);
+    println!("{:?}", ti1 + ti2);
+    println!("{:?}", ti1.matmul(ti2));
 }

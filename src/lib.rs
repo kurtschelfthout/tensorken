@@ -35,12 +35,14 @@ pub use indexing::{sl, sl1, sl2, sl3, sl4, IndexValue, Slice, SliceIdx};
 pub use raw_tensor::{RawTensor, RealizedRawTensor};
 pub use raw_tensor_cpu::{CpuRawTensor, CpuRawTensorImpl};
 pub use raw_tensor_fuse::{Fuse, FuseImpl};
+pub use raw_tensor_string::StringImpl;
 pub use raw_tensor_wgpu::{WgpuRawTensor, WgpuRawTensorImpl};
 pub use shape::Shape;
+pub use shape_strider::ShapeStrider;
 pub use tensor::{Axes, Tensor};
 pub use type_magic::{
-    Cpu, Cpu32, CpuBool, CpuI32, Diff, TensorFwd, TensorRev, Tensorken, Wgpu, Wgpu32, WgpuBool,
-    WgpuI32,
+    Cpu, Cpu32, CpuBool, CpuI32, Diff, Sym, TensorFwd, TensorRev, Tensorken, Wgpu, Wgpu32,
+    WgpuBool, WgpuI32,
 };
 
 // TODO of general interest

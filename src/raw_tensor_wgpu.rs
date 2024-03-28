@@ -417,7 +417,7 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
             Self::counts_n_sizes(output_strider.size());
 
         let output_buffer = self.make_output_buffer(output_strider.size(), operation);
-        // TODO
+
         let compute_pipeline = self.pipeline_for(operation, E::WGPU_ELEMENT_NAME, workgroup_size);
         let strides_and_shapes =
             self.get_strides_and_shapes_buffer(chunk_size, None, &output_strider, None, None);

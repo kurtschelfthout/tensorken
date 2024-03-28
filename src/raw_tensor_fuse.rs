@@ -191,23 +191,25 @@ impl<I: RealizedRawTensor> RealizedRawTensor for FuseImpl<I> {
 #[cfg(test)]
 mod tests {
 
+    use crate::shape_strider::ShapeStrider;
+
     use super::*;
 
     type I = FuseImpl<crate::raw_tensor_string::StringImpl>;
 
     #[test]
     fn test_mul_sum_fuses() {
-        let t1: Fuse<String> = I::new(&[2, 2], &[1., 2., 3., 4.]);
-        let t2: Fuse<String> = I::new(&[2, 2], &[5., 6., 7., 8.]);
+        let t1: Fuse<(ShapeStrider, String)> = I::new(&[2, 2], &[1., 2., 3., 4.]);
+        let t2: Fuse<(ShapeStrider, String)> = I::new(&[2, 2], &[5., 6., 7., 8.]);
         let actual = I::sum::<f32>(&I::mul::<f32>(&t1, &t2), &[0]).run();
         let expected = I::fused_multiply_add::<f32>(&t1, &t2, &[0]).run();
-        assert_eq!(expected, actual);
+        assert_eq!(expected.1, actual.1);
     }
 
     #[test]
     fn test_complicated() {
-        let t1: Fuse<String> = I::new(&[2, 2], &[1., 2., 3., 4.]);
-        let t2: Fuse<String> = I::new(&[2, 2], &[5., 6., 7., 8.]);
+        let t1: Fuse<(ShapeStrider, String)> = I::new(&[2, 2], &[1., 2., 3., 4.]);
+        let t2: Fuse<(ShapeStrider, String)> = I::new(&[2, 2], &[5., 6., 7., 8.]);
         let actual = I::sum::<f32>(
             &I::mul::<f32>(&I::sum::<f32>(&t1, &[0]), &I::sum::<f32>(&t2, &[0])),
             &[1],
@@ -219,6 +221,6 @@ mod tests {
             &[1],
         )
         .run();
-        assert_eq!(expected, actual);
+        assert_eq!(expected.1, actual.1);
     }
 }

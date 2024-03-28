@@ -10,7 +10,7 @@ impl Shape for ShapeStrider {
 /// To figure out the mapping, it uses a shape and a set of strides.
 /// The strides indicate how many elements to skip in the buffer to reach the next element along each dimension.
 #[derive(Debug, Clone)]
-pub(crate) struct ShapeStrider {
+pub struct ShapeStrider {
     shape: Vec<usize>,
     strides: Vec<usize>,
     offset: usize,
