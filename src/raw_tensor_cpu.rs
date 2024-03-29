@@ -3,7 +3,7 @@ use std::ops::Add;
 use std::sync::Arc;
 
 use crate::num::{Bool, CastFrom, Elem, Float, Num};
-use crate::raw_tensor::{RawTensor, RealizedRawTensor};
+use crate::raw_tensor::{RawTensor, ToCpu};
 use crate::shape::Shape;
 use crate::shape_strider::{ShapeStrider, TensorIndexIterator};
 
@@ -322,14 +322,14 @@ impl RawTensor for CpuRawTensorImpl {
     ) -> Self::Repr<E> {
         lhs.fused_zip_reduce(rhs, axes, E::ZERO, |acc, x, y| acc + x * y)
     }
-}
-
-impl RealizedRawTensor for CpuRawTensorImpl {
-    fn to_cpu<E: Clone>(t: &Self::Repr<E>) -> crate::CpuRawTensor<E> {
-        t.clone()
-    }
 
     fn realize<E: Clone>(t: &Self::Repr<E>) -> Self::Repr<E> {
+        t.clone()
+    }
+}
+
+impl ToCpu for CpuRawTensorImpl {
+    fn to_cpu<E: Clone>(t: &Self::Repr<E>) -> crate::CpuRawTensor<E> {
         t.clone()
     }
 }

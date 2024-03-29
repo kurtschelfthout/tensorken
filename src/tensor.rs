@@ -9,7 +9,7 @@ use rand_distr::Distribution;
 
 use crate::{
     num::{Bool, CastFrom, CastTo, Elem, Float, Num},
-    raw_tensor::{RawTensor, RealizedRawTensor},
+    raw_tensor::{RawTensor, ToCpu},
     raw_tensor_cpu::{CpuRawTensor, CpuRawTensorImpl},
     tensor_mut::TensorMut,
     Diffable, Forward, ForwardImpl, Reverse, ReverseImpl, Shape,
@@ -696,7 +696,7 @@ impl<T, E: Elem, I: Diffable<Repr<E> = T>> Tensor<T, E, I> {
     }
 }
 
-impl<T, E: Clone, I: RealizedRawTensor<Repr<E> = T>> Tensor<T, E, I> {
+impl<T, E: Clone, I: ToCpu<Repr<E> = T>> Tensor<T, E, I> {
     /// Create a new mutable tensor with self's shape and elements.
     pub fn to_tensor_mut(&self) -> TensorMut<E>
     where

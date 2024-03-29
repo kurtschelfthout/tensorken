@@ -25,6 +25,10 @@ impl RawTensor for StringImpl {
         (s.clone(), format!("{t}.cast()"))
     }
 
+    fn realize<E: Clone>(t: &Self::Repr<E>) -> Self::Repr<E> {
+        t.clone()
+    }
+
     fn add<E: Num>((ls, lt): &Self::Repr<E>, (rs, rt): &Self::Repr<E>) -> Self::Repr<E> {
         ls.validate_can_zip(rs).unwrap();
         (ls.clone(), format!("({lt} + {rt})"))

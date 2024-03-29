@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use crate::{
     num::{Bool, CastFrom, Elem, Float, Num},
-    raw_tensor::RealizedRawTensor,
+    raw_tensor::ToCpu,
     RawTensor,
 };
 
@@ -31,13 +31,6 @@ impl<T: Clone> Fuse<T> {
         match self {
             Self::Mul(lhs, rhs, f) => f(lhs, rhs),
             Self::Val(t) => t.clone(),
-        }
-    }
-
-    fn realize(&self) -> Self {
-        match self {
-            Self::Mul(lhs, rhs, f) => Self::new(f(lhs, rhs)),
-            Self::Val(_) => self.clone(),
         }
     }
 }
@@ -84,6 +77,10 @@ impl<I: RawTensor> RawTensor for FuseImpl<I> {
 
     fn cast<EFro: Elem, ETo: CastFrom<EFro> + Elem>(t: &Self::Repr<EFro>) -> Self::Repr<ETo> {
         unary_no_fuse(t, I::cast)
+    }
+
+    fn realize<E: Clone>(t: &Self::Repr<E>) -> Self::Repr<E> {
+        Fuse::new(t.run())
     }
 
     fn add<E: Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
@@ -178,13 +175,9 @@ impl<I: RawTensor> RawTensor for FuseImpl<I> {
     }
 }
 
-impl<I: RealizedRawTensor> RealizedRawTensor for FuseImpl<I> {
+impl<I: ToCpu> ToCpu for FuseImpl<I> {
     fn to_cpu<E: Elem>(t: &Self::Repr<E>) -> crate::CpuRawTensor<E> {
         I::to_cpu(&t.run())
-    }
-
-    fn realize<E: Clone>(t: &Self::Repr<E>) -> Self::Repr<E> {
-        t.realize()
     }
 }
 

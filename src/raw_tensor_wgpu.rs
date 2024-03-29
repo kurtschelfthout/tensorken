@@ -9,7 +9,7 @@ use wgpu::util::DeviceExt;
 
 use crate::{
     num::{Bool, CastFrom, Elem, Float, Num},
-    raw_tensor::{RawTensor, RealizedRawTensor},
+    raw_tensor::{RawTensor, ToCpu},
     shape::Shape,
     shape_strider::ShapeStrider,
     wgpu_context::{get_wgpu_device, WgpuContext, WorkgroupSize},
@@ -680,6 +680,10 @@ impl RawTensor for WgpuRawTensorImpl {
         t.cast()
     }
 
+    fn realize<E: Clone>(t: &Self::Repr<E>) -> Self::Repr<E> {
+        t.clone()
+    }
+
     fn add<E: Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
         lhs.zip(rhs, "add")
     }
@@ -765,13 +769,9 @@ impl RawTensor for WgpuRawTensorImpl {
     }
 }
 
-impl RealizedRawTensor for WgpuRawTensorImpl {
+impl ToCpu for WgpuRawTensorImpl {
     fn to_cpu<E: Elem>(t: &Self::Repr<E>) -> crate::CpuRawTensor<E> {
         CpuRawTensor::new_into(Self::shape(t), t.ravel())
-    }
-
-    fn realize<E: Clone>(t: &Self::Repr<E>) -> Self::Repr<E> {
-        t.clone()
     }
 }
 

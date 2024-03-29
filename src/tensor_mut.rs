@@ -1,8 +1,7 @@
 use std::ops::{Index, IndexMut};
 
 use crate::{
-    num::Elem, raw_tensor::RealizedRawTensor, shape::Shape, shape_strider::ShapeStrider,
-    tensor::Tensor,
+    num::Elem, raw_tensor::ToCpu, shape::Shape, shape_strider::ShapeStrider, tensor::Tensor,
 };
 
 // Implementation note:
@@ -24,7 +23,7 @@ pub struct TensorMut<E> {
 impl<E: Elem> TensorMut<E> {
     /// Create a new tensor with the same shape and elements as the given tensor.
     /// Copies all the `Tensor`'s data.
-    pub fn new<T, I: RealizedRawTensor<Repr<E> = T>>(from: &Tensor<T, E, I>) -> Self {
+    pub fn new<T, I: ToCpu<Repr<E> = T>>(from: &Tensor<T, E, I>) -> Self {
         let buffer = from.ravel();
         let strider = ShapeStrider::contiguous(from.shape());
         Self { buffer, strider }
@@ -33,7 +32,7 @@ impl<E: Elem> TensorMut<E> {
     /// Create a new tensor with the given shape and elements.
     /// Copies all the `TensorMut`'s data.
     #[must_use]
-    pub fn to_tensor<T, I: RealizedRawTensor<Repr<E> = T>>(&self) -> Tensor<T, E, I> {
+    pub fn to_tensor<T, I: ToCpu<Repr<E> = T>>(&self) -> Tensor<T, E, I> {
         // note: to avoid the copy here, could add an `into_new` method to RawTensor
         // which consumes the buffer & shape.
         Tensor::<T, E, I>::new(self.strider.shape(), &self.buffer)

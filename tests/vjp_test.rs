@@ -1,8 +1,8 @@
 use tensorken::{
     jacrev,
     num::{Bool, CastFrom, Elem, Float, Num},
-    value_and_grad1, value_and_grad2, vjpn, Cpu32, Diff, RealizedRawTensor, Shape, Tensor,
-    TensorRev, Tensorken, Wgpu32,
+    value_and_grad1, value_and_grad2, vjpn, Cpu32, Diff, Shape, Tensor, TensorRev, Tensorken,
+    ToCpu, Wgpu32,
 };
 
 use std::{
@@ -34,7 +34,7 @@ fn test_df<Tsr: Diff>(
 ) where
     f32: From<Tsr::E>,
     Tsr::E: Num + Debug + From<u8>,
-    Tsr::I: RealizedRawTensor<Repr<Tsr::E> = Tsr::T>,
+    Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
     let at: Tensorken<Tsr> = Tensor::new(&[2, 4], &(1u8..9).map(Tsr::E::from).collect::<Vec<_>>());
     let (f_actual, df_actual) = value_and_grad1(f, &at);
@@ -56,7 +56,7 @@ fn test_ddf<Tsr: Diff>(
 ) where
     f32: From<Tsr::E>,
     Tsr::E: Num + Debug + From<u8>,
-    Tsr::I: RealizedRawTensor<Repr<Tsr::E> = Tsr::T>,
+    Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
     let at: Tensorken<Tsr> = Tensor::new(&[2, 2], &(1u8..5).map(Tsr::E::from).collect::<Vec<_>>());
     let (df_actual, ddf_actual) = value_and_grad1(|r| value_and_grad1(&f, r).1, &at);
@@ -76,7 +76,7 @@ fn test_df_2<Tsr: Diff<E = f32>>(
     dfda: impl Fn(&Tensorken<Tsr>, &Tensorken<Tsr>) -> Tensorken<Tsr>,
     dfdb: impl Fn(&Tensorken<Tsr>, &Tensorken<Tsr>) -> Tensorken<Tsr>,
 ) where
-    Tsr::I: RealizedRawTensor<Repr<Tsr::E> = Tsr::T>,
+    Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
     let a = &Tensor::new(&[2, 3], &[1.0, 2.0, 3.0, 4.0, -3.0, -2.0]);
     let b = &Tensor::new(&[2, 3], &[4.0, 5.0, 6.0, 7.0, -6.0, -5.0]);
@@ -102,7 +102,7 @@ fn do_test_constant<Tsr: Diff>()
 where
     f32: From<Tsr::E>,
     Tsr::E: Num + Debug + From<u8>,
-    Tsr::I: RealizedRawTensor<Repr<Tsr::E> = Tsr::T>,
+    Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
     test_df::<Tsr>(|t| t.primal().lift_rev(), Tensor::zeros_like, Clone::clone);
     test_ddf::<Tsr>(
@@ -126,7 +126,7 @@ fn do_test_id<Tsr: Diff>()
 where
     f32: From<Tsr::E>,
     Tsr::E: Num + Debug + From<u8>,
-    Tsr::I: RealizedRawTensor<Repr<Tsr::E> = Tsr::T>,
+    Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
     test_df::<Tsr>(f_id, Tensor::ones_like, f_id);
     test_ddf::<Tsr>(f_id, Tensor::zeros_like, Tensor::ones_like);
@@ -149,7 +149,7 @@ fn do_test_add<Tsr: Diff<E = f32>>()
 where
     f32: From<Tsr::E>,
     Tsr::E: Num + Debug + From<u8>,
-    Tsr::I: RealizedRawTensor<Repr<Tsr::E> = Tsr::T>,
+    Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
     test_df::<Tsr>(f_add, |a| a.constant_like(2.0), f_add);
     test_ddf::<Tsr>(|a| a + a + a, Tensor::zeros_like, |a| a.constant_like(3.0));
@@ -176,7 +176,7 @@ fn test_derivative_mul() {
 
 fn do_test_mul<Tsr: Diff<E = f32>>()
 where
-    Tsr::I: RealizedRawTensor<Repr<Tsr::E> = Tsr::T>,
+    Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
     test_df::<Tsr>(f_mul, |a| a.constant_like(2.0) * a, f_mul);
     test_ddf::<Tsr>(
@@ -209,7 +209,7 @@ fn test_derivative_sub() {
 #[allow(clippy::eq_op)]
 fn do_test_sub<Tsr: Diff<E = f32>>()
 where
-    Tsr::I: RealizedRawTensor<Repr<Tsr::E> = Tsr::T>,
+    Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
     test_df::<Tsr>(f_sub, Tensor::zeros_like, f_sub);
     test_ddf::<Tsr>(|a| a - a - a, Tensor::zeros_like, |a| -a.ones_like());
@@ -236,7 +236,7 @@ fn test_derivative_div() {
 
 fn do_test_div<Tsr: Diff<E = f32>>()
 where
-    Tsr::I: RealizedRawTensor<Repr<Tsr::E> = Tsr::T>,
+    Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
     test_df::<Tsr>(
         f_div::<Tsr::Rev>,
@@ -271,7 +271,7 @@ fn test_derivative_pow() {
 
 fn do_test_pow<Tsr: Diff<E = f32>>()
 where
-    Tsr::I: RealizedRawTensor<Repr<Tsr::E> = Tsr::T>,
+    Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
     test_df::<Tsr>(
         f_pow::<Tsr::Rev>,
@@ -302,7 +302,7 @@ fn test_derivative_log() {
 
 fn do_test_log<Tsr: Diff<E = f32>>()
 where
-    Tsr::I: RealizedRawTensor<Repr<Tsr::E> = Tsr::T>,
+    Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
     test_df::<Tsr>(|a| a.log(), |a| a.ones_like() / a, Tensor::log);
     test_ddf::<Tsr>(
@@ -320,7 +320,7 @@ fn test_derivative_exp() {
 
 fn do_test_exp<Tsr: Diff<E = f32>>()
 where
-    Tsr::I: RealizedRawTensor<Repr<Tsr::E> = Tsr::T>,
+    Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
     test_df::<Tsr>(|a| a.exp(), Tensor::exp, Tensor::exp);
     test_ddf::<Tsr>(|a| a.exp(), Tensor::exp, Tensor::exp);
@@ -345,7 +345,7 @@ fn test_derivative_sum() {
 
 fn do_test_sum<Tsr: Diff<E = f32>>()
 where
-    Tsr::I: RealizedRawTensor<Repr<Tsr::E> = Tsr::T>,
+    Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
     test_df::<Tsr>(f_sum::<Tsr::Rev>, Tensor::ones_like, f_sum::<Tsr>);
     test_ddf::<Tsr>(
@@ -370,7 +370,7 @@ fn test_max() {
 
 fn do_test_max<Tsr: Diff<E = f32>>()
 where
-    Tsr::I: RealizedRawTensor<Repr<Tsr::E> = Tsr::T>,
+    Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
     test_df::<Tsr>(
         f_max::<Tsr::Rev>,
@@ -399,7 +399,7 @@ fn test_reshape() {
 
 fn do_test_reshape<Tsr: Diff<E = f32>>()
 where
-    Tsr::I: RealizedRawTensor<Repr<Tsr::E> = Tsr::T>,
+    Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
     test_df::<Tsr>(f_reshape::<Tsr::Rev>, Tensor::ones_like, |a| {
         f_reshape::<Tsr>(a)
@@ -426,7 +426,7 @@ fn test_permute() {
 
 fn do_test_permute<Tsr: Diff<E = f32>>()
 where
-    Tsr::I: RealizedRawTensor<Repr<Tsr::E> = Tsr::T>,
+    Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
     // bit iffy - assumes at least 2 dimensions
     test_df::<Tsr>(f_permute::<Tsr::Rev>, Tensor::ones_like, |a| {
@@ -454,7 +454,7 @@ fn test_expand() {
 
 fn do_test_expand<Tsr: Diff<E = f32>>()
 where
-    Tsr::I: RealizedRawTensor<Repr<Tsr::E> = Tsr::T>,
+    Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
     test_df::<Tsr>(
         f_expand::<Tsr::Rev>,
@@ -483,7 +483,7 @@ fn test_crop() {
 
 fn do_test_crop<Tsr: Diff<E = f32>>()
 where
-    Tsr::I: RealizedRawTensor<Repr<Tsr::E> = Tsr::T>,
+    Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
     test_df::<Tsr>(
         f_crop::<Tsr::Rev>,
@@ -514,7 +514,7 @@ fn test_pad() {
 
 fn do_test_pad<Tsr: Diff<E = f32>>()
 where
-    Tsr::I: RealizedRawTensor<Repr<Tsr::E> = Tsr::T>,
+    Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
     test_df::<Tsr>(f_pad::<Tsr::Rev>, Tensor::ones_like, |a| f_pad::<Tsr>(a));
     test_ddf::<Tsr>(
@@ -539,7 +539,7 @@ fn test_matmul() {
 
 fn do_test_matmul<Tsr: Diff<E = f32>>()
 where
-    Tsr::I: RealizedRawTensor<Repr<Tsr::E> = Tsr::T>,
+    Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
     let a: Tensorken<Tsr> = Tensor::new(&[2, 3], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
     let b: Tensorken<Tsr> = Tensor::new(&[3, 2], &[7.0, 8.0, 9.0, 10.0, 11.0, 12.0]);
@@ -572,7 +572,7 @@ where
 
 fn do_test_jacrev<Tsr: Diff<E = f32>>()
 where
-    Tsr::I: RealizedRawTensor<Repr<Tsr::E> = Tsr::T>,
+    Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
     let a: Tensorken<Tsr> = Tensor::new(&[3], &[1.0, 2.0, 3.0]);
     let r = jacrev(f_pow2::<Tsr::Rev>, &a);

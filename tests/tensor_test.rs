@@ -1,15 +1,10 @@
 use rand::{rngs::StdRng, SeedableRng};
 use tensorken::{
     num::Float, Axes, Cpu32, CpuBool, CpuI32, CpuRawTensor, CpuRawTensorImpl, Diffable, IndexValue,
-    RealizedRawTensor, Tensor, Wgpu32, WgpuRawTensor, WgpuRawTensorImpl,
+    Tensor, ToCpu, Wgpu32, WgpuRawTensor, WgpuRawTensorImpl,
 };
 
-fn assert_tensor_eq<
-    T1,
-    I1: RealizedRawTensor<Repr<f32> = T1>,
-    T2,
-    I2: RealizedRawTensor<Repr<f32> = T2>,
->(
+fn assert_tensor_eq<T1, I1: ToCpu<Repr<f32> = T1>, T2, I2: ToCpu<Repr<f32> = T2>>(
     a: &Tensor<T1, f32, I1>,
     b: &Tensor<T2, f32, I2>,
 ) {
@@ -76,10 +71,7 @@ fn test_math_ops() {
     math_ops(t1, t2);
 }
 
-fn math_ops<T, I: RealizedRawTensor<Repr<f32> = T>>(
-    t1: &Tensor<T, f32, I>,
-    t2: &Tensor<T, f32, I>,
-) {
+fn math_ops<T, I: ToCpu<Repr<f32> = T>>(t1: &Tensor<T, f32, I>, t2: &Tensor<T, f32, I>) {
     let r1 = t1.exp();
     assert_vec_eq(
         &r1.ravel(),
@@ -124,7 +116,7 @@ fn test_broadcasted_ops() {
     broadcasted_ops(t1, t2, t3);
 }
 
-fn broadcasted_ops<T, I: RealizedRawTensor<Repr<f32> = T>>(
+fn broadcasted_ops<T, I: ToCpu<Repr<f32> = T>>(
     t1: &Tensor<T, f32, I>,
     t2: &Tensor<T, f32, I>,
     t3: &Tensor<T, f32, I>,
@@ -167,7 +159,7 @@ fn test_reduce_ops() {
     reduce_ops(t1);
 }
 
-fn reduce_ops<T, I: RealizedRawTensor<Repr<f32> = T>>(t1: &Tensor<T, f32, I>) {
+fn reduce_ops<T, I: ToCpu<Repr<f32> = T>>(t1: &Tensor<T, f32, I>) {
     let r1 = t1.sum(&[0]);
     assert_eq!(r1.ravel(), vec![5.0, 7.0, 9.0]);
     let r2 = t1.sum(&[1]);
@@ -201,7 +193,7 @@ fn test_movement_ops() {
     movement_ops(t1);
 }
 
-fn movement_ops<T, I: RealizedRawTensor<Repr<f32> = T>>(t1: &Tensor<T, f32, I>) {
+fn movement_ops<T, I: ToCpu<Repr<f32> = T>>(t1: &Tensor<T, f32, I>) {
     let r1 = t1.reshape(&[3, 2]);
     assert_eq!(&[3, 2], r1.shape());
     assert_eq!(r1.ravel(), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
@@ -226,10 +218,7 @@ fn test_2x3_matmul_3x2() {
     do_2x3_matmul_3x2(t1, t2)
 }
 
-fn do_2x3_matmul_3x2<T, I: RealizedRawTensor<Repr<f32> = T>>(
-    t1: &Tensor<T, f32, I>,
-    t2: &Tensor<T, f32, I>,
-) {
+fn do_2x3_matmul_3x2<T, I: ToCpu<Repr<f32> = T>>(t1: &Tensor<T, f32, I>, t2: &Tensor<T, f32, I>) {
     let r1 = t1.matmul(t2);
     assert_eq!(r1.shape(), &[2, 2]);
     assert_eq!(r1.ravel(), vec![20.0, 14.0, 56.0, 41.0]);
@@ -246,7 +235,7 @@ fn test_2x3x5_matmul_2x5x2() {
     do_2x3x5_matmul_2x5x2(t1, t2);
 }
 
-fn do_2x3x5_matmul_2x5x2<T, I: RealizedRawTensor<Repr<f32> = T>>(
+fn do_2x3x5_matmul_2x5x2<T, I: ToCpu<Repr<f32> = T>>(
     t1: &Tensor<T, f32, I>,
     t2: &Tensor<T, f32, I>,
 ) {
@@ -272,7 +261,7 @@ fn test_3x2x2x3_matmul_2x3x2() {
     do_3x2x2x3_matmul_2x3x2(t1, t2);
 }
 
-fn do_3x2x2x3_matmul_2x3x2<T, I: RealizedRawTensor<Repr<f32> = T>>(
+fn do_3x2x2x3_matmul_2x3x2<T, I: ToCpu<Repr<f32> = T>>(
     t1: &Tensor<T, f32, I>,
     t2: &Tensor<T, f32, I>,
 ) {
@@ -438,7 +427,7 @@ fn test_eye() {
     }
 }
 
-fn do_eye_test<T, I: RealizedRawTensor<Repr<f32> = T>>(dim: usize) {
+fn do_eye_test<T, I: ToCpu<Repr<f32> = T>>(dim: usize) {
     let t1: Tensor<T, f32, I> = Tensor::eye(dim);
     assert_eq!(t1.shape(), &[dim, dim]);
     let raveled = t1.ravel();
@@ -465,7 +454,7 @@ fn test_at() {
     do_test_at(&t1);
 }
 
-fn do_test_at<T, I: RealizedRawTensor<Repr<f32> = T>>(t: &Tensor<T, f32, I>) {
+fn do_test_at<T, I: ToCpu<Repr<f32> = T>>(t: &Tensor<T, f32, I>) {
     let s = t.at(1);
     assert_eq!(s.shape(), &[4]);
     assert_eq!(s.ravel(), vec![0.0, 1.0, 0.0, 0.0]);

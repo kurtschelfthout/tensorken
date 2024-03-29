@@ -21,6 +21,9 @@ pub trait RawTensor {
     /// Cast the elements to another type.
     fn cast<EFro: Elem, ETo: CastFrom<EFro> + Elem>(t: &Self::Repr<EFro>) -> Self::Repr<ETo>;
 
+    /// Run any delayed operations.
+    fn realize<E: Clone>(t: &Self::Repr<E>) -> Self::Repr<E>;
+
     // binary ops
     // ----------
 
@@ -108,12 +111,7 @@ pub trait RawTensor {
     ) -> Self::Repr<E>;
 }
 
-#[allow(clippy::module_name_repetitions)]
-pub trait RealizedRawTensor: RawTensor {
+pub trait ToCpu: RawTensor {
     /// Return the tensor on the CPU.
     fn to_cpu<E: Elem>(t: &Self::Repr<E>) -> crate::CpuRawTensor<E>;
-
-    /// For tensors that have lazy operations, run them.
-
-    fn realize<E: Clone>(t: &Self::Repr<E>) -> Self::Repr<E>;
 }
