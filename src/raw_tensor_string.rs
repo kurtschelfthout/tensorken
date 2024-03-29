@@ -5,7 +5,7 @@ use crate::{
 };
 
 #[derive(Clone, Debug)]
-pub struct StringImpl;
+pub enum StringImpl {}
 
 /// Rawtensor for String with shape tracking - a poor man's symbolic execution.
 impl RawTensor for StringImpl {

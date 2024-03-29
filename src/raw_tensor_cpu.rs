@@ -204,7 +204,7 @@ impl<'a, E: Clone> IntoIterator for &'a CpuRawTensor<E> {
 }
 
 #[derive(Debug, Clone)]
-pub struct CpuRawTensorImpl;
+pub enum CpuRawTensorImpl {}
 
 impl RawTensor for CpuRawTensorImpl {
     type Repr<E: Clone> = CpuRawTensor<E>;

@@ -663,7 +663,7 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
 }
 
 #[derive(Debug, Clone)]
-pub struct WgpuRawTensorImpl;
+pub enum WgpuRawTensorImpl {}
 
 impl RawTensor for WgpuRawTensorImpl {
     type Repr<E: Clone> = WgpuRawTensor<'static, E>;
