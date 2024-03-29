@@ -7,7 +7,7 @@ use crate::{
     },
     ad_ops_reverse::{CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
     ad_trace::{Trace, TracedOp},
-    num::{Bool, Elem, Float, Num},
+    num::{Bool, CastFrom, Elem, Float, Num},
     Diffable, IndexValue, Shape, Tensor,
 };
 
@@ -138,7 +138,7 @@ impl<I: 'static + Diffable> Diffable for ReverseImpl<I> {
         t.unary::<SumOp<E, I>, _>(axes)
     }
 
-    fn max<E: Num + From<bool>>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E> {
+    fn max<E: Num + CastFrom<bool>>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E> {
         t.unary::<MaxOp<I::Repr<E>, E, I>, _>(axes)
     }
 
@@ -170,7 +170,7 @@ impl<I: 'static + Diffable> Diffable for ReverseImpl<I> {
         I::shape(t.primal())
     }
 
-    fn cast<EFro: Elem, ETo: From<EFro> + Elem>(t: &Self::Repr<EFro>) -> Self::Repr<ETo> {
+    fn cast<EFro: Elem, ETo: CastFrom<EFro> + Elem>(t: &Self::Repr<EFro>) -> Self::Repr<ETo> {
         // TODO: make cast actuallly diffable
         Reverse::Lift(I::cast(t.primal()))
     }

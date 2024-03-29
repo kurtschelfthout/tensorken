@@ -8,7 +8,7 @@ use rand::Rng;
 use rand_distr::Distribution;
 
 use crate::{
-    num::{Bool, Elem, Float, Num},
+    num::{Bool, CastFrom, CastTo, Elem, Float, Num},
     raw_tensor::{RawTensor, RealizedRawTensor},
     raw_tensor_cpu::{CpuRawTensor, CpuRawTensorImpl},
     tensor_mut::TensorMut,
@@ -55,7 +55,7 @@ impl<I: RawTensor> Diffable for I {
         I::sum(t, axes)
     }
 
-    fn max<E: Num + From<bool>>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E> {
+    fn max<E: Num + CastFrom<bool>>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E> {
         I::max(t, axes)
     }
 
@@ -87,7 +87,7 @@ impl<I: RawTensor> Diffable for I {
         I::shape(t)
     }
 
-    fn cast<EFro: Elem, ETo: From<EFro> + Elem>(t: &Self::Repr<EFro>) -> Self::Repr<ETo> {
+    fn cast<EFro: Elem, ETo: CastFrom<EFro> + Elem>(t: &Self::Repr<EFro>) -> Self::Repr<ETo> {
         I::cast(t)
     }
 }
@@ -193,7 +193,7 @@ impl<T, E: Elem, I: Diffable<Repr<E> = T>> Tensor<T, E, I> {
         Self(I::new::<E>(shape, data), PhantomData)
     }
 
-    pub fn cast<ETo: From<E> + Elem>(&self) -> Tensor<<I as Diffable>::Repr<ETo>, ETo, I> {
+    pub fn cast<ETo: CastFrom<E> + Elem>(&self) -> Tensor<<I as Diffable>::Repr<ETo>, ETo, I> {
         Tensor(I::cast::<E, ETo>(&self.0), PhantomData)
     }
 }
@@ -212,7 +212,7 @@ impl<T, E: Clone, I: Diffable<Repr<E> = T>> Tensor<T, E, I> {
     #[must_use]
     pub fn max(&self, axes: &[usize]) -> Self
     where
-        E: Num + From<bool>,
+        E: Num + CastFrom<bool>,
     {
         Self(I::max::<E>(&self.0, axes), PhantomData)
     }
@@ -744,15 +744,16 @@ impl<T, E: Clone, I: RealizedRawTensor<Repr<E> = T>> Tensor<T, E, I> {
     /// # Panics
     /// If any element can't be converted to a usize.
     #[must_use]
+    #[allow(clippy::needless_pass_by_value)]
     pub fn one_hot<N>(&self, num_classes: N) -> Self
     where
-        usize: From<N>,
-        E: Num,
+        N: CastTo<usize>,
+        E: Num + CastTo<usize>,
     {
-        let nc: usize = num_classes.into();
+        let nc: usize = num_classes.cast_to();
         let mut data = vec![E::ZERO; self.shape().size() * nc];
         for (i, x) in self.ravel().iter().enumerate() {
-            data[i * nc + x.to_usize()] = E::ONE;
+            data[i * nc + x.cast_to()] = E::ONE;
         }
         let mut new_shape = Vec::with_capacity(self.shape().ndims() + 1);
         new_shape.extend(self.shape());

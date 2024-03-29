@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::ops::Add;
 use std::sync::Arc;
 
-use crate::num::{Bool, Elem, Float, Num};
+use crate::num::{Bool, CastFrom, Elem, Float, Num};
 use crate::raw_tensor::{RawTensor, RealizedRawTensor};
 use crate::shape::Shape;
 use crate::shape_strider::{ShapeStrider, TensorIndexIterator};
@@ -217,8 +217,8 @@ impl RawTensor for CpuRawTensorImpl {
         t.map(E::log)
     }
 
-    fn cast<EFro: Clone, ETo: From<EFro> + Clone>(t: &Self::Repr<EFro>) -> Self::Repr<ETo> {
-        t.map(ETo::from)
+    fn cast<EFro: Clone, ETo: CastFrom<EFro> + Clone>(t: &Self::Repr<EFro>) -> Self::Repr<ETo> {
+        t.map(ETo::cast_from)
     }
 
     fn add<E: Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {

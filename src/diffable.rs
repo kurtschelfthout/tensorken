@@ -1,5 +1,5 @@
 use crate::{
-    num::{Bool, Elem, Float, Num},
+    num::{Bool, CastFrom, Elem, Float, Num},
     Shape,
 };
 
@@ -40,7 +40,7 @@ pub trait Diffable {
 
     fn sum<E: Num>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E>;
 
-    fn max<E: Num + From<bool>>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E>;
+    fn max<E: Num + CastFrom<bool>>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E>;
 
     fn reshape<E: Elem>(t: &Self::Repr<E>, shape: &[usize]) -> Self::Repr<E>;
 
@@ -58,7 +58,7 @@ pub trait Diffable {
 
     fn shape<E: Clone>(t: &Self::Repr<E>) -> &[usize];
 
-    fn cast<EFro: Elem, ETo: From<EFro> + Elem>(t: &Self::Repr<EFro>) -> Self::Repr<ETo>;
+    fn cast<EFro: Elem, ETo: CastFrom<EFro> + Elem>(t: &Self::Repr<EFro>) -> Self::Repr<ETo>;
 
     // All the following are useful for the ad_ops. In principle all the methods
     // on Tensor could be implemented here, but due to the lack of dot notation and self,

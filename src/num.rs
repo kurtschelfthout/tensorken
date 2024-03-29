@@ -81,10 +81,6 @@ pub trait Num:
     + Mul<Self, Output = Self>
     + Div<Self, Output = Self>
 {
-    /// Convert to usize.
-    /// This is only so Tensor can implement `one_hot`.
-    /// TODO: remove once we have i16 tensors.
-    fn to_usize(&self) -> usize;
 }
 
 /// In addition to `Num`, support floating point operations.
@@ -106,12 +102,7 @@ impl Bool for f32 {
     const MIN: Self = f32::MIN;
 }
 
-impl Num for f32 {
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    fn to_usize(&self) -> usize {
-        *self as _
-    }
-}
+impl Num for f32 {}
 
 impl Float for f32 {
     fn exp(self) -> Self {
@@ -133,15 +124,78 @@ impl Bool for i32 {
     const MIN: Self = i32::MIN;
 }
 
-impl Num for i32 {
-    #[allow(clippy::cast_sign_loss)]
-    fn to_usize(&self) -> usize {
-        *self as _
-    }
-}
+impl Num for i32 {}
 
 impl Bool for bool {
     const ZERO: Self = false;
     const ONE: Self = true;
     const MIN: Self = false;
+}
+
+/// Unfortunately there is no built-in Rust trait
+/// for primitive cast operations. So we define our own.
+pub trait CastTo<E> {
+    fn cast_to(&self) -> E;
+}
+
+impl<T> CastTo<T> for T
+where
+    T: Copy,
+{
+    fn cast_to(&self) -> T {
+        *self
+    }
+}
+
+pub trait CastFrom<E> {
+    fn cast_from(e: E) -> Self;
+}
+
+impl<EFro, ETo> CastFrom<EFro> for ETo
+where
+    EFro: CastTo<ETo>,
+{
+    fn cast_from(e: EFro) -> Self {
+        e.cast_to()
+    }
+}
+
+impl CastTo<f32> for i32 {
+    #[allow(clippy::cast_precision_loss)]
+    fn cast_to(&self) -> f32 {
+        *self as f32
+    }
+}
+
+impl CastTo<i32> for f32 {
+    #[allow(clippy::cast_possible_truncation)]
+    fn cast_to(&self) -> i32 {
+        *self as i32
+    }
+}
+
+impl CastTo<usize> for i32 {
+    #[allow(clippy::cast_sign_loss)]
+    fn cast_to(&self) -> usize {
+        *self as usize
+    }
+}
+
+impl CastTo<usize> for u32 {
+    fn cast_to(&self) -> usize {
+        *self as usize
+    }
+}
+
+impl CastTo<i32> for bool {
+    fn cast_to(&self) -> i32 {
+        i32::from(*self)
+    }
+}
+
+impl CastTo<f32> for bool {
+    #[allow(clippy::cast_precision_loss)]
+    fn cast_to(&self) -> f32 {
+        i32::from(*self) as f32
+    }
 }

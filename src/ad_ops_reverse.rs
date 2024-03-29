@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use crate::{
     ad_ops::{UnaryDiffOp, UnaryOp},
-    num::{Bool, Elem, Num},
+    num::{Bool, CastFrom, Elem, Num},
     Diffable,
 };
 
@@ -24,7 +24,7 @@ impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> UnaryDiffOp<T> for SumOp<E, I> 
 
 pub(crate) struct MaxOp<T, E, I>(T, T, PhantomData<(E, I)>);
 
-impl<T: Clone, E: Num + From<bool>, I: Diffable<Repr<E> = T>> UnaryOp<T> for MaxOp<T, E, I> {
+impl<T: Clone, E: Num + CastFrom<bool>, I: Diffable<Repr<E> = T>> UnaryOp<T> for MaxOp<T, E, I> {
     type Args = [usize];
     fn f(a: &T, axes: &Self::Args) -> (T, Self) {
         let r = I::max::<E>(a, axes);
@@ -45,7 +45,9 @@ fn shape_to_axes(old_shape: &[usize], new_shape: &[usize]) -> Vec<usize> {
         .collect()
 }
 
-impl<T: Clone, E: Num + From<bool>, I: Diffable<Repr<E> = T>> UnaryDiffOp<T> for MaxOp<T, E, I> {
+impl<T: Clone, E: Num + CastFrom<bool>, I: Diffable<Repr<E> = T>> UnaryDiffOp<T>
+    for MaxOp<T, E, I>
+{
     fn dfda(&self, d: &T) -> T {
         let a_shape = I::shape::<E>(&self.0);
         let res_expanded = I::expand::<E>(&self.1, a_shape);

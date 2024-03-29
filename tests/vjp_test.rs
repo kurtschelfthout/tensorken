@@ -1,6 +1,6 @@
 use tensorken::{
     jacrev,
-    num::{Bool, Elem, Float, Num},
+    num::{Bool, CastFrom, Elem, Float, Num},
     value_and_grad1, value_and_grad2, vjpn, Cpu32, Diff, RealizedRawTensor, Shape, Tensor,
     TensorRev, Tensorken, Wgpu32,
 };
@@ -357,7 +357,7 @@ where
 
 fn f_max<T: Diff>(a: &Tensorken<T>) -> Tensorken<T>
 where
-    T::E: Num + From<bool>,
+    T::E: Num + CastFrom<bool>,
 {
     a.max(&all_axes(a.shape()))
 }

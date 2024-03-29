@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use crate::{
     ad_ops::{UnaryDiffOp, UnaryOp},
-    num::{Bool, Elem, Num},
+    num::{Bool, CastFrom, Elem, Num},
     Diffable,
 };
 
@@ -24,7 +24,7 @@ impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> UnaryDiffOp<T> for SumOp<E, I> 
 
 pub(crate) struct MaxOp<T, E, I>(T, T, PhantomData<(T, E, I)>);
 
-impl<T: Clone, E: Num + From<bool>, I: Diffable<Repr<E> = T>> UnaryOp<T> for MaxOp<T, E, I> {
+impl<T: Clone, E: Num + CastFrom<bool>, I: Diffable<Repr<E> = T>> UnaryOp<T> for MaxOp<T, E, I> {
     type Args = [usize];
     fn f(a: &T, axes: &Self::Args) -> (T, Self) {
         let r = I::max::<E>(a, axes);
@@ -32,7 +32,9 @@ impl<T: Clone, E: Num + From<bool>, I: Diffable<Repr<E> = T>> UnaryOp<T> for Max
     }
 }
 
-impl<T: Clone, E: Num + From<bool>, I: Diffable<Repr<E> = T>> UnaryDiffOp<T> for MaxOp<T, E, I> {
+impl<T: Clone, E: Num + CastFrom<bool>, I: Diffable<Repr<E> = T>> UnaryDiffOp<T>
+    for MaxOp<T, E, I>
+{
     fn dfda(&self, d: &T) -> T {
         let max_is_1s = I::eq::<E>(&self.0, &I::expand::<E>(&self.1, I::shape::<E>(&self.0)));
         I::elementwise_mul::<E>(&I::cast::<bool, E>(&max_is_1s), d)

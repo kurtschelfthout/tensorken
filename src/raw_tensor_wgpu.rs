@@ -8,7 +8,7 @@ use std::{
 use wgpu::util::DeviceExt;
 
 use crate::{
-    num::{Bool, Elem, Float, Num},
+    num::{Bool, CastFrom, Elem, Float, Num},
     raw_tensor::{RawTensor, RealizedRawTensor},
     shape::Shape,
     shape_strider::ShapeStrider,
@@ -676,7 +676,7 @@ impl RawTensor for WgpuRawTensorImpl {
         t.map("log")
     }
 
-    fn cast<EFro: Elem, ETo: From<EFro> + Elem>(t: &Self::Repr<EFro>) -> Self::Repr<ETo> {
+    fn cast<EFro: Elem, ETo: CastFrom<EFro> + Elem>(t: &Self::Repr<EFro>) -> Self::Repr<ETo> {
         t.cast()
     }
 

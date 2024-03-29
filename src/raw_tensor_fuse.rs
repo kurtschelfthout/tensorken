@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use crate::{
-    num::{Bool, Elem, Float, Num},
+    num::{Bool, CastFrom, Elem, Float, Num},
     raw_tensor::RealizedRawTensor,
     RawTensor,
 };
@@ -82,7 +82,7 @@ impl<I: RawTensor> RawTensor for FuseImpl<I> {
         unary_no_fuse(t, I::log)
     }
 
-    fn cast<EFro: Elem, ETo: From<EFro> + Elem>(t: &Self::Repr<EFro>) -> Self::Repr<ETo> {
+    fn cast<EFro: Elem, ETo: CastFrom<EFro> + Elem>(t: &Self::Repr<EFro>) -> Self::Repr<ETo> {
         unary_no_fuse(t, I::cast)
     }
 

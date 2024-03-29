@@ -1,4 +1,4 @@
-use crate::num::{Bool, Elem, Float, Num};
+use crate::num::{Bool, CastFrom, Elem, Float, Num};
 
 /// Counterpart for tinygrad's "low-level" operations (ops.py).
 /// Represents the operations that a tensor implementation, be it on CPU or GPU, must implement.
@@ -19,7 +19,7 @@ pub trait RawTensor {
     fn log<E: Float>(t: &Self::Repr<E>) -> Self::Repr<E>;
 
     /// Cast the elements to another type.
-    fn cast<EFro: Elem, ETo: From<EFro> + Elem>(t: &Self::Repr<EFro>) -> Self::Repr<ETo>;
+    fn cast<EFro: Elem, ETo: CastFrom<EFro> + Elem>(t: &Self::Repr<EFro>) -> Self::Repr<ETo>;
 
     // binary ops
     // ----------

@@ -1,5 +1,5 @@
 use crate::{
-    num::{Bool, Float, Num},
+    num::{Bool, CastFrom, Float, Num},
     shape_strider::ShapeStrider,
     RawTensor, Shape,
 };
@@ -19,7 +19,9 @@ impl RawTensor for StringImpl {
         (s.clone(), format!("{t}.log()"))
     }
 
-    fn cast<EFro: Clone, ETo: From<EFro> + Clone>((s, t): &Self::Repr<EFro>) -> Self::Repr<ETo> {
+    fn cast<EFro: Clone, ETo: CastFrom<EFro> + Clone>(
+        (s, t): &Self::Repr<EFro>,
+    ) -> Self::Repr<ETo> {
         (s.clone(), format!("{t}.cast()"))
     }
 

@@ -6,7 +6,7 @@ use crate::{
         UnaryOp,
     },
     ad_ops_forward::{CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
-    num::{Bool, Elem, Float, Num},
+    num::{Bool, CastFrom, Elem, Float, Num},
     sl2, Axes, Diffable, IndexValue, Shape, Tensor,
 };
 
@@ -112,7 +112,7 @@ impl<I: Diffable> Diffable for ForwardImpl<I> {
         t.unary::<SumOp<E, I>, _>(axes)
     }
 
-    fn max<E: Num + From<bool>>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E> {
+    fn max<E: Num + CastFrom<bool>>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E> {
         t.unary::<MaxOp<I::Repr<E>, E, I>, _>(axes)
     }
 
@@ -144,7 +144,7 @@ impl<I: Diffable> Diffable for ForwardImpl<I> {
         I::shape(t.primal())
     }
 
-    fn cast<EFro: Elem, ETo: From<EFro> + Elem>(t: &Self::Repr<EFro>) -> Self::Repr<ETo> {
+    fn cast<EFro: Elem, ETo: CastFrom<EFro> + Elem>(t: &Self::Repr<EFro>) -> Self::Repr<ETo> {
         // TODO: implement cast for Forward AD
         Forward::Lift(I::cast(t.primal()))
     }

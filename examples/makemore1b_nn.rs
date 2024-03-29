@@ -9,7 +9,7 @@ use std::{
 };
 
 use rand::{distributions::WeightedIndex, prelude::Distribution, rngs::StdRng, SeedableRng};
-use tensorken::{num::Float, value_and_grad1, Axes, Diffable, Tensor, Wgpu32};
+use tensorken::{num::Float, value_and_grad1, Axes, Diffable, Tensor, Wgpu};
 
 // This example shows the first half of the first of Karpathy's from zero-to-hero tutorials on makemomre.
 // It builds a bigram, character-level language model from a set of names.
@@ -39,7 +39,8 @@ fn read_names() -> Vec<String> {
 }
 
 // change this to Cpu32 to run on CPU. But it's very very slow.
-type Tr = Wgpu32;
+type Tr = Wgpu<f32>;
+type TrI32 = Wgpu<i32>;
 
 fn main() {
     // read and show some stats on names
@@ -54,8 +55,8 @@ fn main() {
     let (xs, ys, itos) = create_training_set(&names);
 
     // one hot encodings of the training set
-    let xenc = xs.one_hot(27_u8);
-    let yenc = ys.one_hot(27_u8);
+    let xenc = xs.one_hot(27_usize).cast::<f32>();
+    let yenc = ys.one_hot(27_usize).cast::<f32>();
 
     // randomly generated weights
     let mut rng = StdRng::seed_from_u64(2_147_483_647);
@@ -76,15 +77,15 @@ fn main() {
     // println!("probs\n{probs:.3}");
 
     // Let's calculate the loss.
-    fn loss<T, E: Float + From<bool> + From<f32>, I: Diffable<Repr<E> = T>>(
-        probs: &Tensor<T, E, I>,
-        yenc: &Tensor<T, E, I>,
-    ) -> Tensor<T, E, I> {
+    fn loss<T, I: Diffable<Repr<f32> = T>>(
+        probs: &Tensor<T, f32, I>,
+        yenc: &Tensor<T, f32, I>,
+    ) -> Tensor<T, f32, I> {
         // the max here is a trick to get a columns vector of only the "correct" probabilities, as given by yenc
         // Karpathy does this with indexing one by one, or using pytorch's tensor indexing notation: probs[torch.arange(5), ys]
         let ps = (yenc * probs).max(&[1]).squeeze(&Axes::All);
         let nlls = -ps.log();
-        nlls.sum(&[0]) / Tensor::scalar((nlls.shape()[0] as f32).into())
+        nlls.sum(&[0]) / Tensor::scalar(nlls.shape()[0] as f32)
     }
 
     // let l = loss(&probs, &yenc);
@@ -116,7 +117,7 @@ fn main() {
         let mut out = vec![];
         let mut ix = 0;
         loop {
-            let xenc = Tr::full(&[1], ix as f32).one_hot(27_u8);
+            let xenc = TrI32::full(&[1], ix as i32).one_hot(27_usize).cast::<f32>();
             let probs = predict(&W, &xenc).squeeze(&Axes::All);
             // print!("probs\n{probs:.3}");
             let dist = WeightedIndex::new(probs.ravel()).unwrap();
@@ -131,7 +132,7 @@ fn main() {
 }
 
 #[allow(clippy::cast_precision_loss)]
-fn create_training_set(names: &[String]) -> (Tr, Tr, HashMap<usize, char>) {
+fn create_training_set(names: &[String]) -> (TrI32, TrI32, HashMap<usize, char>) {
     // this first part is the same as `tensor_bigram`.
 
     // Get all the unique characters in names.
@@ -158,12 +159,12 @@ fn create_training_set(names: &[String]) -> (Tr, Tr, HashMap<usize, char>) {
             let ix1 = stoi[&bigram[0]];
             let ix2 = stoi[&bigram[1]];
             //println!("{bigram:?}");
-            xs.push(ix1 as f32);
-            ys.push(ix2 as f32);
+            xs.push(ix1 as i32);
+            ys.push(ix2 as i32);
         }
     }
-    let xs = Tr::new(&[xs.len()], &xs);
-    let ys = Tr::new(&[ys.len()], &ys);
+    let xs = TrI32::new(&[xs.len()], &xs);
+    let ys = TrI32::new(&[ys.len()], &ys);
     //println!("xs\n{xs}ys\n{ys}");
     (xs, ys, itos)
 }
