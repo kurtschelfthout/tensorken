@@ -10,8 +10,8 @@ use crate::{num::Bool, DiffableOps, Tensor};
 /// it requires that the output be a reference. But we want to be able
 /// to return new tensors, which we can't give a lifetime long enough so
 /// they can be returned from the index method.
-/// This means we also can't use the actual [] syntax :( I made the name
-/// as short as I could think of.
+/// This means we also can't use the actual [] syntax :(
+/// I made the name as short as I could think of.
 pub trait IndexValue<Idx> {
     type Output;
 
@@ -67,7 +67,7 @@ enum SliceFrom {
     End(usize),
 }
 
-/// Specifies what to slice along each axis. Any omitted axes at the end are not sliced.
+/// Specifies what to slice along an axis. Any omitted axes at the end are not sliced.
 #[derive(Default)]
 pub struct Slice {
     axes: Vec<(SliceFrom, SliceFrom)>,
@@ -193,7 +193,7 @@ impl<E: Bool, I: DiffableOps> IndexValue<Slice> for Tensor<I::Repr<E>, E, I> {
 #[cfg(test)]
 mod tests {
 
-    use crate::{Cpu32, CpuI32};
+    use crate::{Cpu32, CpuBool, CpuI32};
 
     use super::*;
 
@@ -253,16 +253,12 @@ mod tests {
         assert_eq!(r.ravel(), &[4, 8, 12, 16, 20, 24]);
     }
 
-    // TODO this should work, but eq requires Num now
-    // because broadcasting it requires expand, which requires sum
-    // for diffing.
-    // Elementwise eq would work.
-    // Perhaps just need to separate add/mul/sum in a trait between ZeroOne and Num.
-    // Then could also use add as or and mul as and for bools.
-    // #[test]
-    // fn test_bool_tensor() {
-    //     let t = CpuBool::new(&[2, 3], &[true, true, false, false, true, true]);
-    //     let r = &t.eq(&t);
-    //     assert_eq!(r.ravel(), &[true, true, true, true, true, true]);
-    // }
+    #[test]
+    fn test_bool_tensor() {
+        let t = CpuBool::new(&[2, 3], &[true, true, false, false, true, true]);
+        // All the broadcasted ops require Num, because they rely on expand, and
+        // the reverse-mode AD implementation of expand requires sum.
+        let r = &t.elementwise_eq(&t);
+        assert_eq!(r.ravel(), &[true, true, true, true, true, true]);
+    }
 }

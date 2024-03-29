@@ -8,13 +8,13 @@ use crate::{
 // In as much as possible, TensorMut is conceptually a client of Tensor.
 // Tensor only calls TensorMut::new from its to_tensor_mut.
 
-// TODO: rename to TensorDirect or something - this is useful for fast
-// (maybe mutable) access to an underlying buffer, which does not use lazy, fused or derivable operations.
+// Uuseful for fast access to an underlying buffer, which does not use lazy, fused or derivable operations.
 // e.g. for display or debug purposes.
 
 /// A mutable tensor, which owns its buffer.
 /// This is useful for implementing algorithms that mutate tensors in-place,
 /// and initializing tensors from outside data.
+/// Since it owns its buffer, regular `Index` and `IndexMut` are implemented.
 pub struct TensorMut<E> {
     buffer: Vec<E>,
     strider: ShapeStrider,

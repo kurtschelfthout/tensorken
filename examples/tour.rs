@@ -116,10 +116,7 @@ fn main() {
     // an even smaller subset is possible with bool
     let_example!(tb1, &CpuBool::new(&[2, 2], &[true, false, true, false]));
     let_example!(tb2, &CpuBool::new(&[2, 2], &[false, true, false, true]));
-    // TODO: make at least eq work
-    // do_example!(tb1.max(&[0]));
     do_example!(tb2.reshape(&[4]));
-    //do_example!(tb1.eq(tb2));
 
     let ti1 = &Sym::new(&[2, 2], &[0, 1, 2, 3]);
     let ti2 = &Sym::new(&[2, 2], &[4, 5, 6, 7]);

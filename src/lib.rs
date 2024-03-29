@@ -49,3 +49,10 @@ pub use type_magic::{
 // - Make vjp and jvp and friends all be N-to-N arguments instead of N-to-1.
 // - Treat zero and one as a special case for efficiency (also avoids NaNs, see jvp_test for pow). Maybe as a RawTensor implementation like Fuse.
 // - Try a jax style vmap implementation of Diffable
+// - The DiffableOps trait inflates the requirements on E, the element type somewhat artificially. A good example is that broadcasted `eq` does not
+//   work on bools, because it requires Num. This is because broadcasting requires expand, which requires sum for reverse-mode AD.
+//   One somewhat hacky solution is to implement add/mul/sum in Bool (as or/and/or)
+//   Another perhaps more principled solution would be to have two `eq`, `add` etc functions on `Tensor`, one that uses `RawTensorOps` and so don't have
+//   the inflated requirements, and one that uses `DiffableOps` for input into jvp/vjp (it doesn't matter there that there are more requirements, because
+//   we need Num anyway to differentiate). This however seems to require implementing all the operations on Tensor twice.
+// - JAX supports differentiating through container types, i.e. tensors in lists, tuples etc.

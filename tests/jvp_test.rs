@@ -284,7 +284,7 @@ where
         },
         |a| a.pow(a) * (a.log() + a.ones_like()),
     );
-    // TODO: because in forward mode both PowOp dfda and dfdb get calculated,
+    // Because in forward mode both PowOp dfda and dfdb get calculated,
     // dfdb causes NaN. This could be solved by treating zero derivatives as
     // a special case (which would also be more efficient)
     // test_df_2::<Tsr>(

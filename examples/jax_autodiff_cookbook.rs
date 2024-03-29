@@ -48,7 +48,6 @@ fn main() {
     let key = 0;
     let mut rng = StdRng::seed_from_u64(key);
     let w = Tr::randn(&[3], &mut rng);
-    // TODO in JAX, the shape of a scalar is &[] not &[1].
     let b = Tr::randn(&[1], &mut rng);
 
     let prediction = predict(&w, &b, &inputs);
@@ -100,7 +99,7 @@ fn main() {
     print!("new_loss: {new_loss}");
 
     // ### Differentiating with respect to nested lists, tuples, and dicts
-    // TODO no support for other container types in Tensorken atm
+    // No support for other container types in Tensorken
 
     // ### Evaluate a function and its gradient using `value_and_grad`
 

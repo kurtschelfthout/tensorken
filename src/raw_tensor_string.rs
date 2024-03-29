@@ -102,7 +102,6 @@ impl RawTensorOps for StringImpl {
     }
 
     fn new<E: Clone>(shape: &[usize], data: &[E]) -> Self::Repr<E> {
-        // TODO: consider adding E: Debug so we can print the data here.
         (
             ShapeStrider::contiguous(shape),
             format!("new({shape:?}, {:?})", data.len()),
