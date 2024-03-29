@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use crate::{
     num::{Bool, CastFrom, Elem, Float, Num},
     raw_tensor::ToCpu,
-    RawTensor,
+    RawTensorOps,
 };
 
 /// Fuse is now easy to understand.
@@ -64,7 +64,7 @@ fn binary_no_fuse<T, TR>(lhs: &Fuse<T>, rhs: &Fuse<T>, op: impl Fn(&T, &T) -> TR
 #[derive(Debug, Clone)]
 pub struct FuseImpl<I>(PhantomData<I>);
 
-impl<I: RawTensor> RawTensor for FuseImpl<I> {
+impl<I: RawTensorOps> RawTensorOps for FuseImpl<I> {
     type Repr<E> = Fuse<I::Repr<E>> where E: Clone, Self::Repr<E>: Clone;
 
     fn exp<E: Float>(t: &Self::Repr<E>) -> Self::Repr<E> {

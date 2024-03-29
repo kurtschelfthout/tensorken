@@ -9,7 +9,7 @@ use wgpu::util::DeviceExt;
 
 use crate::{
     num::{Bool, CastFrom, Elem, Float, Num},
-    raw_tensor::{RawTensor, ToCpu},
+    raw_tensor::{RawTensorOps, ToCpu},
     shape::Shape,
     shape_strider::ShapeStrider,
     wgpu_context::{get_wgpu_device, WgpuContext, WorkgroupSize},
@@ -665,7 +665,7 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
 #[derive(Debug, Clone)]
 pub enum WgpuRawTensorImpl {}
 
-impl RawTensor for WgpuRawTensorImpl {
+impl RawTensorOps for WgpuRawTensorImpl {
     type Repr<E: Clone> = WgpuRawTensor<'static, E>;
 
     fn exp<E: Float>(t: &Self::Repr<E>) -> Self::Repr<E> {

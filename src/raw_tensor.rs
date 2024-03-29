@@ -6,7 +6,10 @@ use crate::num::{Bool, CastFrom, Elem, Float, Num};
 /// As such it can be used to implement a new type of accelerator, but can also support
 /// optimizations like fusing.
 /// Think of `RawTensorOps` as the DSL for accelerators, in final style.
-pub trait RawTensor {
+#[allow(clippy::module_name_repetitions)]
+pub trait RawTensorOps {
+    /// The type of the tensor representation. It is parametrized by the element
+    /// type E.
     type Repr<E: Clone>: Clone;
 
     // unary ops
@@ -111,7 +114,7 @@ pub trait RawTensor {
     ) -> Self::Repr<E>;
 }
 
-pub trait ToCpu: RawTensor {
+pub trait ToCpu: RawTensorOps {
     /// Return the tensor on the CPU.
     fn to_cpu<E: Elem>(t: &Self::Repr<E>) -> crate::CpuRawTensor<E>;
 }

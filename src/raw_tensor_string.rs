@@ -1,14 +1,14 @@
 use crate::{
     num::{Bool, CastFrom, Float, Num},
     shape_strider::ShapeStrider,
-    RawTensor, Shape,
+    RawTensorOps, Shape,
 };
 
 #[derive(Clone, Debug)]
 pub enum StringImpl {}
 
 /// Rawtensor for String with shape tracking - a poor man's symbolic execution.
-impl RawTensor for StringImpl {
+impl RawTensorOps for StringImpl {
     type Repr<E: Clone> = (ShapeStrider, String);
 
     fn exp<E: Float>((s, t): &Self::Repr<E>) -> Self::Repr<E> {

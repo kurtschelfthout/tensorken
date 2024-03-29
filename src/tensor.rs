@@ -9,14 +9,14 @@ use rand_distr::Distribution;
 
 use crate::{
     num::{Bool, CastFrom, CastTo, Elem, Float, Num},
-    raw_tensor::{RawTensor, ToCpu},
+    raw_tensor::{RawTensorOps, ToCpu},
     raw_tensor_cpu::{CpuRawTensor, CpuRawTensorImpl},
     tensor_mut::TensorMut,
     Diffable, Forward, ForwardImpl, Reverse, ReverseImpl, Shape,
 };
 
 // Blanket implementation to translate from diffable tensor ops (Diffable) to low-level tensor ops (RawTensor).
-impl<I: RawTensor> Diffable for I {
+impl<I: RawTensorOps> Diffable for I {
     type Repr<E: Clone> = I::Repr<E>;
 
     fn log<E: Float>(t: &Self::Repr<E>) -> Self::Repr<E> {

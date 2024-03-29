@@ -32,7 +32,7 @@ pub use ad_reverse::{
 };
 pub use diffable::Diffable;
 pub use indexing::{sl, sl1, sl2, sl3, sl4, IndexValue, Slice, SliceIdx};
-pub use raw_tensor::{RawTensor, ToCpu};
+pub use raw_tensor::{RawTensorOps, ToCpu};
 pub use raw_tensor_cpu::{CpuRawTensor, CpuRawTensorImpl};
 pub use raw_tensor_fuse::{Fuse, FuseImpl};
 pub use raw_tensor_string::StringImpl;

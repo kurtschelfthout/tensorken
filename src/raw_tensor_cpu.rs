@@ -3,7 +3,7 @@ use std::ops::Add;
 use std::sync::Arc;
 
 use crate::num::{Bool, CastFrom, Elem, Float, Num};
-use crate::raw_tensor::{RawTensor, ToCpu};
+use crate::raw_tensor::{RawTensorOps, ToCpu};
 use crate::shape::Shape;
 use crate::shape_strider::{ShapeStrider, TensorIndexIterator};
 
@@ -206,7 +206,7 @@ impl<'a, E: Clone> IntoIterator for &'a CpuRawTensor<E> {
 #[derive(Debug, Clone)]
 pub enum CpuRawTensorImpl {}
 
-impl RawTensor for CpuRawTensorImpl {
+impl RawTensorOps for CpuRawTensorImpl {
     type Repr<E: Clone> = CpuRawTensor<E>;
 
     fn exp<E: Float>(t: &Self::Repr<E>) -> Self::Repr<E> {
