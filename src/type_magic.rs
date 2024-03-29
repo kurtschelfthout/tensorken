@@ -1,5 +1,5 @@
 use crate::{
-    CpuRawTensor, CpuRawTensorImpl, Diffable, Forward, ForwardImpl, Fuse, FuseImpl, Reverse,
+    CpuRawTensor, CpuRawTensorImpl, DiffableOps, Forward, ForwardImpl, Fuse, FuseImpl, Reverse,
     ReverseImpl, ShapeStrider, StringImpl, Tensor, WgpuRawTensor, WgpuRawTensorImpl,
 };
 
@@ -48,12 +48,12 @@ impl From<&Cpu32> for Wgpu32 {
 pub trait Diff: Clone {
     type T: Clone;
     type E: Clone;
-    type I: 'static + Diffable<Repr<Self::E> = Self::T> + Clone;
+    type I: 'static + DiffableOps<Repr<Self::E> = Self::T> + Clone;
     type Fwd: Diff<T = Forward<Self::T>, E = Self::E, I = ForwardImpl<Self::I>>;
     type Rev: Diff<T = Reverse<Self::T>, E = Self::E, I = ReverseImpl<Self::I>>;
 }
 
-impl<T: Clone, E: Clone, I: 'static + Diffable<Repr<E> = T> + Clone> Diff for Tensor<T, E, I> {
+impl<T: Clone, E: Clone, I: 'static + DiffableOps<Repr<E> = T> + Clone> Diff for Tensor<T, E, I> {
     type T = T;
     type E = E;
     type I = I;

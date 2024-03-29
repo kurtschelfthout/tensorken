@@ -1,8 +1,8 @@
 use rand::{rngs::StdRng, SeedableRng};
 
 use tensorken::{
-    diff1, grad1, grad2, jacfwd, jacrev, jvpn, num::Float, value_and_grad2, vjpn, Cpu32, Diffable,
-    Tensor,
+    diff1, grad1, grad2, jacfwd, jacrev, jvpn, num::Float, value_and_grad2, vjpn, Cpu32,
+    DiffableOps, Tensor,
 };
 
 type Tr = Cpu32;
@@ -25,7 +25,7 @@ fn main() {
     print!("dddf: {dddf}");
 
     // Outputs probability of a label being true.
-    fn predict<T, E: Float, I: Diffable<Repr<E> = T>>(
+    fn predict<T, E: Float, I: DiffableOps<Repr<E> = T>>(
         w: &Tensor<T, E, I>,
         b: &Tensor<T, E, I>,
         inputs: &Tensor<T, E, I>,
@@ -55,7 +55,7 @@ fn main() {
     println!("prediction: {prediction}");
 
     // Training loss is the negative log-likelihood of the training examples.
-    fn loss<T, E: Float, I: Diffable<Repr<E> = T>>(
+    fn loss<T, E: Float, I: DiffableOps<Repr<E> = T>>(
         w: &Tensor<T, E, I>,
         b: &Tensor<T, E, I>,
         inputs: &Tensor<T, E, I>,

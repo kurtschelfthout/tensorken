@@ -12,11 +12,12 @@ use crate::{
     raw_tensor::{RawTensorOps, ToCpu},
     raw_tensor_cpu::{CpuRawTensor, CpuRawTensorImpl},
     tensor_mut::TensorMut,
-    Diffable, Forward, ForwardImpl, Reverse, ReverseImpl, Shape,
+    DiffableOps, Forward, ForwardImpl, Reverse, ReverseImpl, Shape,
 };
 
-// Blanket implementation to translate from diffable tensor ops (Diffable) to low-level tensor ops (RawTensor).
-impl<I: RawTensorOps> Diffable for I {
+/// Blanket implementation to translate from diffable tensor ops (`DiffableOps`) to low-level tensor ops (`RawTensorOps`).
+/// This ensure any raw tensor can be used for differentiation.
+impl<I: RawTensorOps> DiffableOps for I {
     type Repr<E: Clone> = I::Repr<E>;
 
     fn log<E: Float>(t: &Self::Repr<E>) -> Self::Repr<E> {
@@ -47,7 +48,10 @@ impl<I: RawTensorOps> Diffable for I {
         I::pow(lhs, rhs)
     }
 
-    fn eq<E: PartialEq + Elem>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<bool> {
+    fn elementwise_eq<E: PartialEq + Elem>(
+        lhs: &Self::Repr<E>,
+        rhs: &Self::Repr<E>,
+    ) -> Self::Repr<bool> {
         I::eq(lhs, rhs)
     }
 
@@ -100,12 +104,12 @@ impl<I: RawTensorOps> Diffable for I {
 /// to the blanket implementation above, get translated ultimately to [`RawTensor`] operations.
 /// This is nice, because to implement a new type of accelerator, you only need to implement [`RawTensor`].
 #[derive(Debug, Clone)]
-pub struct Tensor<T, E: Clone, I: Diffable<Repr<E> = T>>(
+pub struct Tensor<T, E: Clone, I: DiffableOps<Repr<E> = T>>(
     pub(crate) T,
     pub(crate) PhantomData<(E, I)>,
 );
 
-impl<T, E: Float, I: Diffable<Repr<E> = T>> Tensor<T, E, I> {
+impl<T, E: Float, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
     /// Apply the natural logarithm to each element.
     #[must_use]
     pub fn log(&self) -> Self {
@@ -125,7 +129,7 @@ impl<T, E: Float, I: Diffable<Repr<E> = T>> Tensor<T, E, I> {
     }
 }
 
-impl<T, E: Num, I: Diffable<Repr<E> = T>> Tensor<T, E, I> {
+impl<T, E: Num, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
     #[must_use]
     pub fn elementwise_add(&self, other: &Self) -> Self {
         Self(I::elementwise_add::<E>(&self.0, &other.0), PhantomData)
@@ -161,19 +165,21 @@ impl<T, E: Num, I: Diffable<Repr<E> = T>> Tensor<T, E, I> {
     }
 }
 
-impl<T, E: Bool, I: Diffable<Repr<E> = T>> Tensor<T, E, I> {
+impl<T, E: Bool, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
+    /// Increase the size of the tensor by adding the given number of zero elements before and after each axis.
     #[must_use]
     pub fn pad(&self, padding: &[(usize, usize)]) -> Self {
         Self(I::pad::<E>(&self.0, padding), PhantomData)
     }
 
+    /// Reduce the size of the tensor by removing the given number of elements before and after each axis.
     #[must_use]
     pub fn crop(&self, limits: &[(usize, usize)]) -> Self {
         Self(I::crop::<E>(&self.0, limits), PhantomData)
     }
 }
 
-impl<T, E: Elem, I: Diffable<Repr<E> = T>> Tensor<T, E, I> {
+impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
     /// Reshape the tensor to the given shape.
     /// The number of elements must remain the same.
     /// Compare to numpy's `reshape`.
@@ -193,18 +199,18 @@ impl<T, E: Elem, I: Diffable<Repr<E> = T>> Tensor<T, E, I> {
         Self(I::new::<E>(shape, data), PhantomData)
     }
 
-    pub fn cast<ETo: CastFrom<E> + Elem>(&self) -> Tensor<<I as Diffable>::Repr<ETo>, ETo, I> {
+    pub fn cast<ETo: CastFrom<E> + Elem>(&self) -> Tensor<<I as DiffableOps>::Repr<ETo>, ETo, I> {
         Tensor(I::cast::<E, ETo>(&self.0), PhantomData)
     }
 }
 
-impl<T, E: Clone, I: Diffable<Repr<E> = T>> Tensor<T, E, I> {
+impl<T, E: Clone, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
     /// Return a new tensor with true where elements are equal, and false elsewhere.
-    pub fn elementwise_eq(&self, other: &Self) -> Tensor<<I as Diffable>::Repr<bool>, bool, I>
+    pub fn elementwise_eq(&self, other: &Self) -> Tensor<<I as DiffableOps>::Repr<bool>, bool, I>
     where
         E: PartialEq + Elem,
     {
-        Tensor(I::eq::<E>(&self.0, &other.0), PhantomData)
+        Tensor(I::elementwise_eq::<E>(&self.0, &other.0), PhantomData)
     }
 
     /// Reduce to max element along the given axes.
@@ -223,7 +229,7 @@ impl<T, E: Clone, I: Diffable<Repr<E> = T>> Tensor<T, E, I> {
 }
 
 /// Applies the non-broadcasted function f to lhs and rhs, adding broadcast.
-fn broadcasted_apply_rec<T, TR, E: Num, I: Diffable<Repr<E> = T>>(
+fn broadcasted_apply_rec<T, TR, E: Num, I: DiffableOps<Repr<E> = T>>(
     lhs: &T,
     rhs: &T,
     f: impl Fn(&T, &T) -> TR,
@@ -269,8 +275,8 @@ fn broadcasted_apply<T, TR, E, ER, I, IR>(
 where
     E: Num,
     ER: Elem,
-    I: Diffable<Repr<E> = T>,
-    IR: Diffable<Repr<ER> = TR>,
+    I: DiffableOps<Repr<E> = T>,
+    IR: DiffableOps<Repr<ER> = TR>,
 {
     Tensor(
         broadcasted_apply_rec::<T, TR, E, I>(&lhs.0, &rhs.0, f, reverse),
@@ -278,13 +284,18 @@ where
     )
 }
 
+/// To denote the Axes to `squeeze`.
 pub enum Axes {
+    /// Squeeze all axes with size 1.
     All,
+    /// Squeeze a specific axis.
     Axis(usize),
 }
 
-impl<T, E: Elem, I: Diffable<Repr<E> = T>> Tensor<T, E, I> {
-    pub fn lift_rev(&self) -> Tensor<<ReverseImpl<I> as Diffable>::Repr<E>, E, ReverseImpl<I>>
+impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
+    /// Lift this tensor in a Reverse AD calculation. No derivatives are calculated for this tensor, it is
+    /// treated as a constant.
+    pub fn lift_rev(&self) -> Tensor<<ReverseImpl<I> as DiffableOps>::Repr<E>, E, ReverseImpl<I>>
     where
         I: 'static,
         T: Clone,
@@ -292,7 +303,9 @@ impl<T, E: Elem, I: Diffable<Repr<E> = T>> Tensor<T, E, I> {
         Tensor(Reverse::Lift(self.0.clone()), PhantomData)
     }
 
-    pub fn lift_fwd(&self) -> Tensor<<ForwardImpl<I> as Diffable>::Repr<E>, E, ForwardImpl<I>>
+    /// Lift this tensor in a Forward AD calculation. No derivatives are calculated for this tensor, it is
+    /// treated as a constant.
+    pub fn lift_fwd(&self) -> Tensor<<ForwardImpl<I> as DiffableOps>::Repr<E>, E, ForwardImpl<I>>
     where
         T: Clone,
     {
@@ -385,6 +398,7 @@ impl<T, E: Elem, I: Diffable<Repr<E> = T>> Tensor<T, E, I> {
         Self::full(self.shape(), value)
     }
 
+    /// Create a new tensor with the same shape as self, but all elements equal to zero (`E::ZERO`).
     #[must_use]
     pub fn zeros_like(&self) -> Self
     where
@@ -393,6 +407,7 @@ impl<T, E: Elem, I: Diffable<Repr<E> = T>> Tensor<T, E, I> {
         self.constant_like(E::ZERO)
     }
 
+    /// Create a new tensor with the same shape as self, but all elements equal to one (`E::ONE`).
     #[must_use]
     pub fn ones_like(&self) -> Self
     where
@@ -400,7 +415,7 @@ impl<T, E: Elem, I: Diffable<Repr<E> = T>> Tensor<T, E, I> {
     {
         self.constant_like(E::ONE)
     }
-    /// Switch the two axes around.
+    /// Switch two axes around.
     #[must_use]
     pub fn transpose(&self, axis0: usize, axis1: usize) -> Self {
         let mut axes: Vec<_> = (0..self.shape().ndims()).collect();
@@ -521,11 +536,16 @@ impl<T, E: Elem, I: Diffable<Repr<E> = T>> Tensor<T, E, I> {
     }
 
     #[must_use]
-    pub fn eq(&self, other: &Self) -> Tensor<<I as Diffable>::Repr<bool>, bool, I>
+    pub fn eq(&self, other: &Self) -> Tensor<<I as DiffableOps>::Repr<bool>, bool, I>
     where
         E: Num,
     {
-        broadcasted_apply::<T, I::Repr<bool>, E, bool, I, I>(self, other, I::eq::<E>, false)
+        broadcasted_apply::<T, I::Repr<bool>, E, bool, I, I>(
+            self,
+            other,
+            I::elementwise_eq::<E>,
+            false,
+        )
     }
 
     #[must_use]
@@ -719,6 +739,7 @@ impl<T, E: Clone, I: ToCpu<Repr<E> = T>> Tensor<T, E, I> {
         Tensor(I::to_cpu::<E>(&self.0), PhantomData)
     }
 
+    /// Extract all the elements of the tensor as a 1D vector.
     pub fn ravel(&self) -> Vec<E>
     where
         E: Elem,
@@ -762,13 +783,17 @@ impl<T, E: Clone, I: ToCpu<Repr<E> = T>> Tensor<T, E, I> {
     }
 }
 
-impl<T: Clone, E: Clone, I: 'static + Diffable<Repr<E> = T>> Tensor<Reverse<T>, E, ReverseImpl<I>> {
+impl<T: Clone, E: Clone, I: 'static + DiffableOps<Repr<E> = T>>
+    Tensor<Reverse<T>, E, ReverseImpl<I>>
+{
     pub fn primal(&self) -> Tensor<T, E, I> {
         Tensor(self.0.primal().clone(), PhantomData)
     }
 }
 
-impl<T: Clone, E: Clone, I: 'static + Diffable<Repr<E> = T>> Tensor<Forward<T>, E, ForwardImpl<I>> {
+impl<T: Clone, E: Clone, I: 'static + DiffableOps<Repr<E> = T>>
+    Tensor<Forward<T>, E, ForwardImpl<I>>
+{
     pub fn primal(&self) -> Tensor<T, E, I> {
         Tensor(self.0.primal().clone(), PhantomData)
     }

@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use crate::{
     num::{Float, Num},
-    Diffable,
+    DiffableOps,
 };
 
 /// A trait that represents the operation on the primal value, and
@@ -36,13 +36,13 @@ pub trait BinaryDiffOp<T> {
 
 pub(crate) struct AddOp<E, I>(PhantomData<(E, I)>);
 
-impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> BinaryOp<T> for AddOp<E, I> {
+impl<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>> BinaryOp<T> for AddOp<E, I> {
     fn f(a: &T, b: &T) -> (T, Self) {
         (I::elementwise_add::<E>(a, b), AddOp(PhantomData))
     }
 }
 
-impl<T: Clone, E: Clone, I: Diffable<Repr<E> = T>> BinaryDiffOp<T> for AddOp<E, I> {
+impl<T: Clone, E: Clone, I: DiffableOps<Repr<E> = T>> BinaryDiffOp<T> for AddOp<E, I> {
     fn dfda(&self, d: &T) -> T {
         d.clone()
     }
@@ -54,7 +54,7 @@ impl<T: Clone, E: Clone, I: Diffable<Repr<E> = T>> BinaryDiffOp<T> for AddOp<E, 
 
 pub(crate) struct MulOp<T, E, I>(T, T, PhantomData<(E, I)>);
 
-impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> BinaryOp<T> for MulOp<T, E, I> {
+impl<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>> BinaryOp<T> for MulOp<T, E, I> {
     fn f(a: &T, b: &T) -> (T, Self) {
         (
             I::elementwise_mul::<E>(a, b),
@@ -63,7 +63,7 @@ impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> BinaryOp<T> for MulOp<T, E, I> 
     }
 }
 
-impl<T, E: Num, I: Diffable<Repr<E> = T>> BinaryDiffOp<T> for MulOp<T, E, I> {
+impl<T, E: Num, I: DiffableOps<Repr<E> = T>> BinaryDiffOp<T> for MulOp<T, E, I> {
     fn dfda(&self, d: &T) -> T {
         I::elementwise_mul::<E>(d, &self.1)
     }
@@ -75,13 +75,13 @@ impl<T, E: Num, I: Diffable<Repr<E> = T>> BinaryDiffOp<T> for MulOp<T, E, I> {
 
 pub(crate) struct SubOp<E, I>(PhantomData<(E, I)>);
 
-impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> BinaryOp<T> for SubOp<E, I> {
+impl<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>> BinaryOp<T> for SubOp<E, I> {
     fn f(a: &T, b: &T) -> (T, Self) {
         (I::elementwise_sub::<E>(a, b), SubOp(PhantomData))
     }
 }
 
-impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> BinaryDiffOp<T> for SubOp<E, I> {
+impl<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>> BinaryDiffOp<T> for SubOp<E, I> {
     fn dfda(&self, d: &T) -> T {
         d.clone()
     }
@@ -93,7 +93,7 @@ impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> BinaryDiffOp<T> for SubOp<E, I>
 
 pub(crate) struct DivOp<T, E, I>(T, T, PhantomData<(E, I)>);
 
-impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> BinaryOp<T> for DivOp<T, E, I> {
+impl<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>> BinaryOp<T> for DivOp<T, E, I> {
     fn f(a: &T, b: &T) -> (T, Self) {
         (
             I::elementwise_div::<E>(a, b),
@@ -102,7 +102,7 @@ impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> BinaryOp<T> for DivOp<T, E, I> 
     }
 }
 
-impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> BinaryDiffOp<T> for DivOp<T, E, I> {
+impl<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>> BinaryDiffOp<T> for DivOp<T, E, I> {
     fn dfda(&self, d: &T) -> T {
         I::elementwise_div::<E>(d, &self.1)
     }
@@ -117,14 +117,14 @@ impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> BinaryDiffOp<T> for DivOp<T, E,
 
 pub(crate) struct PowOp<T, E, I>(T, T, T, PhantomData<(E, I)>);
 
-impl<T: Clone, E: Float, I: Diffable<Repr<E> = T>> BinaryOp<T> for PowOp<T, E, I> {
+impl<T: Clone, E: Float, I: DiffableOps<Repr<E> = T>> BinaryOp<T> for PowOp<T, E, I> {
     fn f(a: &T, b: &T) -> (T, Self) {
         let r = I::elementwise_pow::<E>(a, b);
         (r.clone(), Self(a.clone(), b.clone(), r, PhantomData))
     }
 }
 
-impl<T: Clone, E: 'static + Float, I: Diffable<Repr<E> = T>> BinaryDiffOp<T> for PowOp<T, E, I> {
+impl<T: Clone, E: 'static + Float, I: DiffableOps<Repr<E> = T>> BinaryDiffOp<T> for PowOp<T, E, I> {
     fn dfda(&self, d: &T) -> T {
         I::elementwise_mul::<E>(
             d,
@@ -139,14 +139,14 @@ impl<T: Clone, E: 'static + Float, I: Diffable<Repr<E> = T>> BinaryDiffOp<T> for
 
 pub(crate) struct LogOp<T, E, I>(T, PhantomData<(E, I)>);
 
-impl<T: Clone, E: Float, I: Diffable<Repr<E> = T>> UnaryOp<T> for LogOp<T, E, I> {
+impl<T: Clone, E: Float, I: DiffableOps<Repr<E> = T>> UnaryOp<T> for LogOp<T, E, I> {
     type Args = ();
     fn f(a: &T, (): &Self::Args) -> (T, Self) {
         (I::log::<E>(a), LogOp(a.clone(), PhantomData))
     }
 }
 
-impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> UnaryDiffOp<T> for LogOp<T, E, I> {
+impl<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>> UnaryDiffOp<T> for LogOp<T, E, I> {
     fn dfda(&self, d: &T) -> T {
         I::elementwise_div::<E>(d, &self.0)
     }
@@ -154,7 +154,7 @@ impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> UnaryDiffOp<T> for LogOp<T, E, 
 
 pub(crate) struct ExpOp<T, E, I>(T, PhantomData<(E, I)>);
 
-impl<T: Clone, E: 'static + Float, I: Diffable<Repr<E> = T>> UnaryOp<T> for ExpOp<T, E, I> {
+impl<T: Clone, E: 'static + Float, I: DiffableOps<Repr<E> = T>> UnaryOp<T> for ExpOp<T, E, I> {
     type Args = ();
     fn f(a: &T, (): &Self::Args) -> (T, Self) {
         let r = I::exp::<E>(a);
@@ -162,7 +162,7 @@ impl<T: Clone, E: 'static + Float, I: Diffable<Repr<E> = T>> UnaryOp<T> for ExpO
     }
 }
 
-impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> UnaryDiffOp<T> for ExpOp<T, E, I> {
+impl<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>> UnaryDiffOp<T> for ExpOp<T, E, I> {
     fn dfda(&self, d: &T) -> T {
         I::elementwise_mul::<E>(d, &self.0)
     }

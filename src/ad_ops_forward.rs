@@ -3,12 +3,12 @@ use std::marker::PhantomData;
 use crate::{
     ad_ops::{UnaryDiffOp, UnaryOp},
     num::{Bool, CastFrom, Elem, Num},
-    Diffable,
+    DiffableOps,
 };
 
 pub(crate) struct SumOp<E, I>(Vec<usize>, PhantomData<(E, I)>);
 
-impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> UnaryOp<T> for SumOp<E, I> {
+impl<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>> UnaryOp<T> for SumOp<E, I> {
     type Args = [usize];
     fn f(a: &T, axes: &Self::Args) -> (T, Self) {
         let r = I::sum::<E>(a, axes);
@@ -16,7 +16,7 @@ impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> UnaryOp<T> for SumOp<E, I> {
     }
 }
 
-impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> UnaryDiffOp<T> for SumOp<E, I> {
+impl<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>> UnaryDiffOp<T> for SumOp<E, I> {
     fn dfda(&self, d: &T) -> T {
         I::sum::<E>(d, &self.0)
     }
@@ -24,7 +24,7 @@ impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> UnaryDiffOp<T> for SumOp<E, I> 
 
 pub(crate) struct MaxOp<T, E, I>(T, T, PhantomData<(T, E, I)>);
 
-impl<T: Clone, E: Num + CastFrom<bool>, I: Diffable<Repr<E> = T>> UnaryOp<T> for MaxOp<T, E, I> {
+impl<T: Clone, E: Num + CastFrom<bool>, I: DiffableOps<Repr<E> = T>> UnaryOp<T> for MaxOp<T, E, I> {
     type Args = [usize];
     fn f(a: &T, axes: &Self::Args) -> (T, Self) {
         let r = I::max::<E>(a, axes);
@@ -32,18 +32,19 @@ impl<T: Clone, E: Num + CastFrom<bool>, I: Diffable<Repr<E> = T>> UnaryOp<T> for
     }
 }
 
-impl<T: Clone, E: Num + CastFrom<bool>, I: Diffable<Repr<E> = T>> UnaryDiffOp<T>
+impl<T: Clone, E: Num + CastFrom<bool>, I: DiffableOps<Repr<E> = T>> UnaryDiffOp<T>
     for MaxOp<T, E, I>
 {
     fn dfda(&self, d: &T) -> T {
-        let max_is_1s = I::eq::<E>(&self.0, &I::expand::<E>(&self.1, I::shape::<E>(&self.0)));
+        let max_is_1s =
+            I::elementwise_eq::<E>(&self.0, &I::expand::<E>(&self.1, I::shape::<E>(&self.0)));
         I::elementwise_mul::<E>(&I::cast::<bool, E>(&max_is_1s), d)
     }
 }
 
 pub(crate) struct ExpandOp<E, I>(Vec<usize>, PhantomData<(E, I)>);
 
-impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> UnaryOp<T> for ExpandOp<E, I> {
+impl<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>> UnaryOp<T> for ExpandOp<E, I> {
     type Args = [usize];
     fn f(a: &T, new_shape: &Self::Args) -> (T, Self) {
         let r = I::expand::<E>(a, new_shape);
@@ -51,7 +52,7 @@ impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> UnaryOp<T> for ExpandOp<E, I> {
     }
 }
 
-impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> UnaryDiffOp<T> for ExpandOp<E, I> {
+impl<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>> UnaryDiffOp<T> for ExpandOp<E, I> {
     fn dfda(&self, d: &T) -> T {
         I::expand::<E>(d, &self.0)
     }
@@ -59,7 +60,7 @@ impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> UnaryDiffOp<T> for ExpandOp<E, 
 
 pub(crate) struct ReshapeOp<E, I>(Vec<usize>, PhantomData<(E, I)>);
 
-impl<T: Clone, E: Elem, I: Diffable<Repr<E> = T>> UnaryOp<T> for ReshapeOp<E, I> {
+impl<T: Clone, E: Elem, I: DiffableOps<Repr<E> = T>> UnaryOp<T> for ReshapeOp<E, I> {
     type Args = [usize];
     fn f(a: &T, new_shape: &Self::Args) -> (T, Self) {
         let r = I::reshape::<E>(a, new_shape);
@@ -67,7 +68,7 @@ impl<T: Clone, E: Elem, I: Diffable<Repr<E> = T>> UnaryOp<T> for ReshapeOp<E, I>
     }
 }
 
-impl<T: Clone, E: Elem, I: Diffable<Repr<E> = T>> UnaryDiffOp<T> for ReshapeOp<E, I> {
+impl<T: Clone, E: Elem, I: DiffableOps<Repr<E> = T>> UnaryDiffOp<T> for ReshapeOp<E, I> {
     fn dfda(&self, d: &T) -> T {
         I::reshape::<E>(d, &self.0)
     }
@@ -75,7 +76,7 @@ impl<T: Clone, E: Elem, I: Diffable<Repr<E> = T>> UnaryDiffOp<T> for ReshapeOp<E
 
 pub(crate) struct PermuteOp<E, I>(Vec<usize>, PhantomData<(E, I)>);
 
-impl<T: Clone, E: Elem, I: Diffable<Repr<E> = T>> UnaryOp<T> for PermuteOp<E, I> {
+impl<T: Clone, E: Elem, I: DiffableOps<Repr<E> = T>> UnaryOp<T> for PermuteOp<E, I> {
     type Args = [usize];
     fn f(a: &T, order: &Self::Args) -> (T, Self) {
         (
@@ -85,7 +86,7 @@ impl<T: Clone, E: Elem, I: Diffable<Repr<E> = T>> UnaryOp<T> for PermuteOp<E, I>
     }
 }
 
-impl<T: Clone, E: Elem, I: Diffable<Repr<E> = T>> UnaryDiffOp<T> for PermuteOp<E, I> {
+impl<T: Clone, E: Elem, I: DiffableOps<Repr<E> = T>> UnaryDiffOp<T> for PermuteOp<E, I> {
     fn dfda(&self, d: &T) -> T {
         I::permute::<E>(d, &self.0)
     }
@@ -93,7 +94,7 @@ impl<T: Clone, E: Elem, I: Diffable<Repr<E> = T>> UnaryDiffOp<T> for PermuteOp<E
 
 pub(crate) struct PadOp<E, I>(Vec<(usize, usize)>, PhantomData<(E, I)>);
 
-impl<T: Clone, E: Bool, I: Diffable<Repr<E> = T>> UnaryOp<T> for PadOp<E, I> {
+impl<T: Clone, E: Bool, I: DiffableOps<Repr<E> = T>> UnaryOp<T> for PadOp<E, I> {
     type Args = [(usize, usize)];
     fn f(a: &T, padding: &Self::Args) -> (T, Self) {
         let r = I::pad::<E>(a, padding);
@@ -101,7 +102,7 @@ impl<T: Clone, E: Bool, I: Diffable<Repr<E> = T>> UnaryOp<T> for PadOp<E, I> {
     }
 }
 
-impl<T: Clone, E: Bool, I: Diffable<Repr<E> = T>> UnaryDiffOp<T> for PadOp<E, I> {
+impl<T: Clone, E: Bool, I: DiffableOps<Repr<E> = T>> UnaryDiffOp<T> for PadOp<E, I> {
     fn dfda(&self, d: &T) -> T {
         I::pad::<E>(d, &self.0)
     }
@@ -109,7 +110,7 @@ impl<T: Clone, E: Bool, I: Diffable<Repr<E> = T>> UnaryDiffOp<T> for PadOp<E, I>
 
 pub(crate) struct CropOp<E, I>(Vec<(usize, usize)>, PhantomData<(E, I)>);
 
-impl<T: Clone, E: Bool, I: Diffable<Repr<E> = T>> UnaryOp<T> for CropOp<E, I> {
+impl<T: Clone, E: Bool, I: DiffableOps<Repr<E> = T>> UnaryOp<T> for CropOp<E, I> {
     type Args = [(usize, usize)];
     fn f(a: &T, limits: &Self::Args) -> (T, Self) {
         let r = I::crop::<E>(a, limits);
@@ -117,7 +118,7 @@ impl<T: Clone, E: Bool, I: Diffable<Repr<E> = T>> UnaryOp<T> for CropOp<E, I> {
     }
 }
 
-impl<T: Clone, E: Bool, I: Diffable<Repr<E> = T>> UnaryDiffOp<T> for CropOp<E, I> {
+impl<T: Clone, E: Bool, I: DiffableOps<Repr<E> = T>> UnaryDiffOp<T> for CropOp<E, I> {
     fn dfda(&self, d: &T) -> T {
         I::crop::<E>(d, &self.0)
     }

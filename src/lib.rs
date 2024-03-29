@@ -30,7 +30,7 @@ pub use ad_reverse::{
     grad1, grad2, jacrev, value_and_grad1, value_and_grad2, value_and_gradn, vjpn, PullBack,
     Reverse, ReverseImpl,
 };
-pub use diffable::Diffable;
+pub use diffable::DiffableOps;
 pub use indexing::{sl, sl1, sl2, sl3, sl4, IndexValue, Slice, SliceIdx};
 pub use raw_tensor::{RawTensorOps, ToCpu};
 pub use raw_tensor_cpu::{CpuRawTensor, CpuRawTensorImpl};

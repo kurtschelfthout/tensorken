@@ -7,7 +7,7 @@ use crate::{
     },
     ad_ops_forward::{CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
     num::{Bool, CastFrom, Elem, Float, Num},
-    sl2, Axes, Diffable, IndexValue, Shape, Tensor,
+    sl2, Axes, DiffableOps, IndexValue, Shape, Tensor,
 };
 
 /// Forward AD implementation.
@@ -53,7 +53,7 @@ impl<T> Forward<T> {
         }
     }
 
-    fn binary<Op: BinaryOp<T> + BinaryDiffOp<T>, E: Num, I: Diffable<Repr<E> = T>>(
+    fn binary<Op: BinaryOp<T> + BinaryDiffOp<T>, E: Num, I: DiffableOps<Repr<E> = T>>(
         &self,
         rhs: &Self,
     ) -> Self {
@@ -73,7 +73,7 @@ impl<T> Forward<T> {
 #[derive(Debug, Clone)]
 pub struct ForwardImpl<I>(PhantomData<I>);
 
-impl<I: Diffable> Diffable for ForwardImpl<I> {
+impl<I: DiffableOps> DiffableOps for ForwardImpl<I> {
     type Repr<E: Clone> = Forward<I::Repr<E>>;
 
     fn log<E: Float>(t: &Self::Repr<E>) -> Self::Repr<E> {
@@ -104,8 +104,11 @@ impl<I: Diffable> Diffable for ForwardImpl<I> {
         lhs.binary::<PowOp<I::Repr<E>, E, I>, E, I>(rhs)
     }
 
-    fn eq<E: PartialEq + Elem>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<bool> {
-        Forward::Lift(I::eq::<E>(lhs.primal(), rhs.primal()))
+    fn elementwise_eq<E: PartialEq + Elem>(
+        lhs: &Self::Repr<E>,
+        rhs: &Self::Repr<E>,
+    ) -> Self::Repr<bool> {
+        Forward::Lift(I::elementwise_eq::<E>(lhs.primal(), rhs.primal()))
     }
 
     fn sum<E: Num>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E> {
@@ -167,7 +170,7 @@ impl<I: Diffable> Diffable for ForwardImpl<I> {
 
 /// Compute a forward-mode Jacobian-vector product of a function `f` evaluated at the given primals.
 /// Returns a tuple of the result of `f` and the tangent of `f`.
-pub fn jvpn<T: Clone, E: Num, I: Diffable<Repr<E> = T>, F>(
+pub fn jvpn<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>, F>(
     f: F,
     at: &[&Tensor<T, E, I>],
     tangents: &[&Tensor<T, E, I>],
@@ -206,7 +209,7 @@ where
 
 /// Compute the result and the gradient of a function at the given primals.
 #[allow(clippy::type_complexity)]
-pub fn value_and_diffn<T: Clone, E: Num, I: Diffable<Repr<E> = T>, F>(
+pub fn value_and_diffn<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>, F>(
     f: F,
     at: &[&Tensor<T, E, I>],
 ) -> (Tensor<T, E, I>, Vec<Tensor<T, E, I>>)
@@ -232,7 +235,7 @@ where
 
 /// Compute the result and the gradient of a function at the given primal.
 #[allow(clippy::missing_panics_doc)]
-pub fn value_and_diff1<T: Clone, E: Num, I: Diffable<Repr<E> = T>, F>(
+pub fn value_and_diff1<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>, F>(
     f: F,
     at: &Tensor<T, E, I>,
 ) -> (Tensor<T, E, I>, Tensor<T, E, I>)
@@ -246,7 +249,7 @@ where
 
 /// Compute the result and the gradient of a function at the given primals.
 #[allow(clippy::missing_panics_doc, clippy::type_complexity)]
-pub fn value_and_diff2<T: Clone, E: Num, I: Diffable<Repr<E> = T>, F>(
+pub fn value_and_diff2<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>, F>(
     f: F,
     at0: &Tensor<T, E, I>,
     at1: &Tensor<T, E, I>,
@@ -264,7 +267,7 @@ where
 
 /// Compute the gradient of a function at the given primal.
 #[allow(clippy::missing_panics_doc)]
-pub fn diff1<T: Clone, E: Num, I: Diffable<Repr<E> = T>, F>(
+pub fn diff1<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>, F>(
     f: F,
     at: &Tensor<T, E, I>,
 ) -> Tensor<T, E, I>
@@ -277,7 +280,7 @@ where
 
 /// Compute the gradient of a function at the given primals.
 #[allow(clippy::missing_panics_doc)]
-pub fn diff2<T: Clone, E: Num, I: Diffable<Repr<E> = T>, F>(
+pub fn diff2<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>, F>(
     f: F,
     at0: &Tensor<T, E, I>,
     at1: &Tensor<T, E, I>,
@@ -293,7 +296,7 @@ where
 
 /// Jacobian of `f` evaluated column-by-column at `at` using forward-mode AD.
 #[allow(clippy::missing_panics_doc)]
-pub fn jacfwd<T: Clone, E: Num, I: Diffable<Repr<E> = T>, F>(
+pub fn jacfwd<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>, F>(
     f: F,
     at: &Tensor<T, E, I>,
 ) -> Tensor<T, E, I>

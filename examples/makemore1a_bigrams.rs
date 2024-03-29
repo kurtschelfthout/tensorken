@@ -1,4 +1,3 @@
-// #![warn(clippy::pedantic)]
 #![allow(non_snake_case)]
 
 use std::io::Write;

@@ -9,7 +9,7 @@ use std::{
 };
 
 use rand::{distributions::WeightedIndex, prelude::Distribution, rngs::StdRng, SeedableRng};
-use tensorken::{num::Float, value_and_grad1, Axes, Diffable, Tensor, Wgpu};
+use tensorken::{num::Float, value_and_grad1, Axes, DiffableOps, Tensor, Wgpu};
 
 // This example shows the first half of the first of Karpathy's from zero-to-hero tutorials on makemomre.
 // It builds a bigram, character-level language model from a set of names.
@@ -64,7 +64,7 @@ fn main() {
     let mut W = Tr::randn(&[27, 27], &mut rng);
 
     // run the neural net - just a single linear layer + softmax. No bias.
-    fn predict<T, E: Float, I: Diffable<Repr<E> = T>>(
+    fn predict<T, E: Float, I: DiffableOps<Repr<E> = T>>(
         W: &Tensor<T, E, I>,
         xenc: &Tensor<T, E, I>,
     ) -> Tensor<T, E, I> {
@@ -77,7 +77,7 @@ fn main() {
     // println!("probs\n{probs:.3}");
 
     // Let's calculate the loss.
-    fn loss<T, I: Diffable<Repr<f32> = T>>(
+    fn loss<T, I: DiffableOps<Repr<f32> = T>>(
         probs: &Tensor<T, f32, I>,
         yenc: &Tensor<T, f32, I>,
     ) -> Tensor<T, f32, I> {

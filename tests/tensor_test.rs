@@ -1,7 +1,7 @@
 use rand::{rngs::StdRng, SeedableRng};
 use tensorken::{
-    num::Float, Axes, Cpu32, CpuBool, CpuI32, CpuRawTensor, CpuRawTensorImpl, Diffable, IndexValue,
-    Tensor, ToCpu, Wgpu32, WgpuRawTensor, WgpuRawTensorImpl,
+    num::Float, Axes, Cpu32, CpuBool, CpuI32, CpuRawTensor, CpuRawTensorImpl, DiffableOps,
+    IndexValue, Tensor, ToCpu, Wgpu32, WgpuRawTensor, WgpuRawTensorImpl,
 };
 
 fn assert_tensor_eq<T1, I1: ToCpu<Repr<f32> = T1>, T2, I2: ToCpu<Repr<f32> = T2>>(
@@ -33,7 +33,7 @@ fn assert_vec_eq(a: &[f32], b: &[f32]) {
 
 // a few functions that are "compile time" tests - to check that the
 // TernsorLike traits are having the right effect.
-fn fun<T, E: Float, I: Diffable<Repr<E> = T>>(
+fn fun<T, E: Float, I: DiffableOps<Repr<E> = T>>(
     t1: &Tensor<T, E, I>,
     t2: &Tensor<T, E, I>,
 ) -> Tensor<T, E, I> {

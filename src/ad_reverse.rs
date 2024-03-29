@@ -8,7 +8,7 @@ use crate::{
     ad_ops_reverse::{CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
     ad_trace::{Trace, TracedOp},
     num::{Bool, CastFrom, Elem, Float, Num},
-    Diffable, IndexValue, Shape, Tensor,
+    DiffableOps, IndexValue, Shape, Tensor,
 };
 
 /// Reverse AD implementation.
@@ -99,7 +99,7 @@ impl<T> Reverse<T> {
 #[derive(Debug, Clone)]
 pub struct ReverseImpl<I>(PhantomData<I>);
 
-impl<I: 'static + Diffable> Diffable for ReverseImpl<I> {
+impl<I: 'static + DiffableOps> DiffableOps for ReverseImpl<I> {
     type Repr<E: Clone> = Reverse<I::Repr<E>>;
 
     fn log<E: Float>(t: &Self::Repr<E>) -> Self::Repr<E> {
@@ -130,8 +130,11 @@ impl<I: 'static + Diffable> Diffable for ReverseImpl<I> {
         lhs.binary::<PowOp<I::Repr<E>, E, I>>(rhs)
     }
 
-    fn eq<E: PartialEq + Elem>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<bool> {
-        Reverse::Lift(I::eq::<E>(lhs.primal(), rhs.primal()))
+    fn elementwise_eq<E: PartialEq + Elem>(
+        lhs: &Self::Repr<E>,
+        rhs: &Self::Repr<E>,
+    ) -> Self::Repr<bool> {
+        Reverse::Lift(I::elementwise_eq::<E>(lhs.primal(), rhs.primal()))
     }
 
     fn sum<E: Num>(t: &Self::Repr<E>, axes: &[usize]) -> Self::Repr<E> {
@@ -188,7 +191,7 @@ impl<T: Clone> Adjoints<T> {
             adjoints: vec![None; len],
         }
     }
-    fn update<E: Num, I: Diffable<Repr<E> = T>>(&mut self, idx: usize, df: T) {
+    fn update<E: Num, I: DiffableOps<Repr<E> = T>>(&mut self, idx: usize, df: T) {
         self.adjoints[idx] = self.adjoints[idx]
             .as_ref()
             .map(|c| I::elementwise_add::<E>(c, &df))
@@ -208,7 +211,7 @@ impl<T> Index<usize> for Adjoints<T> {
 
 /// `PullBack` is a function from a cotangent vector to a `Vec` of cotangent vectors.
 /// Use `call` to access it.
-pub struct PullBack<T, E: Clone, I: Diffable<Repr<E> = T>> {
+pub struct PullBack<T, E: Clone, I: DiffableOps<Repr<E> = T>> {
     trace: Rc<Trace<T>>,
     index_result: Option<usize>,
     zero_primals: Vec<T>,
@@ -217,7 +220,7 @@ pub struct PullBack<T, E: Clone, I: Diffable<Repr<E> = T>> {
     phantom: PhantomData<(E, I)>,
 }
 
-impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> PullBack<T, E, I> {
+impl<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>> PullBack<T, E, I> {
     fn reverse(&self, var: usize, adjoint: &T) -> Vec<T> {
         assert!(
             self.primal_out_shape == I::shape::<E>(adjoint),
@@ -306,7 +309,7 @@ impl<T: Clone, E: Num, I: Diffable<Repr<E> = T>> PullBack<T, E, I> {
 /// Compute a reverse-mode vector-Jacobian product of a function `f` evaluated at the given primals.
 /// Returns a tuple of the result of `f` and a `PullBack` object. `PullBack.call` can be used to
 /// compute the vector-Jacobian product of `f` at any cotangent.
-pub fn vjpn<T: Clone, E: Num, I: 'static + Diffable<Repr<E> = T>, F>(
+pub fn vjpn<T: Clone, E: Num, I: 'static + DiffableOps<Repr<E> = T>, F>(
     f: F,
     at: &[&Tensor<T, E, I>],
 ) -> (Tensor<T, E, I>, PullBack<T, E, I>)
@@ -344,7 +347,7 @@ where
 
 /// Compute the result and the gradient of a function at the given primals.
 #[allow(clippy::type_complexity)]
-pub fn value_and_gradn<T: Clone, E: Num, I: 'static + Diffable<Repr<E> = T>, F>(
+pub fn value_and_gradn<T: Clone, E: Num, I: 'static + DiffableOps<Repr<E> = T>, F>(
     f: F,
     at: &[&Tensor<T, E, I>],
 ) -> (Tensor<T, E, I>, Vec<Tensor<T, E, I>>)
@@ -359,7 +362,7 @@ where
 
 /// Compute the result and the gradient of a function at the given primal.
 #[allow(clippy::missing_panics_doc)]
-pub fn value_and_grad1<T: Clone, E: Num, I: 'static + Diffable<Repr<E> = T>, F>(
+pub fn value_and_grad1<T: Clone, E: Num, I: 'static + DiffableOps<Repr<E> = T>, F>(
     f: F,
     at: &Tensor<T, E, I>,
 ) -> (Tensor<T, E, I>, Tensor<T, E, I>)
@@ -373,7 +376,7 @@ where
 
 /// Compute the result and the gradient of a function at the given primals.
 #[allow(clippy::missing_panics_doc, clippy::type_complexity)]
-pub fn value_and_grad2<T: Clone, E: Num, I: 'static + Diffable<Repr<E> = T>, F>(
+pub fn value_and_grad2<T: Clone, E: Num, I: 'static + DiffableOps<Repr<E> = T>, F>(
     f: F,
     at0: &Tensor<T, E, I>,
     at1: &Tensor<T, E, I>,
@@ -391,7 +394,7 @@ where
 
 /// Compute the gradient of a function at the given primal.
 #[allow(clippy::missing_panics_doc)]
-pub fn grad1<T: Clone, E: Num, I: 'static + Diffable<Repr<E> = T>, F>(
+pub fn grad1<T: Clone, E: Num, I: 'static + DiffableOps<Repr<E> = T>, F>(
     f: F,
     at: &Tensor<T, E, I>,
 ) -> Tensor<T, E, I>
@@ -404,7 +407,7 @@ where
 
 /// Compute the gradient of a function at the given primals.
 #[allow(clippy::missing_panics_doc)]
-pub fn grad2<T: Clone, E: Num, I: 'static + Diffable<Repr<E> = T>, F>(
+pub fn grad2<T: Clone, E: Num, I: 'static + DiffableOps<Repr<E> = T>, F>(
     f: F,
     at0: &Tensor<T, E, I>,
     at1: &Tensor<T, E, I>,
@@ -420,7 +423,7 @@ where
 
 /// Jacobian of `f` evaluated row-by-row at `at` using reverse-mode AD.
 #[allow(clippy::missing_panics_doc)]
-pub fn jacrev<T: Clone, E: Num, I: 'static + Diffable<Repr<E> = T>, F>(
+pub fn jacrev<T: Clone, E: Num, I: 'static + DiffableOps<Repr<E> = T>, F>(
     f: F,
     at: &Tensor<T, E, I>,
 ) -> Tensor<T, E, I>
