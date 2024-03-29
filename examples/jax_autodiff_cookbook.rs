@@ -121,7 +121,7 @@ fn main() {
     print!("b_grad_numerical {}", b_grad_numerical);
     print!("b_grad_autodiff {}", b_grad);
 
-    // TODO implement a numerical gradient checker
+    // Here they compare with a numerical gradient checker
 
     // ### Hessian-vector products with `grad`-of-`grad`
 

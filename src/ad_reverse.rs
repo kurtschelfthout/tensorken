@@ -174,7 +174,6 @@ impl<I: 'static + DiffableOps> DiffableOps for ReverseImpl<I> {
     }
 
     fn cast<EFro: Elem, ETo: CastFrom<EFro> + Elem>(t: &Self::Repr<EFro>) -> Self::Repr<ETo> {
-        // TODO: make cast actuallly diffable
         Reverse::Lift(I::cast(t.primal()))
     }
 }

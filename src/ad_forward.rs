@@ -148,7 +148,6 @@ impl<I: DiffableOps> DiffableOps for ForwardImpl<I> {
     }
 
     fn cast<EFro: Elem, ETo: CastFrom<EFro> + Elem>(t: &Self::Repr<EFro>) -> Self::Repr<ETo> {
-        // TODO: implement cast for Forward AD
         Forward::Lift(I::cast(t.primal()))
     }
 }

@@ -45,9 +45,9 @@ pub use type_magic::{
     WgpuBool, WgpuI32,
 };
 
-// TODO of general interest
+// TODO:
 // - Make vjp and jvp and friends all be N-to-N arguments instead of N-to-1.
-// - Treat zero and one as a special case for efficiency (also avoids NaNs, see jvp_test for pow). Maybe as a RawTensor implementation like Fuse.
+// - Treat zero and one as a special case for efficiency (also avoids NaNs, see jvp_test for pow). Maybe as a RawTensorOps implementation like Fuse.
 // - Try a jax style vmap implementation of Diffable
 // - The DiffableOps trait inflates the requirements on E, the element type somewhat artificially. A good example is that broadcasted `eq` does not
 //   work on bools, because it requires Num. This is because broadcasting requires expand, which requires sum for reverse-mode AD.
@@ -56,3 +56,6 @@ pub use type_magic::{
 //   the inflated requirements, and one that uses `DiffableOps` for input into jvp/vjp (it doesn't matter there that there are more requirements, because
 //   we need Num anyway to differentiate). This however seems to require implementing all the operations on Tensor twice.
 // - JAX supports differentiating through container types, i.e. tensors in lists, tuples etc.
+// - cast is not currently diffable, it's always lifted. It's a bit tricky to implement cast because of how it would mean having two parameters for `UnaryOp<T>`,
+//   and I'm not currently sure how to best handle that.
+// - consider implementing a numerical gradient checker for testing.

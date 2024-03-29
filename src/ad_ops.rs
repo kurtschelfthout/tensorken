@@ -6,9 +6,8 @@ use crate::{
 };
 
 /// A trait that represents the operation on the primal value, and
-/// returns a `UnaryDiffOp`, which is the operation on the adjoints in the
-/// reverse pass.
-/// This design allows the derivative calculation to reuse result from the primal calculation.
+/// returns a `UnaryDiffOp`, which is the operation on the tangent values.
+/// This design allows the derivative calculation to reuse results or inputs from the primal calculation.
 pub trait UnaryOp<T> {
     type Args: ?Sized;
     fn f(a: &T, args: &Self::Args) -> (T, Self);
