@@ -1,7 +1,7 @@
 use tensorken::{
     jacrev,
     num::{Bool, CastFrom, Elem, Float, Num},
-    value_and_grad1, value_and_grad2, vjpn, Cpu32, Diff, Shape, Tensor, TensorRev, Tensorken,
+    value_and_grad1, value_and_grad2, vjpn, Cpu32, Diff, Shape, Tensor, TensorBase, TensorRev,
     ToCpu, Wgpu32,
 };
 
@@ -29,14 +29,14 @@ where
 #[allow(clippy::similar_names)]
 fn test_df<Tsr: Diff>(
     f: impl Fn(&TensorRev<Tsr>) -> TensorRev<Tsr>,
-    df: impl Fn(&Tensorken<Tsr>) -> Tensorken<Tsr>,
-    ft: impl Fn(&Tensorken<Tsr>) -> Tensorken<Tsr>,
+    df: impl Fn(&TensorBase<Tsr>) -> TensorBase<Tsr>,
+    ft: impl Fn(&TensorBase<Tsr>) -> TensorBase<Tsr>,
 ) where
     f32: From<Tsr::E>,
     Tsr::E: Num + Debug + From<u8>,
     Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
-    let at: Tensorken<Tsr> = Tensor::new(&[2, 4], &(1u8..9).map(Tsr::E::from).collect::<Vec<_>>());
+    let at: TensorBase<Tsr> = Tensor::new(&[2, 4], &(1u8..9).map(Tsr::E::from).collect::<Vec<_>>());
     let (f_actual, df_actual) = value_and_grad1(f, &at);
     let f_expected = ft(&at);
     let df_expected = df(&at);
@@ -51,14 +51,14 @@ fn test_df<Tsr: Diff>(
 #[allow(clippy::similar_names)]
 fn test_ddf<Tsr: Diff>(
     f: impl Fn(&<TensorRev<Tsr> as Diff>::Rev) -> <TensorRev<Tsr> as Diff>::Rev,
-    ddf: impl Fn(&Tensorken<Tsr>) -> Tensorken<Tsr>,
-    df: impl Fn(&Tensorken<Tsr>) -> Tensorken<Tsr>,
+    ddf: impl Fn(&TensorBase<Tsr>) -> TensorBase<Tsr>,
+    df: impl Fn(&TensorBase<Tsr>) -> TensorBase<Tsr>,
 ) where
     f32: From<Tsr::E>,
     Tsr::E: Num + Debug + From<u8>,
     Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
-    let at: Tensorken<Tsr> = Tensor::new(&[2, 2], &(1u8..5).map(Tsr::E::from).collect::<Vec<_>>());
+    let at: TensorBase<Tsr> = Tensor::new(&[2, 2], &(1u8..5).map(Tsr::E::from).collect::<Vec<_>>());
     let (df_actual, ddf_actual) = value_and_grad1(|r| value_and_grad1(&f, r).1, &at);
     let df_expected = df(&at);
     let ddf_expected = ddf(&at);
@@ -72,9 +72,9 @@ fn test_ddf<Tsr: Diff>(
 #[allow(clippy::similar_names)]
 fn test_df_2<Tsr: Diff<E = f32>>(
     f: impl Fn(&TensorRev<Tsr>, &TensorRev<Tsr>) -> TensorRev<Tsr>,
-    ft: impl Fn(&Tensorken<Tsr>, &Tensorken<Tsr>) -> Tensorken<Tsr>,
-    dfda: impl Fn(&Tensorken<Tsr>, &Tensorken<Tsr>) -> Tensorken<Tsr>,
-    dfdb: impl Fn(&Tensorken<Tsr>, &Tensorken<Tsr>) -> Tensorken<Tsr>,
+    ft: impl Fn(&TensorBase<Tsr>, &TensorBase<Tsr>) -> TensorBase<Tsr>,
+    dfda: impl Fn(&TensorBase<Tsr>, &TensorBase<Tsr>) -> TensorBase<Tsr>,
+    dfdb: impl Fn(&TensorBase<Tsr>, &TensorBase<Tsr>) -> TensorBase<Tsr>,
 ) where
     Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
@@ -221,7 +221,7 @@ where
     );
 }
 
-fn f_div<T: Diff>(a: &Tensorken<T>) -> Tensorken<T>
+fn f_div<T: Diff>(a: &TensorBase<T>) -> TensorBase<T>
 where
     T::E: Num,
 {
@@ -256,7 +256,7 @@ where
     );
 }
 
-fn f_pow<T: Diff>(a: &Tensorken<T>) -> Tensorken<T>
+fn f_pow<T: Diff>(a: &TensorBase<T>) -> TensorBase<T>
 where
     T::E: Float,
 {
@@ -330,7 +330,7 @@ fn all_axes(shape: &[usize]) -> Vec<usize> {
     (0..shape.len()).collect()
 }
 
-fn f_sum<T: Diff>(a: &Tensorken<T>) -> Tensorken<T>
+fn f_sum<T: Diff>(a: &TensorBase<T>) -> TensorBase<T>
 where
     T::E: Num,
 {
@@ -355,7 +355,7 @@ where
     );
 }
 
-fn f_max<T: Diff>(a: &Tensorken<T>) -> Tensorken<T>
+fn f_max<T: Diff>(a: &TensorBase<T>) -> TensorBase<T>
 where
     T::E: Num + CastFrom<bool>,
 {
@@ -384,7 +384,7 @@ where
     );
 }
 
-fn f_reshape<T: Diff>(a: &Tensorken<T>) -> Tensorken<T>
+fn f_reshape<T: Diff>(a: &TensorBase<T>) -> TensorBase<T>
 where
     T::E: Num,
 {
@@ -411,7 +411,7 @@ where
     );
 }
 
-fn f_permute<T: Diff>(a: &Tensorken<T>) -> Tensorken<T>
+fn f_permute<T: Diff>(a: &TensorBase<T>) -> TensorBase<T>
 where
     T::E: Elem,
 {
@@ -439,7 +439,7 @@ where
     );
 }
 
-fn f_expand<T: Diff>(a: &Tensorken<T>) -> Tensorken<T>
+fn f_expand<T: Diff>(a: &TensorBase<T>) -> TensorBase<T>
 where
     T::E: Num,
 {
@@ -468,7 +468,7 @@ where
     );
 }
 
-fn f_crop<T: Diff>(a: &Tensorken<T>) -> Tensorken<T>
+fn f_crop<T: Diff>(a: &TensorBase<T>) -> TensorBase<T>
 where
     T::E: Bool,
 {
@@ -499,7 +499,7 @@ where
     );
 }
 
-fn f_pad<T: Diff>(a: &Tensorken<T>) -> Tensorken<T>
+fn f_pad<T: Diff>(a: &TensorBase<T>) -> TensorBase<T>
 where
     T::E: Bool,
 {
@@ -524,7 +524,7 @@ where
     );
 }
 
-fn f_matmul<T: Diff>(a: &Tensorken<T>, b: &Tensorken<T>) -> Tensorken<T>
+fn f_matmul<T: Diff>(a: &TensorBase<T>, b: &TensorBase<T>) -> TensorBase<T>
 where
     T::E: Num,
 {
@@ -541,14 +541,14 @@ fn do_test_matmul<Tsr: Diff<E = f32>>()
 where
     Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
-    let a: Tensorken<Tsr> = Tensor::new(&[2, 3], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
-    let b: Tensorken<Tsr> = Tensor::new(&[3, 2], &[7.0, 8.0, 9.0, 10.0, 11.0, 12.0]);
+    let a: TensorBase<Tsr> = Tensor::new(&[2, 3], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+    let b: TensorBase<Tsr> = Tensor::new(&[3, 2], &[7.0, 8.0, 9.0, 10.0, 11.0, 12.0]);
 
     let (primals, pullback) = vjpn(|ab| f_matmul::<Tsr::Rev>(&ab[0], &ab[1]), &[&a, &b]);
     assert_eq!(primals.shape(), &[2, 2]);
     assert_eq!(primals.ravel(), &[58.0, 64.0, 139.0, 154.0]);
 
-    let cotangent: Tensorken<Tsr> = Tensor::new(&[2, 2], &[1.0, 2.0, 3.0, 4.0]);
+    let cotangent: TensorBase<Tsr> = Tensor::new(&[2, 2], &[1.0, 2.0, 3.0, 4.0]);
     let grads = pullback.call(&cotangent);
     assert_eq!(grads.len(), 2);
     assert_eq!(grads[0].shape(), a.shape());
@@ -563,7 +563,7 @@ fn test_jacrev() {
     do_test_jacrev::<Wgpu32>();
 }
 
-fn f_pow2<T: Diff>(a: &Tensorken<T>) -> Tensorken<T>
+fn f_pow2<T: Diff>(a: &TensorBase<T>) -> TensorBase<T>
 where
     T::E: Float + From<u8>,
 {
@@ -574,7 +574,7 @@ fn do_test_jacrev<Tsr: Diff<E = f32>>()
 where
     Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
-    let a: Tensorken<Tsr> = Tensor::new(&[3], &[1.0, 2.0, 3.0]);
+    let a: TensorBase<Tsr> = Tensor::new(&[3], &[1.0, 2.0, 3.0]);
     let r = jacrev(f_pow2::<Tsr::Rev>, &a);
     assert_eq!(r.shape(), &[3, 3]);
     assert_vec_eq(

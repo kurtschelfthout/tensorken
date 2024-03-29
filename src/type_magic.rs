@@ -61,6 +61,6 @@ impl<T: Clone, E: Clone, I: 'static + DiffableOps<Repr<E> = T> + Clone> Diff for
     type Rev = Tensor<Reverse<Self::T>, Self::E, ReverseImpl<Self::I>>;
 }
 
-pub type Tensorken<Tsr> = Tensor<<Tsr as Diff>::T, <Tsr as Diff>::E, <Tsr as Diff>::I>;
-pub type TensorFwd<Tsr> = Tensorken<<Tsr as Diff>::Fwd>;
-pub type TensorRev<Tsr> = Tensorken<<Tsr as Diff>::Rev>;
+pub type TensorBase<Tsr> = Tensor<<Tsr as Diff>::T, <Tsr as Diff>::E, <Tsr as Diff>::I>;
+pub type TensorFwd<Tsr> = TensorBase<<Tsr as Diff>::Fwd>;
+pub type TensorRev<Tsr> = TensorBase<<Tsr as Diff>::Rev>;

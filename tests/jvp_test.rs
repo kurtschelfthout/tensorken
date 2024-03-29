@@ -1,6 +1,6 @@
 use tensorken::{
     jacfwd, jvpn, num::Num, value_and_diff1, value_and_diff2, Cpu32, Diff, Forward, ForwardImpl,
-    Shape, Tensor, TensorFwd, Tensorken, ToCpu, Wgpu32,
+    Shape, Tensor, TensorBase, TensorFwd, ToCpu, Wgpu32,
 };
 
 use std::{
@@ -27,14 +27,14 @@ where
 #[allow(clippy::similar_names)]
 fn test_df<Tsr: Diff>(
     f: impl Fn(&TensorFwd<Tsr>) -> TensorFwd<Tsr>,
-    df: impl Fn(&Tensorken<Tsr>) -> Tensorken<Tsr>,
-    ft: impl Fn(&Tensorken<Tsr>) -> Tensorken<Tsr>,
+    df: impl Fn(&TensorBase<Tsr>) -> TensorBase<Tsr>,
+    ft: impl Fn(&TensorBase<Tsr>) -> TensorBase<Tsr>,
 ) where
     f32: From<Tsr::E>,
     Tsr::E: Num + From<u8> + Debug,
     Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
-    let at: Tensorken<Tsr> = Tensor::new(&[2, 4], &(1u8..9).map(Tsr::E::from).collect::<Vec<_>>());
+    let at: TensorBase<Tsr> = Tensor::new(&[2, 4], &(1u8..9).map(Tsr::E::from).collect::<Vec<_>>());
     let (f_actual, df_actual) = value_and_diff1(f, &at);
     let f_expected = ft(&at);
     let df_expected = df(&at);
@@ -57,14 +57,14 @@ fn test_ddf<Tsr: Diff>(
     f: impl Fn(
         &Tensor<Forward<Forward<Tsr::T>>, Tsr::E, ForwardImpl<ForwardImpl<Tsr::I>>>,
     ) -> Tensor<Forward<Forward<Tsr::T>>, Tsr::E, ForwardImpl<ForwardImpl<Tsr::I>>>,
-    ddf: impl Fn(&Tensorken<Tsr>) -> Tensorken<Tsr>,
-    dft: impl Fn(&Tensorken<Tsr>) -> Tensorken<Tsr>,
+    ddf: impl Fn(&TensorBase<Tsr>) -> TensorBase<Tsr>,
+    dft: impl Fn(&TensorBase<Tsr>) -> TensorBase<Tsr>,
 ) where
     f32: From<Tsr::E>,
     Tsr::E: Num + From<u8> + Debug,
     Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
-    let at: Tensorken<Tsr> = Tensor::new(&[2, 2], &(1u8..5).map(Tsr::E::from).collect::<Vec<_>>());
+    let at: TensorBase<Tsr> = Tensor::new(&[2, 2], &(1u8..5).map(Tsr::E::from).collect::<Vec<_>>());
     let (df_actual, ddf_actual) = value_and_diff1(|r| value_and_diff1(&f, r).1, &at);
     let df_expected = dft(&at);
     let ddf_expected = ddf(&at);
@@ -78,9 +78,9 @@ fn test_ddf<Tsr: Diff>(
 #[allow(clippy::similar_names)]
 fn test_df_2<Tsr: Diff<E = f32>>(
     f: impl Fn(&TensorFwd<Tsr>, &TensorFwd<Tsr>) -> TensorFwd<Tsr>,
-    ft: impl Fn(&Tensorken<Tsr>, &Tensorken<Tsr>) -> Tensorken<Tsr>,
-    dfda: impl Fn(&Tensorken<Tsr>, &Tensorken<Tsr>) -> Tensorken<Tsr>,
-    dfdb: impl Fn(&Tensorken<Tsr>, &Tensorken<Tsr>) -> Tensorken<Tsr>,
+    ft: impl Fn(&TensorBase<Tsr>, &TensorBase<Tsr>) -> TensorBase<Tsr>,
+    dfda: impl Fn(&TensorBase<Tsr>, &TensorBase<Tsr>) -> TensorBase<Tsr>,
+    dfdb: impl Fn(&TensorBase<Tsr>, &TensorBase<Tsr>) -> TensorBase<Tsr>,
 ) where
     Tsr::I: ToCpu<Repr<f32> = Tsr::T>,
 {
@@ -225,7 +225,7 @@ where
     );
 }
 
-fn f_div<Tsr: Diff<E = f32>>(a: &Tensorken<Tsr>) -> Tensorken<Tsr> {
+fn f_div<Tsr: Diff<E = f32>>(a: &TensorBase<Tsr>) -> TensorBase<Tsr> {
     a.ones_like() / a
 }
 
@@ -257,7 +257,7 @@ where
     );
 }
 
-fn f_pow<Tsr: Diff<E = f32>>(a: &Tensorken<Tsr>) -> Tensorken<Tsr> {
+fn f_pow<Tsr: Diff<E = f32>>(a: &TensorBase<Tsr>) -> TensorBase<Tsr> {
     a.pow(a)
 }
 
@@ -293,8 +293,8 @@ where
     //     |a, b| b * a.pow(&(b - b.ones_like())),
     //     |a, b| a.pow(b) * a.log(),
     // );
-    let a: &Tensorken<Tsr> = &Tensor::new(&[2, 2], &[1.0, 2.0, 3.0, 4.0]);
-    let b: &Tensorken<Tsr> = &Tensor::new(&[2, 2], &[4.0, 5.0, 6.0, 7.0]);
+    let a: &TensorBase<Tsr> = &Tensor::new(&[2, 2], &[1.0, 2.0, 3.0, 4.0]);
+    let b: &TensorBase<Tsr> = &Tensor::new(&[2, 2], &[4.0, 5.0, 6.0, 7.0]);
     let (f_actual, (dfda_actual, dfdb_actual)) = value_and_diff2(|a, b| a.pow(b), a, b);
     let f_expected = a.pow(b);
     let dfda_expected = b * a.pow(&(b - b.ones_like()));
@@ -343,7 +343,7 @@ fn all_axes(shape: &[usize]) -> Vec<usize> {
     (0..shape.len()).collect()
 }
 
-fn f_sum<Tsr: Diff<E = f32>>(a: &Tensorken<Tsr>) -> Tensorken<Tsr> {
+fn f_sum<Tsr: Diff<E = f32>>(a: &TensorBase<Tsr>) -> TensorBase<Tsr> {
     a.sum(&all_axes(a.shape()))
 }
 
@@ -357,10 +357,10 @@ fn do_test_sum<Tsr: Diff<E = f32>>()
 where
     Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
 {
-    fn df<Tsr: Diff<E = f32>>(a: &Tensorken<Tsr>) -> Tensorken<Tsr> {
+    fn df<Tsr: Diff<E = f32>>(a: &TensorBase<Tsr>) -> TensorBase<Tsr> {
         a.ones_like().sum(&all_axes(a.shape()))
     }
-    fn ddf<Tsr: Diff<E = f32>>(a: &Tensorken<Tsr>) -> Tensorken<Tsr> {
+    fn ddf<Tsr: Diff<E = f32>>(a: &TensorBase<Tsr>) -> TensorBase<Tsr> {
         a.zeros_like().sum(&all_axes(a.shape()))
     }
 
@@ -368,7 +368,7 @@ where
     test_ddf::<Tsr>(f_sum::<<Tsr::Fwd as Diff>::Fwd>, ddf::<Tsr>, df::<Tsr>);
 }
 
-fn f_max<Tsr: Diff<E = f32>>(a: &Tensorken<Tsr>) -> Tensorken<Tsr> {
+fn f_max<Tsr: Diff<E = f32>>(a: &TensorBase<Tsr>) -> TensorBase<Tsr> {
     a.max(&all_axes(a.shape()))
 }
 
@@ -392,7 +392,7 @@ where
     });
 }
 
-fn f_reshape<Tsr: Diff<E = f32>>(a: &Tensorken<Tsr>) -> Tensorken<Tsr> {
+fn f_reshape<Tsr: Diff<E = f32>>(a: &TensorBase<Tsr>) -> TensorBase<Tsr> {
     a.reshape(&[a.shape().size()])
 }
 
@@ -418,7 +418,7 @@ where
     );
 }
 
-fn f_permute<Tsr: Diff<E = f32>>(a: &Tensorken<Tsr>) -> Tensorken<Tsr> {
+fn f_permute<Tsr: Diff<E = f32>>(a: &TensorBase<Tsr>) -> TensorBase<Tsr> {
     a.permute(&[1, 0])
 }
 
@@ -445,7 +445,7 @@ where
     );
 }
 
-fn f_expand<Tsr: Diff<E = f32>>(a: &Tensorken<Tsr>) -> Tensorken<Tsr> {
+fn f_expand<Tsr: Diff<E = f32>>(a: &TensorBase<Tsr>) -> TensorBase<Tsr> {
     a.reshape(&[1, 2, 4]).expand(&[4, 2, 4])
 }
 
@@ -471,7 +471,7 @@ where
     );
 }
 
-fn f_crop<Tsr: Diff<E = f32>>(a: &Tensorken<Tsr>) -> Tensorken<Tsr> {
+fn f_crop<Tsr: Diff<E = f32>>(a: &TensorBase<Tsr>) -> TensorBase<Tsr> {
     a.crop(&[(0, 1), (1, 2)])
 }
 
@@ -497,7 +497,7 @@ where
     );
 }
 
-fn f_pad<Tsr: Diff<E = f32>>(a: &Tensorken<Tsr>) -> Tensorken<Tsr> {
+fn f_pad<Tsr: Diff<E = f32>>(a: &TensorBase<Tsr>) -> TensorBase<Tsr> {
     a.pad(&[(1, 2), (3, 4)])
 }
 
@@ -523,7 +523,7 @@ where
     );
 }
 
-fn f_matmul<Tsr: Diff<E = f32>>(a: &Tensorken<Tsr>, b: &Tensorken<Tsr>) -> Tensorken<Tsr> {
+fn f_matmul<Tsr: Diff<E = f32>>(a: &TensorBase<Tsr>, b: &TensorBase<Tsr>) -> TensorBase<Tsr> {
     a.matmul(b)
 }
 
@@ -569,7 +569,7 @@ fn test_jacfwd() {
     do_test_jacfwd::<Wgpu32>();
 }
 
-fn f_pow2<Tsr: Diff<E = f32>>(a: &Tensorken<Tsr>) -> Tensorken<Tsr> {
+fn f_pow2<Tsr: Diff<E = f32>>(a: &TensorBase<Tsr>) -> TensorBase<Tsr> {
     a.pow(&a.constant_like(2u8.into()))
 }
 
