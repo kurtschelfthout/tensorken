@@ -1,7 +1,7 @@
 use rand::{rngs::StdRng, SeedableRng};
 use tensorken::{
-    num::Float, Axes, Cpu32, CpuBool, CpuI32, CpuRawTensor, CpuRawTensorImpl, DiffableOps,
-    IndexValue, Tensor, ToCpu, Wgpu32, WgpuRawTensor, WgpuRawTensorImpl,
+    num::Float, Axes, Cpu32, CpuBool, CpuI32, CpuRawTensor, CpuRawTensorImpl, DiffableOps, Tensor,
+    ToCpu, Wgpu32, WgpuRawTensor, WgpuRawTensorImpl,
 };
 
 fn assert_tensor_eq<T1, I1: ToCpu<Repr<f32> = T1>, T2, I2: ToCpu<Repr<f32> = T2>>(
@@ -57,6 +57,23 @@ fn test_tensorlike() {
     let r_cpu = fun(t_cpu, t_cpu);
     let r_gpu = fun(t_wgpu, t_wgpu);
     assert_tensor_eq(&r_cpu, &r_gpu);
+}
+
+#[test]
+fn test_i32_tensor() {
+    let t = CpuI32::new(&[2, 3], &[1, 2, 3, 4, 5, 6]);
+    let mut r = &t + &t;
+    r = CpuI32::scalar(2) * &r;
+    assert_eq!(r.ravel(), &[4, 8, 12, 16, 20, 24]);
+}
+
+#[test]
+fn test_bool_tensor() {
+    let t = CpuBool::new(&[2, 3], &[true, true, false, false, true, true]);
+    // All the broadcasted ops require Num, because they rely on expand, and
+    // the reverse-mode AD implementation of expand requires sum.
+    let r = &t.elementwise_eq(&t);
+    assert_eq!(r.ravel(), &[true, true, true, true, true, true]);
 }
 
 #[test]
@@ -455,18 +472,18 @@ fn test_at() {
 }
 
 fn do_test_at<T, I: ToCpu<Repr<f32> = T>>(t: &Tensor<T, f32, I>) {
-    let s = t.at(1);
+    let s = t.at1(1);
     assert_eq!(s.shape(), &[4]);
     assert_eq!(s.ravel(), vec![0.0, 1.0, 0.0, 0.0]);
 
-    let s = s.at(1);
+    let s = s.at1(1);
     assert_eq!(s.shape(), &[1]);
 
-    let s = t.at(&[1]);
+    let s = t.at1(1);
     assert_eq!(s.shape(), &[4]);
     assert_eq!(s.ravel(), vec![0.0, 1.0, 0.0, 0.0]);
 
-    let s = t.at(&[1, 1]);
+    let s = t.at2(1, 1);
     assert_eq!(s.shape(), &[1]);
 }
 

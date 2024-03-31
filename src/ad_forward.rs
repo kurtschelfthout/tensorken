@@ -7,7 +7,7 @@ use crate::{
     },
     ad_ops_forward::{CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
     num::{Bool, CastFrom, Elem, Float, Num},
-    sl2, Axes, DiffableOps, IndexValue, Shape, Tensor,
+    DiffableOps, Shape, Tensor,
 };
 
 /// Forward AD implementation.
@@ -309,7 +309,7 @@ where
 
     let mut tangents: Vec<_> = Vec::with_capacity(i.shape()[1]);
     for col_idx in 0..i.shape()[1] {
-        let col = i.at(sl2(.., col_idx)).squeeze(&Axes::Axis(1));
+        let col = i.at2(.., col_idx);
         let (_, col_tangent) = jvpn(|s| f(&s[0]), &[at], &[&col]);
         tangents.push(col_tangent);
     }

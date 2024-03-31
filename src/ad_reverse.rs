@@ -8,7 +8,7 @@ use crate::{
     ad_ops_reverse::{CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
     ad_trace::{Trace, TracedOp},
     num::{Bool, CastFrom, Elem, Float, Num},
-    DiffableOps, IndexValue, Shape, Tensor,
+    DiffableOps, Shape, Tensor,
 };
 
 /// Reverse AD implementation.
@@ -438,7 +438,7 @@ where
 
     let mut tangents: Vec<Tensor<T, E, I>> = Vec::with_capacity(i.shape()[0]);
     for row_idx in 0..i.shape()[0] {
-        let row = i.at(row_idx);
+        let row = i.at1(row_idx);
         let row_tangent = pullback.call(&row).into_iter().next().unwrap();
         tangents.push(row_tangent);
     }

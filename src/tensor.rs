@@ -104,6 +104,7 @@ impl<I: RawTensorOps> DiffableOps for I {
 /// to the blanket implementation above, get translated ultimately to [`RawTensor`] operations.
 /// This is nice, because to implement a new type of accelerator, you only need to implement [`RawTensor`].
 #[derive(Debug, Clone)]
+#[must_use]
 pub struct Tensor<T, E: Clone, I: DiffableOps<Repr<E> = T>>(
     pub(crate) T,
     pub(crate) PhantomData<(E, I)>,
@@ -111,55 +112,48 @@ pub struct Tensor<T, E: Clone, I: DiffableOps<Repr<E> = T>>(
 
 impl<T, E: Float, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
     /// Apply the natural logarithm to each element.
-    #[must_use]
     pub fn log(&self) -> Self {
         Self(I::log::<E>(&self.0), PhantomData)
     }
 
     /// Apply exp to each element.
-    #[must_use]
     pub fn exp(&self) -> Self {
         Self(I::exp::<E>(&self.0), PhantomData)
     }
 
     /// Raise self to the power of other, element-wise.
-    #[must_use]
     pub fn elementwise_pow(&self, exp: &Self) -> Self {
         Self(I::elementwise_pow::<E>(&self.0, &exp.0), PhantomData)
     }
 }
 
 impl<T, E: Num, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
-    #[must_use]
     pub fn elementwise_add(&self, other: &Self) -> Self {
         Self(I::elementwise_add::<E>(&self.0, &other.0), PhantomData)
     }
 
-    #[must_use]
     pub fn elementwise_sub(&self, other: &Self) -> Self {
         Self(I::elementwise_sub::<E>(&self.0, &other.0), PhantomData)
     }
 
-    #[must_use]
     pub fn elementwise_mul(&self, other: &Self) -> Self {
         Self(I::elementwise_mul::<E>(&self.0, &other.0), PhantomData)
     }
 
-    #[must_use]
     pub fn elementwise_div(&self, other: &Self) -> Self {
         Self(I::elementwise_div::<E>(&self.0, &other.0), PhantomData)
     }
 
     /// Reduce to sum along the given axes.
     /// Keeps the reduced dimensions, but with size 1.
-    #[must_use]
+
     pub fn sum(&self, axes: &[usize]) -> Self {
         Self(I::sum::<E>(&self.0, axes), PhantomData)
     }
 
     /// Expand the tensor to the given shape. Only dimensions of length 1 can be expanded.
     /// Like numpy's `broadcast_to` but simpler - does not add dimensions of size 1.
-    #[must_use]
+
     pub fn expand(&self, shape: &[usize]) -> Self {
         Self(I::expand::<E>(&self.0, shape), PhantomData)
     }
@@ -167,13 +161,13 @@ impl<T, E: Num, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
 
 impl<T, E: Bool, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
     /// Increase the size of the tensor by adding the given number of zero elements before and after each axis.
-    #[must_use]
+
     pub fn pad(&self, padding: &[(usize, usize)]) -> Self {
         Self(I::pad::<E>(&self.0, padding), PhantomData)
     }
 
     /// Reduce the size of the tensor by removing the given number of elements before and after each axis.
-    #[must_use]
+
     pub fn crop(&self, limits: &[(usize, usize)]) -> Self {
         Self(I::crop::<E>(&self.0, limits), PhantomData)
     }
@@ -183,14 +177,14 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
     /// Reshape the tensor to the given shape.
     /// The number of elements must remain the same.
     /// Compare to numpy's `reshape`.
-    #[must_use]
+
     pub fn reshape(&self, shape: &[usize]) -> Self {
         Self(I::reshape::<E>(&self.0, shape), PhantomData)
     }
 
     /// Changes axes around according to the given permutation.
     /// Compare to numpy's `transpose`.
-    #[must_use]
+
     pub fn permute(&self, dims: &[usize]) -> Self {
         Self(I::permute::<E>(&self.0, dims), PhantomData)
     }
@@ -215,7 +209,7 @@ impl<T, E: Clone, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
 
     /// Reduce to max element along the given axes.
     /// Keeps the reduced dimensions, but with size 1.
-    #[must_use]
+
     pub fn max(&self, axes: &[usize]) -> Self
     where
         E: Num + CastFrom<bool>,
@@ -390,7 +384,7 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
     }
 
     /// Create a new tensor with the same shape as self, but all elements equal to given value.
-    #[must_use]
+
     pub fn constant_like(&self, value: E) -> Self
     where
         E: Num,
@@ -399,7 +393,7 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
     }
 
     /// Create a new tensor with the same shape as self, but all elements equal to zero (`E::ZERO`).
-    #[must_use]
+
     pub fn zeros_like(&self) -> Self
     where
         E: Num,
@@ -408,7 +402,7 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
     }
 
     /// Create a new tensor with the same shape as self, but all elements equal to one (`E::ONE`).
-    #[must_use]
+
     pub fn ones_like(&self) -> Self
     where
         E: Num,
@@ -416,7 +410,7 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
         self.constant_like(E::ONE)
     }
     /// Switch two axes around.
-    #[must_use]
+
     pub fn transpose(&self, axis0: usize, axis1: usize) -> Self {
         let mut axes: Vec<_> = (0..self.shape().ndims()).collect();
         axes.swap(axis0, axis1);
@@ -426,7 +420,7 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
     /// Remove all axes with size 1, or a specific axis if given.
     /// # Panics
     /// If the given axis is not of size 1.
-    #[must_use]
+
     pub fn squeeze(&self, dim: &Axes) -> Self {
         let mut shape = self.shape().to_vec();
         if let Axes::Axis(dim) = dim {
@@ -439,7 +433,7 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
     }
 
     /// Insert a new axis of length 1.
-    #[must_use]
+
     pub fn expand_dims(&self, dim: usize) -> Self {
         let mut shape = self.shape().to_vec();
         shape.insert(dim, 1);
@@ -495,7 +489,6 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
 
     // math
 
-    #[must_use]
     pub fn add(&self, other: &Self) -> Self
     where
         E: Num,
@@ -503,7 +496,6 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
         broadcasted_apply::<T, T, E, E, I, I>(self, other, I::elementwise_add::<E>, false)
     }
 
-    #[must_use]
     pub fn sub(&self, other: &Self) -> Self
     where
         E: Num,
@@ -511,7 +503,6 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
         broadcasted_apply::<T, T, E, E, I, I>(self, other, I::elementwise_sub::<E>, false)
     }
 
-    #[must_use]
     pub fn mul(&self, other: &Self) -> Self
     where
         E: Num,
@@ -519,7 +510,6 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
         broadcasted_apply::<T, T, E, E, I, I>(self, other, I::elementwise_mul::<E>, false)
     }
 
-    #[must_use]
     pub fn div(&self, other: &Self) -> Self
     where
         E: Num,
@@ -527,7 +517,6 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
         broadcasted_apply::<T, T, E, E, I, I>(self, other, I::elementwise_div::<E>, false)
     }
 
-    #[must_use]
     pub fn pow(&self, other: &Self) -> Self
     where
         E: Float,
@@ -535,7 +524,6 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
         broadcasted_apply::<T, T, E, E, I, I>(self, other, I::elementwise_pow::<E>, false)
     }
 
-    #[must_use]
     pub fn eq(&self, other: &Self) -> Tensor<<I as DiffableOps>::Repr<bool>, bool, I>
     where
         E: Num,
@@ -548,7 +536,6 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
         )
     }
 
-    #[must_use]
     pub fn neg(&self) -> Self
     where
         E: Num,
@@ -556,7 +543,6 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
         self.zeros_like().sub(self)
     }
 
-    #[must_use]
     pub fn reciprocal(&self) -> Self
     where
         E: Num,
@@ -575,7 +561,7 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
     ///
     /// # Panics
     /// If one of the dimensions is 0 or if the inner dimensions don't match.
-    #[must_use]
+
     pub fn matmul(&self, other: &Self) -> Self
     where
         E: Num,
@@ -642,7 +628,7 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
     ///
     /// # Panics
     /// If one of the dimensions is 0 or if the inner dimensions don't match.
-    #[must_use]
+
     pub fn dot(&self, other: &Self) -> Self
     where
         E: Num,
@@ -699,14 +685,14 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
     }
 
     // activation functions
-    #[must_use]
+
     pub fn sigmoid(&self) -> Self
     where
         E: Float,
     {
         self.ones_like().add(&self.neg().exp()).reciprocal()
     }
-    #[must_use]
+
     pub fn tanh(&self) -> Self
     where
         E: Float,
@@ -726,7 +712,7 @@ impl<T, E: Clone, I: ToCpu<Repr<E> = T>> Tensor<T, E, I> {
     }
 
     /// Create a new Tensor that has any lazy operations realized.
-    #[must_use]
+
     pub fn realize(&self) -> Self {
         Self(I::realize::<E>(&self.0), PhantomData)
     }
@@ -764,7 +750,7 @@ impl<T, E: Clone, I: ToCpu<Repr<E> = T>> Tensor<T, E, I> {
     ///
     /// # Panics
     /// If any element can't be converted to a usize.
-    #[must_use]
+
     #[allow(clippy::needless_pass_by_value)]
     pub fn one_hot<N>(&self, num_classes: N) -> Self
     where

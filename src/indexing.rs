@@ -1,7 +1,4 @@
-use std::{
-    iter,
-    ops::{Range, RangeFrom, RangeFull, RangeTo},
-};
+use std::ops::{Range, RangeFrom, RangeFull, RangeTo};
 
 use crate::{num::Bool, DiffableOps, Tensor};
 
@@ -18,247 +15,384 @@ pub trait IndexValue<Idx> {
     fn at(&self, index: Idx) -> Self::Output;
 }
 
-impl<T, E: Bool, I: DiffableOps<Repr<E> = T>> IndexValue<usize> for Tensor<T, E, I> {
-    type Output = Self;
+/// A single index that specifies where to start counting from - the start of the axis, or the end.
+/// In Python, the end is specified as a negative number, i.e. -1 means the last element.
+/// -1 would be Tail(0) in this notation, which gives it a more pleasing symmetry.
+#[derive(Clone, Copy, Debug)]
+pub enum SingleIndex {
+    Head(usize),
+    Tail(usize),
+}
 
-    /// Slices the tensor at the given index, in the first dimension, and removes the dimension.
-    /// E.g. if the tensor's shape is [2, 3, 4], then at(1) will return a tensor of shape [3, 4].
-    fn at(&self, index: usize) -> Self::Output {
-        let mut limits = self.shape().iter().map(|&n| (0, n)).collect::<Vec<_>>();
-        limits[0] = (index, index + 1);
-        let cropped = self.crop(&limits);
-        if cropped.shape().len() > 1 {
-            cropped.reshape(&self.shape()[1..])
-        } else {
-            cropped
+pub enum Step {
+    ToTail(usize),
+    // ToHead(usize),
+}
+
+impl Step {
+    fn get_step(&self) -> usize {
+        match self {
+            Step::ToTail(i) => *i,
         }
     }
 }
 
-impl<T, E: Bool, I: DiffableOps<Repr<E> = T>, const N: usize> IndexValue<&[usize; N]>
-    for Tensor<T, E, I>
-{
-    type Output = Self;
-
-    /// Returns the tensor at the given index. There must be at most as many indices as dimensions.
-    fn at(&self, index: &[usize; N]) -> Self::Output {
-        let mut limits: Vec<_> = index.iter().map(|&i| (i, i + 1)).collect();
-        let mut new_shape: Vec<_> = self.shape().iter().copied().skip(limits.len()).collect();
-        if new_shape.is_empty() {
-            new_shape.push(1);
-        };
-        limits.extend(
-            self.shape()
-                .iter()
-                .skip(limits.len())
-                .map(|s| (0, *s))
-                .collect::<Vec<_>>(),
-        );
-        self.crop(&limits).reshape(&new_shape)
-    }
+pub enum IndexElement {
+    // A single element in an axis.
+    Single(SingleIndex),
+    // A range of elements in an axis.
+    Slice(SingleIndex, Step, SingleIndex),
+    NewAxis,
+    Ellipsis,
 }
 
-/// Specifies where to slice from - the start of the axis, or the end.
-/// In Python, the end is specified as a negative number, i.e. -1 means the last element.
-/// -1 would be End(0) in this notation, which gives it a more pleasing symmetry.
-#[derive(Clone, Copy, Debug)]
-enum SliceFrom {
-    Start(usize),
-    End(usize),
-}
-
-/// Specifies what to slice along an axis. Any omitted axes at the end are not sliced.
+/// Specifies what to select along each axis.
 #[derive(Default)]
-pub struct Slice {
-    axes: Vec<(SliceFrom, SliceFrom)>,
+pub struct IndexSpec {
+    axes: Vec<IndexElement>,
 }
 
-/// Overload for supported `Range`-likes.
-pub trait SliceIdx<SliceArg> {
+/// Build an [`IndexSpec`] by chaining calls to [`IndexSpecBuilder::idx`].
+pub trait IndexSpecBuilder<Idx> {
     #[must_use]
-    fn idx(self, index: SliceArg) -> Self;
+    fn idx(self, index: Idx) -> Self;
 }
 
-impl SliceIdx<Range<usize>> for Slice {
-    fn idx(mut self, index: Range<usize>) -> Self {
+impl IndexSpecBuilder<Range<usize>> for IndexSpec {
+    fn idx(self, index: Range<usize>) -> Self {
+        self.idx(SingleIndex::Head(index.start)..SingleIndex::Head(index.end))
+    }
+}
+
+impl IndexSpecBuilder<Range<SingleIndex>> for IndexSpec {
+    fn idx(mut self, index: Range<SingleIndex>) -> Self {
         self.axes
-            .push((SliceFrom::Start(index.start), SliceFrom::Start(index.end)));
+            .push(IndexElement::Slice(index.start, Step::ToTail(1), index.end));
         self
     }
 }
 
-impl SliceIdx<RangeFrom<usize>> for Slice {
-    fn idx(mut self, index: RangeFrom<usize>) -> Self {
-        self.axes
-            .push((SliceFrom::Start(index.start), SliceFrom::End(0)));
+impl IndexSpecBuilder<RangeFrom<usize>> for IndexSpec {
+    fn idx(self, index: RangeFrom<usize>) -> Self {
+        self.idx(SingleIndex::Head(index.start)..SingleIndex::Tail(0))
+    }
+}
+
+impl IndexSpecBuilder<RangeFrom<SingleIndex>> for IndexSpec {
+    fn idx(mut self, index: RangeFrom<SingleIndex>) -> Self {
+        self.axes.push(IndexElement::Slice(
+            index.start,
+            Step::ToTail(1),
+            SingleIndex::Tail(0),
+        ));
         self
     }
 }
 
-impl SliceIdx<RangeTo<usize>> for Slice {
-    fn idx(mut self, index: RangeTo<usize>) -> Self {
-        self.axes
-            .push((SliceFrom::Start(0), SliceFrom::Start(index.end)));
+impl IndexSpecBuilder<RangeTo<usize>> for IndexSpec {
+    fn idx(self, index: RangeTo<usize>) -> Self {
+        self.idx(SingleIndex::Head(0)..SingleIndex::Head(index.end))
+    }
+}
+
+impl IndexSpecBuilder<RangeTo<SingleIndex>> for IndexSpec {
+    fn idx(mut self, index: RangeTo<SingleIndex>) -> Self {
+        self.axes.push(IndexElement::Slice(
+            SingleIndex::Head(0),
+            Step::ToTail(1),
+            index.end,
+        ));
         self
     }
 }
 
-impl SliceIdx<RangeFull> for Slice {
-    fn idx(mut self, _: RangeFull) -> Self {
-        self.axes.push((SliceFrom::Start(0), SliceFrom::End(0)));
-        self
+impl IndexSpecBuilder<RangeFull> for IndexSpec {
+    fn idx(self, _: RangeFull) -> Self {
+        self.idx(SingleIndex::Head(0)..SingleIndex::Tail(0))
     }
 }
 
-impl SliceIdx<usize> for Slice {
+impl IndexSpecBuilder<usize> for IndexSpec {
     fn idx(mut self, index: usize) -> Self {
         self.axes
-            .push((SliceFrom::Start(index), SliceFrom::Start(index + 1)));
+            .push(IndexElement::Single(SingleIndex::Head(index)));
         self
     }
 }
 
-impl Slice {
-    fn crop_limits(&self, shape: &[usize]) -> Vec<(usize, usize)> {
-        let mut limits = Vec::with_capacity(shape.len());
-        for (i, size) in shape.iter().enumerate() {
-            match self.axes.get(i) {
-                None => limits.push((0, *size)),
-                Some((start, end)) => {
-                    let s = match start {
-                        SliceFrom::Start(start) => *std::cmp::min(start, size),
-                        SliceFrom::End(start) => size.saturating_sub(*start),
-                    };
-                    let e = match end {
-                        SliceFrom::Start(end) => *std::cmp::min(end, size),
-                        SliceFrom::End(end) => size.saturating_sub(*end),
-                    };
-                    limits.push((s, e));
-                }
-            }
-        }
-        limits
+#[must_use]
+pub const fn hd(i: usize) -> IndexElement {
+    IndexElement::Single(SingleIndex::Head(i))
+}
+
+#[must_use]
+pub const fn tl(i: usize) -> IndexElement {
+    IndexElement::Single(SingleIndex::Tail(i))
+}
+
+pub const ELLIPSIS: IndexElement = IndexElement::Ellipsis;
+
+pub const NEW_AXIS: IndexElement = IndexElement::NewAxis;
+
+impl IndexSpecBuilder<IndexElement> for IndexSpec {
+    fn idx(mut self, element: IndexElement) -> Self {
+        self.axes.push(element);
+        self
     }
 }
 
-/// Create a new slice, which returns the whole tensor.
-#[must_use]
-pub fn sl() -> Slice {
-    Slice::default()
+impl SingleIndex {
+    /// Given the index of the last element, return the index in the array.
+    /// The min valid index is assumed to be zero.
+    fn get_index(&self, max_valid_index: usize) -> usize {
+        match self {
+            SingleIndex::Head(i) => *std::cmp::min(i, &max_valid_index),
+            SingleIndex::Tail(i) => max_valid_index.saturating_sub(*i),
+        }
+    }
 }
 
-/// Create a new slice along the first axis.
-pub fn sl1<T>(index: T) -> Slice
-where
-    Slice: SliceIdx<T>,
-{
-    sl().idx(index)
+struct IndexResolution {
+    limits: Vec<(usize, usize)>,
+    shape: Vec<usize>,
 }
 
-/// Create a new slice along the first two axes.
-pub fn sl2<T1, T2>(index1: T1, index2: T2) -> Slice
-where
-    Slice: SliceIdx<T1> + SliceIdx<T2>,
-{
-    sl1(index1).idx(index2)
+impl IndexSpec {
+    fn resolve(&self, shape: &[usize]) -> IndexResolution {
+        let mut limits = Vec::with_capacity(shape.len());
+        let mut new_shape = Vec::with_capacity(std::cmp::max(shape.len(), self.axes.len()));
+        let axes_len = self
+            .axes
+            .iter()
+            .filter(|a| !matches!(a, IndexElement::NewAxis))
+            .count();
+        // the index in the IndexSpec
+        let mut idx_i = 0;
+        // the index in the shape
+        let mut shape_i = 0;
+
+        while shape_i < shape.len() {
+            let size = shape[shape_i];
+
+            match self.axes.get(idx_i) {
+                None => {
+                    limits.push((0, size));
+                    new_shape.push(size);
+                    idx_i += 1;
+                    shape_i += 1;
+                }
+                Some(index_element) => match index_element {
+                    IndexElement::Single(idx) => {
+                        let s = idx.get_index(size - 1);
+                        limits.push((s, s + 1));
+                        // no change to new_shape - this dimension is squeezed out.
+                        idx_i += 1;
+                        shape_i += 1;
+                    }
+                    IndexElement::Slice(start, step, end) => {
+                        // Gotcha here - we pass in size-1 because the last element is at index size-1.
+                        let s = start.get_index(size - 1);
+                        // Here we pass size, because the last element of a range is exclusive, so the max valid index is size.
+                        let e = end.get_index(size);
+                        limits.push((s, e));
+                        new_shape.push((e - s) / step.get_step());
+                        idx_i += 1;
+                        shape_i += 1;
+                    }
+                    IndexElement::NewAxis => {
+                        // no limits change because this is a new axis
+                        new_shape.push(1);
+                        idx_i += 1;
+                    }
+                    IndexElement::Ellipsis => {
+                        // add a limit if there aren't enough remaining elements in the IndexSpec
+                        let remaining_idx_elems = axes_len - idx_i - 1;
+                        let remaining_shape_dims = shape.len() - shape_i;
+                        if remaining_idx_elems < remaining_shape_dims {
+                            limits.push((0, size));
+                            new_shape.push(size);
+                            shape_i += 1;
+                        }
+                        if remaining_idx_elems >= remaining_shape_dims {
+                            idx_i += 1;
+                        }
+                    }
+                },
+            }
+        }
+        // we may have new axes to add at the end.
+        while idx_i < self.axes.len() {
+            match self.axes.get(idx_i) {
+                Some(IndexElement::NewAxis) => new_shape.push(1),
+                Some(IndexElement::Ellipsis) => (), // ignore
+                _ => panic!("Invalid index spec."),
+            }
+            idx_i += 1;
+        }
+        if new_shape.is_empty() {
+            new_shape.push(1);
+        }
+        IndexResolution {
+            limits,
+            shape: new_shape,
+        }
+    }
 }
 
-/// Create a new slice along the first three axes.
-pub fn sl3<T1, T2, T3>(index1: T1, index2: T2, index3: T3) -> Slice
-where
-    Slice: SliceIdx<T1> + SliceIdx<T2> + SliceIdx<T3>,
-{
-    sl2(index1, index2).idx(index3)
-}
-
-/// Create a new slice along the first four axes.
-pub fn sl4<T1, T2, T3, T4>(index1: T1, index2: T2, index3: T3, index4: T4) -> Slice
-where
-    Slice: SliceIdx<T1> + SliceIdx<T2> + SliceIdx<T3> + SliceIdx<T4>,
-{
-    sl3(index1, index2, index3).idx(index4)
-}
-
-impl<E: Bool, I: DiffableOps> IndexValue<Slice> for Tensor<I::Repr<E>, E, I> {
+impl<E: Bool, I: DiffableOps> IndexValue<IndexSpec> for Tensor<I::Repr<E>, E, I> {
     type Output = Self;
 
-    /// Slice the tensor.
-    fn at(&self, index: Slice) -> Self::Output {
-        let mut limits = index.crop_limits(self.shape());
-        limits.extend(iter::repeat((0, 0)).take(self.shape().len() - limits.len()));
-        self.crop(&limits)
+    /// Index a tensor. See [sl] to create [`IndexSpec`] types.
+    fn at(&self, index: IndexSpec) -> Self::Output {
+        let resolution = index.resolve(self.shape());
+        self.crop(&resolution.limits).reshape(&resolution.shape)
+    }
+}
+
+impl<E: Bool, I: DiffableOps> Tensor<I::Repr<E>, E, I> {
+    /// Create a new index along the first axis.
+    pub fn at1<T>(&self, index: T) -> Self
+    where
+        IndexSpec: IndexSpecBuilder<T>,
+    {
+        self.at(IndexSpec::default().idx(index))
+    }
+
+    /// Create a new index along the first two axes.
+    pub fn at2<T1, T2>(&self, index1: T1, index2: T2) -> Self
+    where
+        IndexSpec: IndexSpecBuilder<T1> + IndexSpecBuilder<T2>,
+    {
+        self.at(IndexSpec::default().idx(index1).idx(index2))
+    }
+
+    /// Create a new index along the first three axes.
+    pub fn at3<T1, T2, T3>(&self, index1: T1, index2: T2, index3: T3) -> Self
+    where
+        IndexSpec: IndexSpecBuilder<T1> + IndexSpecBuilder<T2> + IndexSpecBuilder<T3>,
+    {
+        self.at(IndexSpec::default().idx(index1).idx(index2).idx(index3))
+    }
+
+    /// Create a new index along the first four axes.
+    pub fn at4<T1, T2, T3, T4>(&self, index1: T1, index2: T2, index3: T3, index4: T4) -> Self
+    where
+        IndexSpec: IndexSpecBuilder<T1>
+            + IndexSpecBuilder<T2>
+            + IndexSpecBuilder<T3>
+            + IndexSpecBuilder<T4>,
+    {
+        self.at(IndexSpec::default()
+            .idx(index1)
+            .idx(index2)
+            .idx(index3)
+            .idx(index4))
     }
 }
 
 #[cfg(test)]
 mod tests {
 
-    use crate::{Cpu32, CpuBool, CpuI32};
+    use crate::CpuI32;
 
     use super::*;
 
     #[test]
-    #[allow(clippy::float_cmp)]
-    fn test_at_index() {
-        let t = Cpu32::new(&[2, 3], &[1., 2., 3., 4., 5., 6.]);
-        assert_eq!(t.at(&[0, 0]).to_scalar(), 1.);
-        assert_eq!(t.at(&[0, 1]).to_scalar(), 2.);
-        assert_eq!(t.at(&[0, 2]).to_scalar(), 3.);
-        assert_eq!(t.at(&[1, 0]).to_scalar(), 4.);
-        assert_eq!(t.at(&[1, 1]).to_scalar(), 5.);
-        assert_eq!(t.at(&[1, 2]).to_scalar(), 6.);
+    fn test_at_simple() {
+        let t = CpuI32::new(&[2, 3], &[1, 2, 3, 4, 5, 6]);
+        assert_eq!(t.at2(0, 0).to_scalar(), 1);
+        assert_eq!(t.at2(0, 1).to_scalar(), 2);
+        assert_eq!(t.at2(0, 2).to_scalar(), 3);
+        assert_eq!(t.at2(1, 0).to_scalar(), 4);
+        assert_eq!(t.at2(1, 1).to_scalar(), 5);
+        assert_eq!(t.at2(1, 2).to_scalar(), 6);
     }
 
     #[test]
-    #[allow(clippy::float_cmp)]
-    fn test_at_slice() {
-        let t = Cpu32::new(
+    fn test_at_single_index() {
+        let t = CpuI32::new(&[2, 3], &[1, 2, 3, 4, 5, 6]);
+        assert_eq!(t.at2(hd(0), hd(0)).to_scalar(), 1);
+        assert_eq!(t.at2(hd(0), hd(1)).to_scalar(), 2);
+        assert_eq!(t.at2(hd(0), hd(2)).to_scalar(), 3);
+        assert_eq!(t.at2(hd(1), hd(0)).to_scalar(), 4);
+        assert_eq!(t.at2(hd(1), hd(1)).to_scalar(), 5);
+        assert_eq!(t.at2(hd(1), hd(2)).to_scalar(), 6);
+
+        assert_eq!(t.at2(tl(0), tl(0)).to_scalar(), 6);
+        assert_eq!(t.at2(tl(0), tl(1)).to_scalar(), 5);
+        assert_eq!(t.at2(tl(0), tl(2)).to_scalar(), 4);
+        assert_eq!(t.at2(tl(1), tl(0)).to_scalar(), 3);
+        assert_eq!(t.at2(tl(1), tl(1)).to_scalar(), 2);
+        assert_eq!(t.at2(tl(1), tl(2)).to_scalar(), 1);
+    }
+
+    #[test]
+    fn test_at_range() {
+        let t = CpuI32::new(
             &[2, 3],
             &[
-                1., 2., 3., //
-                4., 5., 6.,
+                1, 2, 3, //
+                4, 5, 6,
             ],
         );
 
-        let r = t.at(sl2(0, ..));
-        assert_eq!(r.shape(), &[1, 3]);
-        assert_eq!(r.ravel(), &[1., 2., 3.]);
+        let r = t.at2(0, ..);
+        assert_eq!(r.shape(), &[3]);
+        assert_eq!(r.ravel(), &[1, 2, 3]);
 
-        let r = t.at(sl2(1, ..));
-        assert_eq!(r.shape(), &[1, 3]);
-        assert_eq!(r.ravel(), &[4., 5., 6.]);
+        let r = t.at2(1, ..);
+        assert_eq!(r.shape(), &[3]);
+        assert_eq!(r.ravel(), &[4, 5, 6]);
 
-        let r = t.at(sl2(.., 0));
+        let r = t.at2(.., 0);
+        assert_eq!(r.shape(), &[2]);
+        assert_eq!(r.ravel(), &[1, 4]);
+
+        let r = t.at2(0..1, ..);
+        assert_eq!(r.shape(), &[1, 3]);
+        assert_eq!(r.ravel(), &[1, 2, 3]);
+
+        let r = t.at1(1..2);
+        assert_eq!(r.shape(), &[1, 3]);
+        assert_eq!(r.ravel(), &[4, 5, 6]);
+
+        let r = t.at2(.., 1..2);
         assert_eq!(r.shape(), &[2, 1]);
-        assert_eq!(r.ravel(), &[1., 4.]);
-
-        let r = t.at(sl2(0..1, ..));
-        assert_eq!(r.shape(), &[1, 3]);
-        assert_eq!(r.ravel(), &[1., 2., 3.]);
-
-        let r = t.at(sl1(1..2));
-        assert_eq!(r.shape(), &[1, 3]);
-        assert_eq!(r.ravel(), &[4., 5., 6.]);
-
-        let r = t.at(sl2(.., 1..2));
-        assert_eq!(r.shape(), &[2, 1]);
-        assert_eq!(r.ravel(), &[2., 5.]);
+        assert_eq!(r.ravel(), &[2, 5]);
     }
 
     #[test]
-    fn test_i32_tensor() {
-        let t = CpuI32::new(&[2, 3], &[1, 2, 3, 4, 5, 6]);
-        let mut r = &t + &t;
-        r = CpuI32::scalar(2) * &r;
-        assert_eq!(r.ravel(), &[4, 8, 12, 16, 20, 24]);
+    fn test_ellipsis() {
+        let t = CpuI32::new(&[3, 2, 4], &(0..24).collect::<Vec<_>>());
+
+        let r = t.at2(1, ELLIPSIS);
+        assert_eq!(r.shape(), &[2, 4]);
+        assert_eq!(r.ravel(), (8..16).collect::<Vec<_>>());
+
+        let r = t.at2(ELLIPSIS, 1);
+        assert_eq!(r.shape(), &[3, 2]);
+        assert_eq!(r.ravel(), vec![1, 5, 9, 13, 17, 21]);
+
+        let r = t.at3(0, ELLIPSIS, 1);
+        assert_eq!(r.shape(), &[2]);
+        assert_eq!(r.ravel(), vec![1, 5]);
+
+        let r = t.at4(0, ELLIPSIS, 1, 1);
+        assert_eq!(r.shape(), &[1]);
+        assert_eq!(r.ravel(), vec![5]);
     }
 
     #[test]
-    fn test_bool_tensor() {
-        let t = CpuBool::new(&[2, 3], &[true, true, false, false, true, true]);
-        // All the broadcasted ops require Num, because they rely on expand, and
-        // the reverse-mode AD implementation of expand requires sum.
-        let r = &t.elementwise_eq(&t);
-        assert_eq!(r.ravel(), &[true, true, true, true, true, true]);
+    fn test_new_axis() {
+        let t = CpuI32::new(&[3, 2, 4], &(0..24).collect::<Vec<_>>());
+
+        let r = t.at2(1, NEW_AXIS);
+        assert_eq!(r.shape(), &[1, 2, 4]);
+
+        let r = t.at4(1, NEW_AXIS, 1, ..4);
+        assert_eq!(r.shape(), &[1, 4]);
+
+        let r = t.at2(ELLIPSIS, NEW_AXIS);
+        assert_eq!(r.shape(), &[3, 2, 4, 1]);
     }
 }

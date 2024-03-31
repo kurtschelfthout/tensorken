@@ -5,7 +5,7 @@ use std::{
 
 use prettytable::{format, Cell, Table};
 
-use crate::{num::Bool, raw_tensor_cpu::CpuRawTensorImpl, CpuRawTensor, IndexValue, Tensor, ToCpu};
+use crate::{num::Bool, raw_tensor_cpu::CpuRawTensorImpl, CpuRawTensor, Tensor, ToCpu};
 
 static mut FORMAT_TENSOR: Option<format::TableFormat> = None;
 static INIT_FORMAT_TENSOR: Once = Once::new();
@@ -95,11 +95,11 @@ fn create_table<E: Bool + Display>(
                 if precision.is_some() {
                     row.add_cell(Cell::new(&format!(
                         "{:.precision$}",
-                        tensor.at(&[r, c]).to_scalar(),
+                        tensor.at2(r, c).to_scalar(),
                         precision = precision.unwrap()
                     )));
                 } else {
-                    row.add_cell(Cell::new(&format!("{}", tensor.at(&[r, c]).to_scalar(),)));
+                    row.add_cell(Cell::new(&format!("{}", tensor.at2(r, c).to_scalar())));
                 }
             }
         }
@@ -109,7 +109,7 @@ fn create_table<E: Bool + Display>(
             let row = table.add_empty_row();
             for c in 0..shape[1] {
                 let mut table = Table::new();
-                let tensor = tensor.at(&[r, c]);
+                let tensor = tensor.at2(r, c);
                 create_table(&tensor, &mut table, precision);
                 row.add_cell(Cell::new(&format!("{table}")));
             }

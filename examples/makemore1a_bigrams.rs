@@ -12,7 +12,7 @@ use std::{
 
 use prettytable::{Cell, Row, Table};
 use rand::{distributions::WeightedIndex, prelude::Distribution, rngs::StdRng, SeedableRng};
-use tensorken::{Cpu32, IndexValue, Tensor};
+use tensorken::{Cpu32, Tensor};
 
 // This example shows the first half of the first of Karpathy's from zero-to-hero tutorials on makemomre.
 // It builds a bigram, character-level language model from a set of names.
@@ -92,7 +92,7 @@ fn pretty_print_bigram(tensor: &Tr, itos: &HashMap<usize, char>, prec: usize) {
                 "{}{}\n{:.prec$}",
                 itos[&row],
                 itos[&col],
-                tensor.at(&[row, col]).to_scalar()
+                tensor.at2(row, col).to_scalar()
             )));
         }
         table.add_row(table_row);
@@ -120,7 +120,7 @@ fn bigram_to_json(
                 "{{ \"from\":\"{}\", \"to\":\"{}\", \"v\":{:.prec$} }},",
                 itos[&row],
                 itos[&col],
-                tensor.at(&[row, col]).to_scalar()
+                tensor.at2(row, col).to_scalar()
             )?;
         }
     }
@@ -130,7 +130,7 @@ fn bigram_to_json(
         "{{ \"from\":\"{}\", \"to\":\"{}\", \"v\":{:.prec$} }}",
         itos[&row],
         itos[&col],
-        tensor.at(&[row, col]).to_scalar()
+        tensor.at2(row, col).to_scalar()
     )?;
     write!(file, "]")?;
     Ok(())
@@ -141,7 +141,7 @@ fn multinouilli_sample(tensor: &Tr, row: usize, rng: &mut StdRng) -> usize {
     // Purely on a rand usage basis, I should only make the WeightedIndex once per row.
     // Also, all this copying out should not be necessary. Maybe contiguous tensors could
     // have a method that returns a slice of the underlying data? Or an iterator, more generally?
-    let weights = tensor.at(row).ravel();
+    let weights = tensor.at1(row).ravel();
     let dist = WeightedIndex::new(weights).unwrap();
     dist.sample(rng)
 }

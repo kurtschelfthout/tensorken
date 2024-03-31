@@ -31,7 +31,6 @@ impl<E: Elem> TensorMut<E> {
 
     /// Create a new tensor with the given shape and elements.
     /// Copies all the `TensorMut`'s data.
-    #[must_use]
     pub fn to_tensor<T, I: ToCpu<Repr<E> = T>>(&self) -> Tensor<T, E, I> {
         // note: to avoid the copy here, could add an `into_new` method to RawTensor
         // which consumes the buffer & shape.

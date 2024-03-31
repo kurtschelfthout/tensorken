@@ -1,4 +1,4 @@
-use tensorken::{Cpu32, CpuBool, CpuI32, IndexValue, Sym};
+use tensorken::{Cpu32, CpuBool, CpuI32, Sym};
 
 /// A macro to print the result of an expression and the expression itself.
 macro_rules! do_example {
@@ -90,8 +90,8 @@ fn main() {
     do_example!(t.pad(&[(1, 2), (1, 3)]));
 
     let_example!(t, &Tr::new(&[2, 2], &[0.0, 1.0, 2.0, 3.0]));
-    do_example!(t.at(1));
-    do_example!(t.at(&[1, 0]));
+    do_example!(t.at1(1));
+    do_example!(t.at2(1, 0));
 
     let_example!(t, Tr::linspace(0.0, 23.0, 24_u8));
     let_example!(t6x4, t.reshape(&[6, 4]));
