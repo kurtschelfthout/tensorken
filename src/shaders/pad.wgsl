@@ -33,7 +33,7 @@ fn padding_after(i: u32) -> u32 {
 }
 
 // Find the value for the given output index - figure out whether to pad,
-// i.e. result is 0.0, or not, i.e. result is the value from the input.
+// i.e. result is zero, or a value from the input.
 fn value_for(output_i: u32) -> element {
     let ndims = strides_and_shape[0];
     let offset = strides_and_shape[1];
@@ -44,8 +44,8 @@ fn value_for(output_i: u32) -> element {
         let stride = output_strides(i);
         let output_coord: u32 = output_i / stride % len;
         if output_coord < padding_before(i) || output_coord >= padding_before(i) + input_shape(i) {
-            // This output coordinate is in the padding region, so the value is 0.0.
-            return 0.0;
+            // This output coordinate is in the padding region, so the value is zero.
+            return element(0);
         }
         let input_coord = output_coord - padding_before(i);
         input_i += input_coord * input_strides(i);
