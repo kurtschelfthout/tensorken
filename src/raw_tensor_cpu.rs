@@ -5,7 +5,7 @@ use std::sync::Arc;
 use crate::num::{Bool, CastFrom, Elem, Float, Num};
 use crate::raw_tensor::{RawTensorOps, ToCpu};
 use crate::shape::Shape;
-use crate::shape_strider::{ShapeStrider, TensorIndexIterator};
+use crate::shape_strider::{ShapeStrider, Stride, TensorIndexIterator};
 
 /// Implementation of `RawTensor` for CPU.
 /// The "numpy" part of the tensor library.
@@ -159,7 +159,7 @@ impl<E: Clone> CpuRawTensor<E> {
     }
 
     #[allow(dead_code)]
-    fn strides(&self) -> &[usize] {
+    fn strides(&self) -> &[Stride] {
         self.strider.strides()
     }
 
@@ -221,6 +221,10 @@ impl RawTensorOps for CpuRawTensorImpl {
         t.map(ETo::cast_from)
     }
 
+    fn realize<E: Clone>(t: &Self::Repr<E>) -> Self::Repr<E> {
+        t.clone()
+    }
+
     fn add<E: Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
         lhs.zip(rhs, E::add)
     }
@@ -278,6 +282,13 @@ impl RawTensorOps for CpuRawTensorImpl {
         t.with_strider(strider)
     }
 
+    fn flip<E: Clone>(t: &Self::Repr<E>, flip: &[bool]) -> Self::Repr<E> {
+        t.strider.validate_can_flip(flip).unwrap();
+
+        let strider = t.strider.flip(flip);
+        t.with_strider(strider)
+    }
+
     fn pad<E: Bool>(t: &Self::Repr<E>, padding: &[(usize, usize)]) -> Self::Repr<E> {
         t.strider.validate_can_pad(padding).unwrap();
 
@@ -322,10 +333,6 @@ impl RawTensorOps for CpuRawTensorImpl {
     ) -> Self::Repr<E> {
         lhs.fused_zip_reduce(rhs, axes, E::ZERO, |acc, x, y| acc + x * y)
     }
-
-    fn realize<E: Clone>(t: &Self::Repr<E>) -> Self::Repr<E> {
-        t.clone()
-    }
 }
 
 impl ToCpu for CpuRawTensorImpl {
@@ -346,6 +353,17 @@ mod tests {
     fn make_vec(len: u16) -> Vec<f32> {
         (0..len).map(f32::from).collect()
     }
+
+    fn assert_pos_strides<E: Clone>(t: &CpuRawTensor<E>) -> Vec<usize> {
+        t.strides()
+            .iter()
+            .map(|s| match s {
+                Stride::Pos(i) => *i,
+                Stride::Neg(_) => panic!("Expected positive strides, found {s:?}"),
+            })
+            .collect::<Vec<_>>()
+    }
+
     #[test]
     fn test_ravel() {
         let t = CpuRawTensor::new_into(&[2, 3, 4], make_vec(24));
@@ -356,7 +374,7 @@ mod tests {
         let t = CpuRawTensor::new_into(orig_shape, make_vec(24));
         let t = I::reshape(&t, new_shape);
         assert_eq!(I::shape(&t), new_shape);
-        assert_eq!(t.strides(), expected_strides);
+        assert_eq!(assert_pos_strides(&t), expected_strides);
         assert_eq!(t.ravel(), make_vec(24));
     }
 
@@ -397,23 +415,23 @@ mod tests {
 
         let tp = &I::permute(t, &[1, 0]);
         assert_eq!(I::shape(tp), &[10, 10]);
-        assert_eq!(tp.strides(), &[1, 10]);
+        assert_eq!(assert_pos_strides(tp), &[1, 10]);
 
         let tpr = &I::reshape(tp, &[5, 2, 5, 2]);
         assert_eq!(I::shape(tpr), &[5, 2, 5, 2]);
-        assert_eq!(tpr.strides(), &[2, 1, 20, 10]);
+        assert_eq!(assert_pos_strides(tpr), &[2, 1, 20, 10]);
 
         let tpcopy = &I::reshape(tpr, &[100]);
         assert_eq!(I::shape(tpcopy), &[100]);
-        assert_eq!(tpcopy.strides(), &[1]);
+        assert_eq!(assert_pos_strides(tpcopy), &[1]);
 
         let tprr = &I::reshape(tpr, &[10, 10]);
         assert_eq!(I::shape(tprr), &[10, 10]);
-        assert_eq!(tprr.strides(), &[1, 10]);
+        assert_eq!(assert_pos_strides(tprr), &[1, 10]);
 
         let tprrt = &I::permute(tprr, &[1, 0]);
         assert_eq!(I::shape(tprrt), &[10, 10]);
-        assert_eq!(tprrt.strides(), &[10, 1]);
+        assert_eq!(assert_pos_strides(tprrt), &[10, 1]);
     }
 
     #[test]
@@ -422,7 +440,7 @@ mod tests {
         let t = I::expand(&t, &[4]);
 
         assert_eq!(I::shape(&t), &[4]);
-        assert_eq!(t.strides(), &[0]);
+        assert_eq!(assert_pos_strides(&t), &[0]);
         assert_eq!(t.ravel(), repeat(42.0).take(4).collect::<Vec<_>>());
     }
 
@@ -432,7 +450,7 @@ mod tests {
         let t = I::expand(&t, &[3, 5]);
 
         assert_eq!(I::shape(&t), &[3, 5]);
-        assert_eq!(t.strides(), &[1, 0]);
+        assert_eq!(assert_pos_strides(&t), &[1, 0]);
     }
 
     #[test]
@@ -441,7 +459,7 @@ mod tests {
         let t = I::expand(&t, &[5, 2, 3, 4]);
 
         assert_eq!(I::shape(&t), &[5, 2, 3, 4]);
-        assert_eq!(t.strides(), &[0, 12, 4, 1]);
+        assert_eq!(assert_pos_strides(&t), &[0, 12, 4, 1]);
         assert_eq!(
             t.ravel(),
             make_vec(24)
@@ -591,7 +609,7 @@ mod tests {
         assert_eq!(s.strides(), t.strides());
         assert_eq!(
             s.ravel(),
-            vec![1.0, 2.0, 5., 6., 9., 10., 13., 14., 17., 18., 21., 22.]
+            vec![1., 2., 5., 6., 9., 10., 13., 14., 17., 18., 21., 22.]
         );
 
         // keep cropping
@@ -608,10 +626,9 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::float_cmp)]
     fn test_pad() {
         let orig_shape = &[2, 3, 4];
-        let t = CpuRawTensor::new_into(orig_shape, make_vec(24));
+        let t = CpuRawTensor::new_into(orig_shape, (0..24).collect::<Vec<_>>());
 
         // pad nothing
         let s = I::pad(&t, &[(0, 0), (0, 0), (0, 0)]);
@@ -623,11 +640,32 @@ mod tests {
         let padding = &[(1, 2), (3, 4), (5, 6)];
         let s = I::pad(&t, padding);
         assert_eq!(I::shape(&s), &[5, 10, 15]);
-        assert_eq!(s.strides(), &[150, 15, 1]);
+        assert_eq!(assert_pos_strides(&s), &[150, 15, 1]);
         let s_raveled = s.ravel();
-        assert_eq!(s_raveled.iter().filter(|&&x| x != 0.0).count(), 23);
-        assert_eq!(s_raveled[s.strider.buffer_index(&[1, 3, 6])], 1.0);
-        assert_eq!(s_raveled[s.strider.buffer_index(&[1, 3, 7])], 2.0);
+        assert_eq!(s_raveled.iter().filter(|&&x| x != 0).count(), 23);
+        assert_eq!(s_raveled[s.strider.buffer_index(&[1, 3, 6])], 1);
+        assert_eq!(s_raveled[s.strider.buffer_index(&[1, 3, 7])], 2);
+    }
+
+    #[test]
+    fn test_flip() {
+        let orig_shape = &[2, 3, 2];
+        let t = CpuRawTensor::new_into(orig_shape, (0..12).collect::<Vec<_>>());
+
+        // flip single dimension
+        let s = I::flip(&t, &[true, false, false]);
+        assert_eq!(s.ravel(), vec![6, 7, 8, 9, 10, 11, 0, 1, 2, 3, 4, 5]);
+
+        let s = I::flip(&t, &[false, true, false]);
+        assert_eq!(s.ravel(), vec![4, 5, 2, 3, 0, 1, 10, 11, 8, 9, 6, 7]);
+
+        let s = I::flip(&t, &[false, false, true]);
+        assert_eq!(s.ravel(), vec![1, 0, 3, 2, 5, 4, 7, 6, 9, 8, 11, 10]);
+
+        let s = I::flip(&t, &[false, false, false]);
+        assert_eq!(I::shape(&s), orig_shape);
+        assert_eq!(s.strides(), t.strides());
+        assert_eq!(s.ravel(), t.ravel());
     }
 
     #[test]

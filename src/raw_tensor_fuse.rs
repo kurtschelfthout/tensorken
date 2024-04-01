@@ -141,6 +141,11 @@ impl<I: RawTensorOps> RawTensorOps for FuseImpl<I> {
         unary_no_fuse(t, move |x| I::expand(x, &vec))
     }
 
+    fn flip<E: Clone>(t: &Self::Repr<E>, flip: &[bool]) -> Self::Repr<E> {
+        let vec = flip.to_vec();
+        unary_no_fuse(t, move |x| I::flip(x, &vec))
+    }
+
     fn pad<E: Bool>(t: &Self::Repr<E>, padding: &[(usize, usize)]) -> Self::Repr<E> {
         let vec = padding.to_vec();
         unary_no_fuse(t, move |x| I::pad(x, &vec))

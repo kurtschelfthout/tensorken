@@ -72,8 +72,9 @@ pub trait RawTensorOps {
     /// Like numpy's `broadcast_to` but simpler - does not add dimensions of size 1.
     fn expand<E: Clone>(t: &Self::Repr<E>, shape: &[usize]) -> Self::Repr<E>;
 
-    // Not yet implemented:
-    // fn stride(t: &Self::Repr<E>, strides: &[usize]) -> Self;
+    /// Flip the direction of tensor indexing along the axes with true values.
+    /// Must have as many values as there are dimensions in the tensor.
+    fn flip<E: Clone>(t: &Self::Repr<E>, flips: &[bool]) -> Self::Repr<E>;
 
     /// Pad the tensor with zeros according to the given padding.
     /// Like numpy's `pad`, but simpler - needs as many elements in `padding` as there

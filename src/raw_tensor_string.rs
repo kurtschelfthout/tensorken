@@ -93,6 +93,10 @@ impl RawTensorOps for StringImpl {
         (s.expand(shape).unwrap(), format!("{t}.expand({shape:?})"))
     }
 
+    fn flip<E: Clone>((s, t): &Self::Repr<E>, flip: &[bool]) -> Self::Repr<E> {
+        (s.flip(flip), format!("{t}.flip({flip:?})"))
+    }
+
     fn pad<E: Bool>((s, t): &Self::Repr<E>, padding: &[(usize, usize)]) -> Self::Repr<E> {
         (s.pad(padding), format!("{t}.pad({padding:?})"))
     }

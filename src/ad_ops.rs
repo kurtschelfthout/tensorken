@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use crate::{
-    num::{Float, Num},
+    num::{Bool, Float, Num},
     DiffableOps,
 };
 
@@ -164,5 +164,21 @@ impl<T: Clone, E: 'static + Float, I: DiffableOps<Repr<E> = T>> UnaryOp<T> for E
 impl<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>> UnaryDiffOp<T> for ExpOp<T, E, I> {
     fn dfda(&self, d: &T) -> T {
         I::elementwise_mul::<E>(d, &self.0)
+    }
+}
+
+pub(crate) struct FlipOp<E, I>(Vec<bool>, PhantomData<(E, I)>);
+
+impl<T: Clone, E: Bool, I: DiffableOps<Repr<E> = T>> UnaryOp<T> for FlipOp<E, I> {
+    type Args = [bool];
+    fn f(a: &T, flips: &Self::Args) -> (T, Self) {
+        let r = I::flip::<E>(a, flips);
+        (r.clone(), FlipOp(flips.to_vec(), PhantomData))
+    }
+}
+
+impl<T: Clone, E: Bool, I: DiffableOps<Repr<E> = T>> UnaryDiffOp<T> for FlipOp<E, I> {
+    fn dfda(&self, d: &T) -> T {
+        I::flip::<E>(d, &self.0)
     }
 }

@@ -11,7 +11,7 @@ use crate::{
     num::{Bool, CastFrom, Elem, Float, Num},
     raw_tensor::{RawTensorOps, ToCpu},
     shape::Shape,
-    shape_strider::ShapeStrider,
+    shape_strider::{ShapeStrider, Stride},
     wgpu_context::{get_wgpu_device, WgpuContext, WorkgroupSize},
     CpuRawTensor,
 };
@@ -75,7 +75,7 @@ impl<'a, E> WgpuRawTensor<'a, E> {
     }
 
     #[allow(dead_code)]
-    fn strides(&self) -> &[usize] {
+    fn strides(&self) -> &[Stride] {
         self.strider.strides()
     }
 }
@@ -155,12 +155,12 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
             contents.push(reduce_size);
         }
 
-        contents.extend(self.strider.strides());
+        contents.extend(self.strider.pos_strides());
         if let Some(other) = other {
-            contents.extend(other.strides());
+            contents.extend(other.pos_strides());
         }
 
-        contents.extend(output_strider.strides());
+        contents.extend(output_strider.pos_strides());
         contents.extend(self.strider.shape());
 
         if let Some((reduced_strides, reduced_shape, output_shape, _)) = reduce {
@@ -519,7 +519,7 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
             None,
             &output_strider,
             Some((
-                reduced_strider.strides(),
+                &reduced_strider.pos_strides(),
                 reduced_strider.shape(),
                 output_strider.shape(),
                 reduced_strider.size(),
@@ -589,7 +589,7 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
             Some(&other.strider),
             &output_strider,
             Some((
-                reduced_strider.strides(),
+                &reduced_strider.pos_strides(),
                 reduced_strider.shape(),
                 output_strider.shape(),
                 reduced_strider.size(),
@@ -739,6 +739,13 @@ impl RawTensorOps for WgpuRawTensorImpl {
         t.with_strider(strider)
     }
 
+    fn flip<E: Clone>(t: &Self::Repr<E>, flip: &[bool]) -> Self::Repr<E> {
+        t.strider.validate_can_flip(flip).unwrap();
+
+        let strider = t.strider.flip(flip);
+        t.with_strider(strider)
+    }
+
     fn pad<E: Bool>(t: &Self::Repr<E>, padding: &[(usize, usize)]) -> Self::Repr<E> {
         t.strider.validate_can_pad(padding).unwrap();
 
@@ -785,6 +792,16 @@ mod tests {
     use super::*;
 
     type I = WgpuRawTensorImpl;
+
+    fn assert_pos_strides<E: Clone>(t: &WgpuRawTensor<E>) -> Vec<usize> {
+        t.strides()
+            .iter()
+            .map(|s| match s {
+                Stride::Pos(i) => *i,
+                Stride::Neg(_) => panic!("Expected positive strides, found {s:?}"),
+            })
+            .collect::<Vec<_>>()
+    }
 
     fn assert_vec_eq(a: &[f32], b: &[f32]) {
         assert!(
@@ -1017,7 +1034,7 @@ mod tests {
         let t = WgpuRawTensor::new(orig_shape, &input, get_wgpu_device());
         let t = I::reshape(&t, new_shape);
         assert_eq!(I::shape(&t), new_shape);
-        assert_eq!(t.strides(), expected_strides);
+        assert_eq!(assert_pos_strides(&t), expected_strides);
         assert_eq!(t.ravel(), make_vec(24));
     }
 
@@ -1056,7 +1073,7 @@ mod tests {
         let t = I::expand(&t, &[5, 4]);
 
         assert_eq!(I::shape(&t), &[5, 4]);
-        assert_eq!(t.strides(), &[0, 0]);
+        assert_eq!(&t.strides(), &[Stride::ZERO, Stride::ZERO]);
         assert_eq!(t.ravel(), repeat(42.0).take(20).collect::<Vec<_>>());
     }
 
@@ -1201,10 +1218,9 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::float_cmp)]
     fn test_pad() {
         let orig_shape = &[2, 3, 4];
-        let t = WgpuRawTensor::new(orig_shape, &make_vec(24), get_wgpu_device());
+        let t = WgpuRawTensor::new(orig_shape, &(0..24).collect::<Vec<_>>(), get_wgpu_device());
 
         // pad nothing
         let s = t.pad(&[(0, 0), (0, 0), (0, 0)]);
@@ -1216,32 +1232,32 @@ mod tests {
         let padding = &[(1, 1), (1, 1), (1, 1)];
         let s = t.pad(padding);
         assert_eq!(I::shape(&s), &[4, 5, 6]);
-        assert_eq!(s.strides(), &[30, 6, 1]);
+        assert_eq!(assert_pos_strides(&s), &[30, 6, 1]);
         let s_raveled = s.ravel();
         assert_eq!(s_raveled.len(), I::shape(&s).size());
-        assert_eq!(s_raveled.iter().filter(|&&x| x != 0.0).count(), 23);
-        assert_eq!(s_raveled[s.strider.buffer_index(&[1, 1, 2])], 1.0);
-        assert_eq!(s_raveled[s.strider.buffer_index(&[1, 1, 3])], 2.0);
+        assert_eq!(s_raveled.iter().filter(|&&x| x != 0).count(), 23);
+        assert_eq!(s_raveled[s.strider.buffer_index(&[1, 1, 2])], 1);
+        assert_eq!(s_raveled[s.strider.buffer_index(&[1, 1, 3])], 2);
 
         // pad a lot in one dimension
         let padding = &[(20, 0), (0, 0), (0, 0)];
         let s = t.pad(padding);
         assert_eq!(I::shape(&s), &[22, 3, 4]);
-        assert_eq!(s.strides(), &[12, 4, 1]);
+        assert_eq!(assert_pos_strides(&s), &[12, 4, 1]);
         let s_raveled = s.ravel();
-        assert_eq!(s_raveled.iter().filter(|&&x| x != 0.0).count(), 23);
-        assert_eq!(s_raveled[s.strider.buffer_index(&[20, 0, 1])], 1.0);
-        assert_eq!(s_raveled[s.strider.buffer_index(&[20, 0, 2])], 2.0);
+        assert_eq!(s_raveled.iter().filter(|&&x| x != 0).count(), 23);
+        assert_eq!(s_raveled[s.strider.buffer_index(&[20, 0, 1])], 1);
+        assert_eq!(s_raveled[s.strider.buffer_index(&[20, 0, 2])], 2);
 
         // pad a lot
         let padding = &[(1, 2), (3, 4), (5, 6)];
         let s = t.pad(padding);
         assert_eq!(I::shape(&s), &[5, 10, 15]);
-        assert_eq!(s.strides(), &[150, 15, 1]);
+        assert_eq!(assert_pos_strides(&s), &[150, 15, 1]);
         let s_raveled = s.ravel();
-        assert_eq!(s_raveled.iter().filter(|&&x| x != 0.0).count(), 23);
-        assert_eq!(s_raveled[s.strider.buffer_index(&[1, 3, 6])], 1.0);
-        assert_eq!(s_raveled[s.strider.buffer_index(&[1, 3, 7])], 2.0);
+        assert_eq!(s_raveled.iter().filter(|&&x| x != 0).count(), 23);
+        assert_eq!(s_raveled[s.strider.buffer_index(&[1, 3, 6])], 1);
+        assert_eq!(s_raveled[s.strider.buffer_index(&[1, 3, 7])], 2);
     }
 
     #[test]

@@ -524,6 +524,33 @@ where
     );
 }
 
+#[test]
+fn test_flip() {
+    do_test_flip::<Cpu32>();
+    // flip is not supported on wgpu yet
+    // do_test_pad::<Wgpu32>();
+}
+
+fn f_flip<Tsr: Diff<E = f32>>(a: &TensorBase<Tsr>) -> TensorBase<Tsr> {
+    a.flip(&[true, true])
+}
+
+fn do_test_flip<Tsr: Diff<E = f32>>()
+where
+    Tsr::I: ToCpu<Repr<Tsr::E> = Tsr::T>,
+{
+    test_df::<Tsr>(
+        f_flip::<TensorRev<Tsr>>,
+        |a| f_flip::<Tsr>(&a.ones_like()),
+        f_flip::<Tsr>,
+    );
+    test_ddf::<Tsr>(
+        f_flip::<TensorRev<Tsr::Rev>>,
+        |a| f_flip::<Tsr>(&a.zeros_like()),
+        |a| f_flip::<Tsr>(&a.ones_like()),
+    );
+}
+
 fn f_matmul<T: Diff>(a: &TensorBase<T>, b: &TensorBase<T>) -> TensorBase<T>
 where
     T::E: Num,

@@ -2,8 +2,8 @@ use std::{fmt::Debug, marker::PhantomData};
 
 use crate::{
     ad_ops::{
-        AddOp, BinaryDiffOp, BinaryOp, DivOp, ExpOp, LogOp, MulOp, PowOp, SubOp, UnaryDiffOp,
-        UnaryOp,
+        AddOp, BinaryDiffOp, BinaryOp, DivOp, ExpOp, FlipOp, LogOp, MulOp, PowOp, SubOp,
+        UnaryDiffOp, UnaryOp,
     },
     ad_ops_forward::{CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
     num::{Bool, CastFrom, Elem, Float, Num},
@@ -137,6 +137,10 @@ impl<I: DiffableOps> DiffableOps for ForwardImpl<I> {
 
     fn crop<E: Bool>(t: &Self::Repr<E>, limits: &[(usize, usize)]) -> Self::Repr<E> {
         t.unary::<CropOp<E, I>, _>(limits)
+    }
+
+    fn flip<E: Bool>(t: &Self::Repr<E>, flips: &[bool]) -> Self::Repr<E> {
+        t.unary::<FlipOp<E, I>, _>(flips)
     }
 
     fn new<E: Elem>(shape: &[usize], data: &[E]) -> Self::Repr<E> {

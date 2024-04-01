@@ -5,6 +5,39 @@ impl Shape for ShapeStrider {
         &self.shape
     }
 }
+#[derive(Debug, Clone, PartialEq)]
+pub enum Stride {
+    Pos(usize),
+    Neg(usize),
+}
+
+impl Stride {
+    pub const ZERO: Stride = Stride::Pos(0);
+    pub const ONE: Stride = Stride::Pos(1);
+
+    fn flip(&self) -> Stride {
+        match self {
+            Stride::Pos(x) => Stride::Neg(*x),
+            Stride::Neg(x) => Stride::Pos(*x),
+        }
+    }
+
+    fn mul(&self, other: usize) -> Stride {
+        match self {
+            Stride::Pos(x) => Stride::Pos(x * other),
+            Stride::Neg(x) => Stride::Neg(x * other),
+        }
+    }
+
+    /// Calculate the buffer offset for the given index along a dimension of the given size.
+    /// Precondition: i < size.
+    fn offset(&self, i: usize, size: usize) -> usize {
+        match self {
+            Stride::Pos(stride) => i * stride,
+            Stride::Neg(stride) => (size - i - 1) * stride,
+        }
+    }
+}
 
 /// A struct that encapsulates how tensor indexes map to buffer offsets.
 /// To figure out the mapping, it uses a shape and a set of strides.
@@ -12,7 +45,7 @@ impl Shape for ShapeStrider {
 #[derive(Debug, Clone)]
 pub struct ShapeStrider {
     shape: Vec<usize>,
-    strides: Vec<usize>,
+    strides: Vec<Stride>,
     offset: usize,
 }
 
@@ -33,9 +66,9 @@ impl ShapeStrider {
             return Self::empty();
         }
         let shape = shape.to_vec();
-        let mut strides = vec![1; shape.len()];
+        let mut strides = vec![Stride::ONE; shape.len()];
         for i in (0..shape.len() - 1).rev() {
-            strides[i] = strides[i + 1] * shape[i + 1];
+            strides[i] = strides[i + 1].mul(shape[i + 1]);
         }
         Self {
             shape,
@@ -44,8 +77,18 @@ impl ShapeStrider {
         }
     }
 
-    pub(crate) fn strides(&self) -> &[usize] {
+    pub(crate) fn strides(&self) -> &[Stride] {
         &self.strides
+    }
+
+    pub(crate) fn pos_strides(&self) -> Vec<usize> {
+        self.strides
+            .iter()
+            .map(|s| match s {
+                Stride::Pos(i) => *i,
+                Stride::Neg(_) => todo!("Expected pos, found {s:?}"),
+            })
+            .collect::<Vec<_>>()
     }
 
     pub(crate) fn offset(&self) -> usize {
@@ -57,7 +100,8 @@ impl ShapeStrider {
             + index
                 .iter()
                 .zip(self.strides.iter())
-                .map(|(&i, &s)| i * s)
+                .zip(self.shape.iter())
+                .map(|((&i, st), size)| st.offset(i, *size))
                 .sum::<usize>()
     }
 
@@ -101,10 +145,10 @@ impl ShapeStrider {
     pub(crate) fn squeeze(&self) -> Self {
         let mut shape = Vec::with_capacity(self.shape.ndims());
         let mut strides = Vec::with_capacity(self.shape.ndims());
-        for (&dim, &stride) in self.shape.iter().zip(self.strides.iter()) {
+        for (&dim, stride) in self.shape.iter().zip(self.strides.iter()) {
             if dim != 1 {
                 shape.push(dim);
-                strides.push(stride);
+                strides.push(stride.clone());
             }
         }
         Self {
@@ -127,7 +171,7 @@ impl ShapeStrider {
 
         let mut strides = result.strides.clone();
         for &axis in axes {
-            strides[axis] = 0;
+            strides[axis] = Stride::ZERO;
         }
         let reducer = Self {
             shape,
@@ -160,7 +204,7 @@ impl ShapeStrider {
             new_shape.size()
         );
         let newnd = new_shape.ndims();
-        let mut new_strides = vec![0; newnd];
+        let mut new_strides = vec![Stride::ZERO; newnd];
 
         let squeezed = self.squeeze();
         let old_shape = &squeezed.shape;
@@ -189,7 +233,7 @@ impl ShapeStrider {
             // Check if the strides in the old dimensions to combine are contiguous enough.
             // We have to be able to use a single stride for the combined dimension.
             for ok in oi..oj - 1 {
-                if old_strides[ok] != old_strides[ok + 1] * old_shape[ok + 1] {
+                if old_strides[ok] != old_strides[ok + 1].mul(old_shape[ok + 1]) {
                     return Err(format!(
                         "cannot reshape tensor of shape {old_shape:?} to shape {new_shape:?} without copying."
                     ));
@@ -197,9 +241,9 @@ impl ShapeStrider {
             }
 
             // now calculate new strides - going back to front as usual.
-            new_strides[nj - 1] = old_strides[oj - 1];
+            new_strides[nj - 1] = old_strides[oj - 1].clone();
             for nk in (ni + 1..nj).rev() {
-                new_strides[nk - 1] = new_strides[nk] * new_shape[nk];
+                new_strides[nk - 1] = new_strides[nk].mul(new_shape[nk]);
             }
 
             ni = nj;
@@ -208,9 +252,13 @@ impl ShapeStrider {
             oj += 1;
         }
 
-        let last_stride = if ni >= 1 { new_strides[ni - 1] } else { 1 };
+        let last_stride = if ni >= 1 {
+            new_strides[ni - 1].clone()
+        } else {
+            Stride::ONE
+        };
         for new_stride in new_strides.iter_mut().take(newnd).skip(ni) {
-            *new_stride = last_stride;
+            *new_stride = last_stride.clone();
         }
 
         Ok(Self {
@@ -238,7 +286,7 @@ impl ShapeStrider {
         let mut strides = Vec::with_capacity(self.shape.ndims());
         for &i in permutation {
             shape.push(self.shape[i]);
-            strides.push(self.strides[i]);
+            strides.push(self.strides[i].clone());
         }
         Self {
             shape,
@@ -266,10 +314,10 @@ impl ShapeStrider {
         for (fro_dim, to_dim) in (0..self.shape.ndims()).rev().zip((0..shape.ndims()).rev()) {
             if self.shape[fro_dim] == shape[to_dim] {
                 new_shape.push(self.shape[fro_dim]);
-                new_strides.push(self.strides[fro_dim]);
+                new_strides.push(self.strides[fro_dim].clone());
             } else if self.shape[fro_dim] == 1 {
                 new_shape.push(shape[to_dim]);
-                new_strides.push(0);
+                new_strides.push(Stride::ZERO);
             } else {
                 return Err(format!(
                     "Cannot expand tensor to shape {:?} from shape {:?}",
@@ -335,6 +383,35 @@ impl ShapeStrider {
             shape,
             strides: self.strides.clone(),
             offset,
+        }
+    }
+
+    pub(crate) fn validate_can_flip(&self, flip: &[bool]) -> Result<(), String> {
+        if flip.len() != self.shape.ndims() {
+            return Err(format!(
+                "Cannot flip tensor of shape {:?} with flip {:?} - flip must have same number of dimensions as tensor.",
+                self.shape, flip
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn flip(&self, flip: &[bool]) -> ShapeStrider {
+        let new_strides: Vec<_> = flip
+            .iter()
+            .enumerate()
+            .map(|(i, &f)| {
+                if f {
+                    self.strides[i].flip()
+                } else {
+                    self.strides[i].clone()
+                }
+            })
+            .collect();
+        Self {
+            shape: self.shape.clone(),
+            strides: new_strides,
+            offset: self.offset,
         }
     }
 }

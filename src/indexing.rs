@@ -24,24 +24,11 @@ pub enum SingleIndex {
     Tail(usize),
 }
 
-pub enum Step {
-    ToTail(usize),
-    // ToHead(usize),
-}
-
-impl Step {
-    fn get_step(&self) -> usize {
-        match self {
-            Step::ToTail(i) => *i,
-        }
-    }
-}
-
 pub enum IndexElement {
     // A single element in an axis.
     Single(SingleIndex),
     // A range of elements in an axis.
-    Slice(SingleIndex, Step, SingleIndex),
+    Slice(SingleIndex, SingleIndex),
     NewAxis,
     Ellipsis,
 }
@@ -66,8 +53,7 @@ impl IndexSpecBuilder<Range<usize>> for IndexSpec {
 
 impl IndexSpecBuilder<Range<SingleIndex>> for IndexSpec {
     fn idx(mut self, index: Range<SingleIndex>) -> Self {
-        self.axes
-            .push(IndexElement::Slice(index.start, Step::ToTail(1), index.end));
+        self.axes.push(IndexElement::Slice(index.start, index.end));
         self
     }
 }
@@ -80,11 +66,8 @@ impl IndexSpecBuilder<RangeFrom<usize>> for IndexSpec {
 
 impl IndexSpecBuilder<RangeFrom<SingleIndex>> for IndexSpec {
     fn idx(mut self, index: RangeFrom<SingleIndex>) -> Self {
-        self.axes.push(IndexElement::Slice(
-            index.start,
-            Step::ToTail(1),
-            SingleIndex::Tail(0),
-        ));
+        self.axes
+            .push(IndexElement::Slice(index.start, SingleIndex::Tail(0)));
         self
     }
 }
@@ -97,11 +80,8 @@ impl IndexSpecBuilder<RangeTo<usize>> for IndexSpec {
 
 impl IndexSpecBuilder<RangeTo<SingleIndex>> for IndexSpec {
     fn idx(mut self, index: RangeTo<SingleIndex>) -> Self {
-        self.axes.push(IndexElement::Slice(
-            SingleIndex::Head(0),
-            Step::ToTail(1),
-            index.end,
-        ));
+        self.axes
+            .push(IndexElement::Slice(SingleIndex::Head(0), index.end));
         self
     }
 }
@@ -121,13 +101,13 @@ impl IndexSpecBuilder<usize> for IndexSpec {
 }
 
 #[must_use]
-pub const fn hd(i: usize) -> IndexElement {
-    IndexElement::Single(SingleIndex::Head(i))
+pub const fn hd(i: usize) -> SingleIndex {
+    SingleIndex::Head(i)
 }
 
 #[must_use]
-pub const fn tl(i: usize) -> IndexElement {
-    IndexElement::Single(SingleIndex::Tail(i))
+pub const fn tl(i: usize) -> SingleIndex {
+    SingleIndex::Tail(i)
 }
 
 pub const ELLIPSIS: IndexElement = IndexElement::Ellipsis;
@@ -137,6 +117,13 @@ pub const NEW_AXIS: IndexElement = IndexElement::NewAxis;
 impl IndexSpecBuilder<IndexElement> for IndexSpec {
     fn idx(mut self, element: IndexElement) -> Self {
         self.axes.push(element);
+        self
+    }
+}
+
+impl IndexSpecBuilder<SingleIndex> for IndexSpec {
+    fn idx(mut self, element: SingleIndex) -> Self {
+        self.axes.push(IndexElement::Single(element));
         self
     }
 }
@@ -154,12 +141,14 @@ impl SingleIndex {
 
 struct IndexResolution {
     limits: Vec<(usize, usize)>,
+    flips: Vec<bool>,
     shape: Vec<usize>,
 }
 
 impl IndexSpec {
     fn resolve(&self, shape: &[usize]) -> IndexResolution {
         let mut limits = Vec::with_capacity(shape.len());
+        let mut flips = Vec::with_capacity(shape.len());
         let mut new_shape = Vec::with_capacity(std::cmp::max(shape.len(), self.axes.len()));
         let axes_len = self
             .axes
@@ -177,6 +166,7 @@ impl IndexSpec {
             match self.axes.get(idx_i) {
                 None => {
                     limits.push((0, size));
+                    flips.push(false);
                     new_shape.push(size);
                     idx_i += 1;
                     shape_i += 1;
@@ -185,17 +175,26 @@ impl IndexSpec {
                     IndexElement::Single(idx) => {
                         let s = idx.get_index(size - 1);
                         limits.push((s, s + 1));
+                        flips.push(false);
                         // no change to new_shape - this dimension is squeezed out.
                         idx_i += 1;
                         shape_i += 1;
                     }
-                    IndexElement::Slice(start, step, end) => {
+                    IndexElement::Slice(start, end) => {
                         // Gotcha here - we pass in size-1 because the last element is at index size-1.
                         let s = start.get_index(size - 1);
                         // Here we pass size, because the last element of a range is exclusive, so the max valid index is size.
                         let e = end.get_index(size);
-                        limits.push((s, e));
-                        new_shape.push((e - s) / step.get_step());
+
+                        if e >= s {
+                            limits.push((s, e));
+                            flips.push(false);
+                            new_shape.push(e - s);
+                        } else {
+                            limits.push((e, s + 1));
+                            flips.push(true);
+                            new_shape.push(s + 1 - e);
+                        }
                         idx_i += 1;
                         shape_i += 1;
                     }
@@ -210,6 +209,7 @@ impl IndexSpec {
                         let remaining_shape_dims = shape.len() - shape_i;
                         if remaining_idx_elems < remaining_shape_dims {
                             limits.push((0, size));
+                            flips.push(false);
                             new_shape.push(size);
                             shape_i += 1;
                         }
@@ -234,6 +234,7 @@ impl IndexSpec {
         }
         IndexResolution {
             limits,
+            flips,
             shape: new_shape,
         }
     }
@@ -245,7 +246,9 @@ impl<E: Bool, I: DiffableOps> IndexValue<IndexSpec> for Tensor<I::Repr<E>, E, I>
     /// Index a tensor. See [sl] to create [`IndexSpec`] types.
     fn at(&self, index: IndexSpec) -> Self::Output {
         let resolution = index.resolve(self.shape());
-        self.crop(&resolution.limits).reshape(&resolution.shape)
+        self.crop(&resolution.limits)
+            .flip(&resolution.flips)
+            .reshape(&resolution.shape)
     }
 }
 
@@ -359,6 +362,29 @@ mod tests {
         let r = t.at2(.., 1..2);
         assert_eq!(r.shape(), &[2, 1]);
         assert_eq!(r.ravel(), &[2, 5]);
+    }
+
+    #[test]
+    fn test_at_reverse_range() {
+        let t = CpuI32::new(
+            &[2, 3],
+            &[
+                1, 2, 3, //
+                4, 5, 6,
+            ],
+        );
+
+        let r = t.at2(tl(0)..hd(0), ..);
+        assert_eq!(r.shape(), &[2, 3]);
+        assert_eq!(r.ravel(), &[4, 5, 6, 1, 2, 3]);
+
+        let r = t.at2(.., tl(1)..hd(0));
+        assert_eq!(r.shape(), &[2, 2]);
+        assert_eq!(r.ravel(), &[2, 1, 5, 4]);
+
+        let r = t.at2(tl(0)..hd(0), tl(0)..hd(0));
+        assert_eq!(r.shape(), &[2, 3]);
+        assert_eq!(r.ravel(), &[6, 5, 4, 3, 2, 1]);
     }
 
     #[test]

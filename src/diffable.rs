@@ -53,6 +53,8 @@ pub trait DiffableOps {
 
     fn crop<E: Bool>(t: &Self::Repr<E>, limits: &[(usize, usize)]) -> Self::Repr<E>;
 
+    fn flip<E: Bool>(t: &Self::Repr<E>, flips: &[bool]) -> Self::Repr<E>;
+
     fn new<E: Elem>(shape: &[usize], data: &[E]) -> Self::Repr<E>;
 
     fn shape<E: Clone>(t: &Self::Repr<E>) -> &[usize];
