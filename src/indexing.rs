@@ -165,6 +165,8 @@ impl IndexSpec {
 
             match self.axes.get(idx_i) {
                 None => {
+                    // if there are no more index elements, keep the axis as is.
+                    // This is equivalent to adding implicit ELLIPSIS at the end.
                     limits.push((0, size));
                     flips.push(false);
                     new_shape.push(size);
@@ -173,47 +175,54 @@ impl IndexSpec {
                 }
                 Some(index_element) => match index_element {
                     IndexElement::Single(idx) => {
+                        // translate the index to the actual index in the tensor
                         let s = idx.get_index(size - 1);
+                        // crop to the single element
                         limits.push((s, s + 1));
+                        // no flip necessary
                         flips.push(false);
                         // no change to new_shape - this dimension is squeezed out.
                         idx_i += 1;
                         shape_i += 1;
                     }
                     IndexElement::Slice(start, end) => {
-                        // Gotcha here - we pass in size-1 because the last element is at index size-1.
+                        // Get the start index. Pass in size-1 because the last element has index == size-1.
                         let s = start.get_index(size - 1);
-                        // Here we pass size, because the last element of a range is exclusive, so the max valid index is size.
+                        // Get the end index. Pass size, because the last element of a range is exclusive, so the max valid index is size.
                         let e = end.get_index(size);
 
                         if e >= s {
+                            // if the range is increasing, we have s..e. Add the limits as is.
                             limits.push((s, e));
-                            flips.push(false);
-                            new_shape.push(e - s);
+                            flips.push(false); // no need to flip
+                            new_shape.push(e - s); // the new shape is the size of the range
                         } else {
+                            // if the range is decreasing, we have e..s+1. Add the limits in reverse order.
                             limits.push((e, s + 1));
-                            flips.push(true);
+                            flips.push(true); // flip the axis
                             new_shape.push(s + 1 - e);
                         }
                         idx_i += 1;
                         shape_i += 1;
                     }
                     IndexElement::NewAxis => {
-                        // no limits change because this is a new axis
+                        // No limits or flips change because this is a new axis.
                         new_shape.push(1);
                         idx_i += 1;
                     }
                     IndexElement::Ellipsis => {
-                        // add a limit if there aren't enough remaining elements in the IndexSpec
+                        // Add a limit if there aren't enough remaining elements in the IndexSpec
                         let remaining_idx_elems = axes_len.saturating_sub(idx_i + 1);
                         let remaining_shape_dims = shape.len() - shape_i;
                         if remaining_idx_elems < remaining_shape_dims {
+                            // The ellipsis need to do something in this axis. Keep axis as is.
                             limits.push((0, size));
                             flips.push(false);
                             new_shape.push(size);
                             shape_i += 1;
-                        }
-                        if remaining_idx_elems >= remaining_shape_dims {
+                            // don't increment idx_i, so the ellipsis can be used again.
+                        } else {
+                            // This was the last axis for which we need ellipsis. Move on to the next index element.
                             idx_i += 1;
                         }
                     }
@@ -229,6 +238,8 @@ impl IndexSpec {
             }
             idx_i += 1;
         }
+        // this is a hack because we don't currently deal with empty shapes well.
+        //
         if new_shape.is_empty() {
             new_shape.push(1);
         }
