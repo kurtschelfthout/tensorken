@@ -205,7 +205,7 @@ impl IndexSpec {
                     }
                     IndexElement::Ellipsis => {
                         // add a limit if there aren't enough remaining elements in the IndexSpec
-                        let remaining_idx_elems = axes_len - idx_i - 1;
+                        let remaining_idx_elems = axes_len.saturating_sub(idx_i + 1);
                         let remaining_shape_dims = shape.len() - shape_i;
                         if remaining_idx_elems < remaining_shape_dims {
                             limits.push((0, size));
@@ -420,5 +420,8 @@ mod tests {
 
         let r = t.at2(ELLIPSIS, NEW_AXIS);
         assert_eq!(r.shape(), &[3, 2, 4, 1]);
+
+        let r = t.at4(NEW_AXIS, ELLIPSIS, NEW_AXIS, NEW_AXIS);
+        assert_eq!(r.shape(), &[1, 3, 2, 4, 1, 1]);
     }
 }
