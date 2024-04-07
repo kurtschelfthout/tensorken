@@ -269,6 +269,11 @@ impl ShapeStrider {
     }
 
     pub(crate) fn validate_can_permute(&self, permutation: &[usize]) -> Result<(), String> {
+        if permutation.len() != self.shape.ndims() {
+            return Err(
+                "Invalid permutation: number of axes must match number of dimensions.".to_string(),
+            );
+        }
         if permutation.iter().any(|x| *x >= self.shape.ndims()) {
             return Err("Invalid permutation: at least one target axis is greater than number of dimensions.".to_string());
         }
