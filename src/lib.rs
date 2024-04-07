@@ -31,7 +31,7 @@ pub use ad_reverse::{
     Reverse, ReverseImpl,
 };
 pub use diffable::DiffableOps;
-pub use indexing::{hd, tl, IndexSpec, IndexSpecBuilder, IndexValue, ELLIPSIS, NEW_AXIS};
+pub use indexing::{hd, tl, BasicIndex, Ellipsis, IndexSpec, IndexSpecBuilder, NewAxis};
 pub use raw_tensor::{RawTensorOps, ToCpu};
 pub use raw_tensor_cpu::{CpuRawTensor, CpuRawTensorImpl};
 pub use raw_tensor_fuse::{Fuse, FuseImpl};

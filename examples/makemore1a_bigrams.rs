@@ -92,7 +92,7 @@ fn pretty_print_bigram(tensor: &Tr, itos: &HashMap<usize, char>, prec: usize) {
                 "{}{}\n{:.prec$}",
                 itos[&row],
                 itos[&col],
-                tensor.at2(row, col).to_scalar()
+                tensor.ix2(row, col).to_scalar()
             )));
         }
         table.add_row(table_row);
@@ -120,7 +120,7 @@ fn bigram_to_json(
                 "{{ \"from\":\"{}\", \"to\":\"{}\", \"v\":{:.prec$} }},",
                 itos[&row],
                 itos[&col],
-                tensor.at2(row, col).to_scalar()
+                tensor.ix2(row, col).to_scalar()
             )?;
         }
     }
@@ -130,7 +130,7 @@ fn bigram_to_json(
         "{{ \"from\":\"{}\", \"to\":\"{}\", \"v\":{:.prec$} }}",
         itos[&row],
         itos[&col],
-        tensor.at2(row, col).to_scalar()
+        tensor.ix2(row, col).to_scalar()
     )?;
     write!(file, "]")?;
     Ok(())
@@ -141,7 +141,7 @@ fn multinouilli_sample(tensor: &Tr, row: usize, rng: &mut StdRng) -> usize {
     // Purely on a rand usage basis, I should only make the WeightedIndex once per row.
     // Also, all this copying out should not be necessary. Maybe contiguous tensors could
     // have a method that returns a slice of the underlying data? Or an iterator, more generally?
-    let weights = tensor.at1(row).ravel();
+    let weights = tensor.ix1(row).ravel();
     let dist = WeightedIndex::new(weights).unwrap();
     dist.sample(rng)
 }

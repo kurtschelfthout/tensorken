@@ -313,7 +313,7 @@ where
 
     let mut tangents: Vec<_> = Vec::with_capacity(i.shape()[1]);
     for col_idx in 0..i.shape()[1] {
-        let col = i.at2(.., col_idx);
+        let col = i.ix2(.., col_idx);
         let (_, col_tangent) = jvpn(|s| f(&s[0]), &[at], &[&col]);
         tangents.push(col_tangent);
     }

@@ -1,4 +1,4 @@
-use tensorken::{hd, tl, Cpu32, CpuBool, CpuI32, Sym, ELLIPSIS, NEW_AXIS};
+use tensorken::{hd, tl, Cpu32, CpuBool, CpuI32, Ellipsis, NewAxis, Sym};
 
 /// A macro to print the result of an expression and the expression itself.
 macro_rules! do_example {
@@ -90,15 +90,15 @@ fn main() {
     do_example!(t.pad(&[(1, 2), (1, 3)]));
 
     let_example!(t, &Tr::linspace(1.0, 24.0, 24u8).reshape(&[2, 3, 4]));
-    do_example!(t.at1(1));
-    do_example!(t.at2(1, 0));
-    do_example!(t.at2(..tl(1), ELLIPSIS));
+    do_example!(t.ix1(1));
+    do_example!(t.ix2(1, 0));
+    do_example!(t.ix2(..tl(1), Ellipsis));
     // hd counts from the front, tl from the back
-    do_example!(t.at2(ELLIPSIS, hd(1)..tl(1)));
+    do_example!(t.ix2(Ellipsis, hd(1)..tl(1)));
     // invert the range to flip. First bound is still inclusive, second exclusive.
-    do_example!(t.at2(ELLIPSIS, tl(1)..hd(1)));
+    do_example!(t.ix2(Ellipsis, tl(1)..hd(1)));
     // add some new axes
-    do_example!(t.at4(NEW_AXIS, ELLIPSIS, NEW_AXIS, NEW_AXIS));
+    do_example!(t.ix4(NewAxis, Ellipsis, NewAxis, NewAxis));
 
     let_example!(t, Tr::linspace(0.0, 23.0, 24_u8));
     let_example!(t6x4, t.reshape(&[6, 4]));

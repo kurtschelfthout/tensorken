@@ -95,11 +95,11 @@ fn create_table<E: Bool + Display>(
                 if precision.is_some() {
                     row.add_cell(Cell::new(&format!(
                         "{:.precision$}",
-                        tensor.at2(r, c).to_scalar(),
+                        tensor.ix2(r, c).to_scalar(),
                         precision = precision.unwrap()
                     )));
                 } else {
-                    row.add_cell(Cell::new(&format!("{}", tensor.at2(r, c).to_scalar())));
+                    row.add_cell(Cell::new(&format!("{}", tensor.ix2(r, c).to_scalar())));
                 }
             }
         }
@@ -109,7 +109,7 @@ fn create_table<E: Bool + Display>(
             let row = table.add_empty_row();
             for c in 0..shape[1] {
                 let mut table = Table::new();
-                let tensor = tensor.at2(r, c);
+                let tensor = tensor.ix2(r, c);
                 create_table(&tensor, &mut table, precision);
                 row.add_cell(Cell::new(&format!("{table}")));
             }

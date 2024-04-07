@@ -472,18 +472,18 @@ fn test_at() {
 }
 
 fn do_test_at<T, I: ToCpu<Repr<f32> = T>>(t: &Tensor<T, f32, I>) {
-    let s = t.at1(1);
+    let s = t.ix1(1);
     assert_eq!(s.shape(), &[4]);
     assert_eq!(s.ravel(), vec![0.0, 1.0, 0.0, 0.0]);
 
-    let s = s.at1(1);
+    let s = s.ix1(1);
     assert_eq!(s.shape(), &[1]);
 
-    let s = t.at1(1);
+    let s = t.ix1(1);
     assert_eq!(s.shape(), &[4]);
     assert_eq!(s.ravel(), vec![0.0, 1.0, 0.0, 0.0]);
 
-    let s = t.at2(1, 1);
+    let s = t.ix2(1, 1);
     assert_eq!(s.shape(), &[1]);
 }
 

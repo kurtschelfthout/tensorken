@@ -442,7 +442,7 @@ where
 
     let mut tangents: Vec<Tensor<T, E, I>> = Vec::with_capacity(i.shape()[0]);
     for row_idx in 0..i.shape()[0] {
-        let row = i.at1(row_idx);
+        let row = i.ix1(row_idx);
         let row_tangent = pullback.call(&row).into_iter().next().unwrap();
         tangents.push(row_tangent);
     }
