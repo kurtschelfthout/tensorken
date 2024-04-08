@@ -1,4 +1,6 @@
 use std::{
+    cmp::max,
+    iter,
     marker::PhantomData,
     ops::{Range, RangeFrom, RangeFull, RangeTo},
 };
@@ -428,8 +430,65 @@ impl<E: Num + CastFrom<bool>, I: DiffableOps> FancyIndex<IndexSpec<I, AdvancedIn
         result
     }
 
-    fn vix(&self, _index: IndexSpec<I, AdvancedIndexingWitness>) -> Self {
-        todo!()
+    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+    fn vix(&self, index: IndexSpec<I, AdvancedIndexingWitness>) -> Self {
+        // first do the basic indexing - no copy.
+        let resolution = index.resolve_basic(self.shape());
+        let basic = self
+            .crop(&resolution.limits)
+            .flip(&resolution.flips)
+            .reshape(&resolution.shape);
+
+        // then any advanced indexing - always copy.
+        let mut result = basic;
+
+        // the dimension we're at in the result
+        let mut dim = 0;
+        let mut squeezed = 0;
+        let orig_result_shape_ndims = result.shape().ndims();
+        // the max number of dimensions seen in any index tensor so far
+        let mut max_i_ndims = 0;
+
+        for (fancy, size) in resolution.fancy.iter().zip(resolution.shape) {
+            match fancy {
+                Fancy::Full => dim += 1, //dim_result += 1,
+                Fancy::IntTensor(i) => {
+                    max_i_ndims = max(max_i_ndims, i.shape().ndims());
+                    let mut i_range_shape = vec![1; i.shape().ndims()];
+                    i_range_shape.push(size);
+                    // shape is [1, 1, ..., size]
+                    let i_range: Tensor<I::Repr<i32>, i32, I> = Tensor::new(
+                        &i_range_shape,
+                        (0..i_range_shape.size() as i32)
+                            .collect::<Vec<_>>()
+                            .as_slice(),
+                    );
+                    let mut i_shape = i.shape().to_vec();
+                    i_shape.push(1);
+                    // shape is [i.shape, size]
+                    let i_one_hot = i.reshape(&i_shape).eq(&i_range).cast::<E>();
+
+                    // reshape the i_one_hot to add any needed 1s before and after the size:
+                    // [i.shape, 1, 1, ..., size, 1, 1, ...]
+                    let mut i_one_hot_shape = i.shape().to_vec();
+                    i_one_hot_shape.extend(iter::repeat(1).take(dim));
+                    i_one_hot_shape.push(size);
+                    i_one_hot_shape.extend(
+                        iter::repeat(1)
+                            .take(orig_result_shape_ndims.saturating_sub(dim + 1 + squeezed)),
+                    );
+                    let i_one_hot = i_one_hot.reshape(&i_one_hot_shape);
+
+                    result = &result * &i_one_hot;
+                    result = result
+                        .sum(&[dim + max_i_ndims])
+                        .squeeze(&Axes::Axis(dim + max_i_ndims));
+                    squeezed += 1;
+                    // we removed a dim, so don't update dim.
+                } // Fancy::BoolTensor(t) => todo!("bool tensor fancy indexing"),
+            };
+        }
+        result
     }
 }
 
@@ -690,5 +749,91 @@ mod tests {
             r.ravel(),
             &[18, 17, 15, 14, 6, 5, 3, 2, 12, 11, 9, 8, 24, 23, 21, 20]
         );
+    }
+
+    #[test]
+    fn text_vix() {
+        // first index - one dimensional index tensor
+        let t = CpuI32::linspace(1, 24, 24u8).reshape(&[4, 2, 3]);
+        let i = CpuI32::new(&[2], &[2, 0]);
+        let r = t.vix(IndexSpec::advanced().idx(i));
+        assert_eq!(r.shape(), &[2, 2, 3]);
+        assert_eq!(r.ravel(), &[13, 14, 15, 16, 17, 18, 1, 2, 3, 4, 5, 6]);
+
+        // second index - one dimensional index tensor
+        let i = CpuI32::new(&[2], &[1, 0]);
+        let r = t.vix(IndexSpec::advanced().idx(..).idx(i));
+        // compared to oix, the new dimensions are always added at the front.
+        assert_eq!(r.shape(), &[2, 4, 3]);
+        // permute to get the oix result.
+        assert_eq!(
+            r.permute(&[1, 0, 2]).ravel(),
+            &[
+                4, 5, 6, 1, 2, 3, //
+                10, 11, 12, 7, 8, 9, //
+                16, 17, 18, 13, 14, 15, //
+                22, 23, 24, 19, 20, 21
+            ]
+        );
+
+        // third index - one dimensional index tensor
+        let i = CpuI32::new(&[2], &[1, 0]);
+        let r = t.vix(IndexSpec::advanced().idx(Ellipsis).idx(i));
+        assert_eq!(r.shape(), &[2, 4, 2]);
+        assert_eq!(
+            r.permute(&[1, 2, 0]).ravel(),
+            &[
+                2, 1, 5, 4, //
+                8, 7, 11, 10, //
+                14, 13, 17, 16, //
+                20, 19, 23, 22
+            ]
+        );
+
+        // first index - two dimensional index tensor
+        let i = CpuI32::new(&[2, 2], &[2, 0, 1, 3]);
+        let r = t.vix(IndexSpec::advanced().idx(i));
+        assert_eq!(r.shape(), &[2, 2, 2, 3]);
+        assert_eq!(
+            r.ravel(),
+            &[
+                13, 14, 15, 16, 17, 18, //
+                1, 2, 3, 4, 5, 6, //
+                7, 8, 9, 10, 11, 12, //
+                19, 20, 21, 22, 23, 24
+            ]
+        );
+
+        // all indexes - one-dimensional index tensors
+        let i0 = CpuI32::new(&[2], &[2, 0]);
+        let i1 = CpuI32::new(&[2], &[1, 0]);
+        let i2 = CpuI32::new(&[2], &[2, 1]);
+        let r = t.vix(IndexSpec::advanced().idx(i0).idx(i1).idx(i2));
+        assert_eq!(r.shape(), &[2]);
+        assert_eq!(r.ravel(), &[18, 2]);
+
+        // all indexes - all two-dimensional index tensor
+        let i0 = CpuI32::new(&[2, 2], &[2, 0, 1, 3]);
+        let i1 = CpuI32::new(&[1, 2], &[1, 0]);
+        let i2 = CpuI32::new(&[2, 1], &[2, 1]);
+        let r = t.vix(IndexSpec::advanced().idx(i0).idx(i1).idx(i2));
+        assert_eq!(r.shape(), &[2, 2]);
+
+        // 2 0      2,1,2   0,0,2
+        // 1 3      1,1,1   3,0,1
+
+        // 1 0
+
+        // 2
+        // 1
+        assert_eq!(r.ravel(), &[18, 3, 11, 20]);
+
+        // all indexes - two-dimensional index tensor
+        let i0 = CpuI32::new(&[2, 2], &[2, 0, 1, 3]);
+        let i1 = CpuI32::new(&[2], &[1, 0]);
+        let i2 = CpuI32::new(&[2], &[2, 1]);
+        let r = t.vix(IndexSpec::advanced().idx(i0).idx(i1).idx(i2));
+        assert_eq!(r.shape(), &[2, 2]);
+        assert_eq!(r.ravel(), &[18, 2, 12, 20]);
     }
 }

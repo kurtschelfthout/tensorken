@@ -288,6 +288,8 @@ pub enum Axes {
     All,
     /// Squeeze a specific axis.
     Axis(usize),
+    /// Squeeze the given axes.
+    Axes(Vec<usize>),
 }
 
 impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
@@ -426,6 +428,11 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
         if let Axes::Axis(dim) = dim {
             assert_eq!(shape[*dim], 1);
             shape.remove(*dim);
+        } else if let Axes::Axes(dims) = dim {
+            for &d in dims.iter().rev() {
+                assert_eq!(shape[d], 1);
+                shape.remove(d);
+            }
         } else {
             shape.retain(|&x| x != 1);
         }
