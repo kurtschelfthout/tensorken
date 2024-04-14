@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     num::{Bool, CastFrom, Num},
-    Axes, DiffableOps, Shape, Tensor,
+    Axes, DiffableOps, Shape, Tensor, ToCpu,
 };
 
 /// A variation of `Index` and `IndexMut`, that returns the output
@@ -51,7 +51,7 @@ pub enum SingleIndex {
 pub enum Fancy<I: DiffableOps> {
     Full,
     IntTensor(Tensor<I::Repr<i32>, i32, I>),
-    // BoolTensor(Tensor<I::Repr<bool>, bool, I>),
+    BoolTensor(Tensor<I::Repr<bool>, bool, I>),
 }
 
 pub enum IndexElement<I: DiffableOps> {
@@ -216,10 +216,19 @@ impl<'a, I: DiffableOps> BasicIndexResolution<'a, I> {
         self.fancy.push(&Fancy::Full);
     }
 
-    fn add_fancy_axis(&mut self, size: usize, fancy_element: &'a Fancy<I>) {
+    fn add_fancy_int_axis(&mut self, size: usize, fancy_element: &'a Fancy<I>) {
         self.limits.push((0, size));
         self.flips.push(false);
         self.shape.push(size);
+        self.fancy.push(fancy_element);
+    }
+
+    fn add_fancy_bool_axis(&mut self, sizes: &[usize], fancy_element: &'a Fancy<I>, ndims: usize) {
+        (0..ndims).for_each(|i| {
+            self.limits.push((0, sizes[i]));
+            self.flips.push(false);
+            self.shape.push(sizes[i]);
+        });
         self.fancy.push(fancy_element);
     }
 
@@ -295,9 +304,25 @@ impl<W, I: DiffableOps> IndexSpec<I, W> {
                 }
                 Some(index_element) => match index_element {
                     IndexElement::Fancy(fancy_element) => {
-                        result.add_fancy_axis(size, fancy_element);
+                        match fancy_element {
+                            Fancy::IntTensor(_) => {
+                                result.add_fancy_int_axis(size, fancy_element);
+                                shape_i += 1;
+                            }
+                            Fancy::BoolTensor(b) => {
+                                result.add_fancy_bool_axis(
+                                    &shape[shape_i..shape_i + b.shape().ndims()],
+                                    fancy_element,
+                                    b.shape().ndims(),
+                                );
+                                shape_i += b.shape().ndims();
+                            }
+                            Fancy::Full => {
+                                result.add_full_axis(size);
+                                shape_i += 1;
+                            }
+                        }
                         idx_i += 1;
-                        shape_i += 1;
                     }
                     IndexElement::Single(idx) => {
                         // translate the index to the actual index in the tensor
@@ -378,8 +403,17 @@ impl<I: DiffableOps> IndexSpecBuilder<Tensor<I::Repr<i32>, i32, I>>
     }
 }
 
-impl<E: Num + CastFrom<bool>, I: DiffableOps> FancyIndex<IndexSpec<I, AdvancedIndexingWitness>>
-    for Tensor<I::Repr<E>, E, I>
+impl<I: DiffableOps> IndexSpecBuilder<Tensor<I::Repr<bool>, bool, I>>
+    for IndexSpec<I, AdvancedIndexingWitness>
+{
+    fn idx(mut self, t: Tensor<I::Repr<bool>, bool, I>) -> Self {
+        self.axes.push(IndexElement::Fancy(Fancy::BoolTensor(t)));
+        self
+    }
+}
+
+impl<T, E: Num + CastFrom<bool>, I: DiffableOps<Repr<E> = T> + ToCpu<Repr<E> = T>>
+    FancyIndex<IndexSpec<I, AdvancedIndexingWitness>> for Tensor<T, E, I>
 {
     #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     fn oix(&self, index: IndexSpec<I, AdvancedIndexingWitness>) -> Self {
@@ -394,43 +428,78 @@ impl<E: Num + CastFrom<bool>, I: DiffableOps> FancyIndex<IndexSpec<I, AdvancedIn
         let mut result = basic;
         // the dimension we're at in the result
         let mut dim_result = 0;
-        for (fancy, size) in resolution.fancy.iter().zip(resolution.shape) {
+        let mut dim_shape = 0;
+        let mut dim_fancy = 0;
+        let mut dim_bool = None;
+        while dim_fancy < resolution.fancy.len() && dim_shape < resolution.shape.len() {
+            let size = resolution.shape[dim_shape];
+            let fancy = resolution.fancy[dim_fancy];
             match fancy {
-                Fancy::Full => dim_result += 1,
+                Fancy::Full => {
+                    dim_result += 1;
+                    dim_shape += 1;
+                    dim_fancy += 1;
+                }
                 Fancy::IntTensor(i) => {
-                    let mut i_range_shape = vec![size];
-                    let ones = vec![1; i.shape().ndims()];
-                    i_range_shape.extend(&ones);
-                    // shape is [size, 1, 1, ...]
-                    let i_range: Tensor<I::Repr<i32>, i32, I> = Tensor::new(
-                        &i_range_shape,
-                        (0..i_range_shape.size() as i32)
-                            .collect::<Vec<_>>()
-                            .as_slice(),
-                    );
-                    // shape is [size, i.shape]
-                    let i_one_hot = i.eq(&i_range).cast::<E>();
-                    // make room in the result for the new dimensions by adding 1s after the current dimension, dim.
-                    // We need as many as there are dimentsions in i.
-                    let mut result_shape = result.shape().to_vec();
-                    result_shape.splice((dim_result + 1)..=dim_result, ones);
-
-                    // also reshape the i_one_hot to add any needed 1s after the current dimension. (Any needed 1s before are added by broadcasting)
-                    let mut i_one_hot_shape = i_one_hot.shape().to_vec();
-                    i_one_hot_shape.extend(vec![1; result.shape().ndims() - (dim_result + 1)]);
-
-                    result = result.reshape(&result_shape);
-                    let i_one_hot = i_one_hot.reshape(&i_one_hot_shape);
-                    result = result * &i_one_hot;
-                    result = result.sum(&[dim_result]).squeeze(&Axes::Axis(dim_result));
+                    oix_int(size, i, &mut result, dim_result);
                     dim_result += i.shape().ndims();
-                } // Fancy::BoolTensor(t) => todo!("bool tensor fancy indexing"),
+                    dim_shape += 1;
+                    dim_fancy += 1;
+                }
+                Fancy::BoolTensor(b) => {
+                    let int_tensor = b.cast::<E>();
+                    if dim_bool.is_none() {
+                        dim_bool = Some(0);
+                    } else {
+                        dim_bool = dim_bool.map(|i| i + 1);
+                    }
+                    // keep just the dimension that we're currently at.
+                    let dim_to_keep = dim_bool.unwrap();
+                    if dim_to_keep >= b.shape().ndims() {
+                        dim_fancy += 1;
+                        dim_bool = None;
+                        continue;
+                    }
+                    let dim_to_reduce: Vec<_> = (0..b.shape().ndims())
+                        .filter(|e| *e != dim_to_keep)
+                        .collect();
+                    let int_tensor_1d = int_tensor.max(&dim_to_reduce);
+
+                    // Now create the equivalent int index tensor.
+                    let vec = int_tensor_1d.ravel();
+                    let i_vec: Vec<_> = vec
+                        .iter()
+                        .enumerate()
+                        .filter_map(|t| {
+                            if *t.1 == E::ONE {
+                                Some(t.0 as i32)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    let i_tensor: Tensor<_, i32, I> = Tensor::new(&[i_vec.len()], i_vec.as_slice());
+                    oix_int(size, &i_tensor, &mut result, dim_result);
+                    dim_result += 1;
+                    dim_shape += 1;
+
+                    // let mut one_hot_shape = one_hot.shape().to_vec();
+                    // one_hot_shape.extend(vec![
+                    //     1;
+                    //     result
+                    //         .shape()
+                    //         .ndims()
+                    //         .saturating_sub(dim_result + b.shape().ndims())
+                    // ]);
+                    // let one_hot = one_hot.reshape(&one_hot_shape);
+                    // result = result * &one_hot;
+                    // dim_result += b.shape().ndims();
+                }
             };
         }
         result
     }
 
-    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     fn vix(&self, index: IndexSpec<I, AdvancedIndexingWitness>) -> Self {
         // first do the basic indexing - no copy.
         let resolution = index.resolve_basic(self.shape());
@@ -448,7 +517,7 @@ impl<E: Num + CastFrom<bool>, I: DiffableOps> FancyIndex<IndexSpec<I, AdvancedIn
         let orig_result_shape_ndims = result.shape().ndims();
         // the max number of dimensions seen in any index tensor so far
         let mut max_i_ndims = 0;
-
+        #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
         for (fancy, size) in resolution.fancy.iter().zip(resolution.shape) {
             match fancy {
                 Fancy::Full => dim += 1, //dim_result += 1,
@@ -457,7 +526,7 @@ impl<E: Num + CastFrom<bool>, I: DiffableOps> FancyIndex<IndexSpec<I, AdvancedIn
                     let mut i_range_shape = vec![1; i.shape().ndims()];
                     i_range_shape.push(size);
                     // shape is [1, 1, ..., size]
-                    let i_range: Tensor<I::Repr<i32>, i32, I> = Tensor::new(
+                    let i_range: Tensor<<I as DiffableOps>::Repr<i32>, i32, I> = Tensor::new(
                         &i_range_shape,
                         (0..i_range_shape.size() as i32)
                             .collect::<Vec<_>>()
@@ -485,11 +554,45 @@ impl<E: Num + CastFrom<bool>, I: DiffableOps> FancyIndex<IndexSpec<I, AdvancedIn
                         .squeeze(&Axes::Axis(dim + max_i_ndims));
                     squeezed += 1;
                     // we removed a dim, so don't update dim.
-                } // Fancy::BoolTensor(t) => todo!("bool tensor fancy indexing"),
+                } //todo add a witness and a IndexSpec:oix/vix to disallow this statically
+                Fancy::BoolTensor(_) => panic!("bool tensor fancy indexing in vix not supported"),
             };
         }
         result
     }
+}
+#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+fn oix_int<T, E: Num + CastFrom<bool>, I: DiffableOps<Repr<E> = T> + ToCpu<Repr<E> = T>>(
+    size: usize,
+    i: &Tensor<<I as DiffableOps>::Repr<i32>, i32, I>,
+    result: &mut Tensor<T, E, I>,
+    dim_result: usize,
+) {
+    let mut i_range_shape = vec![size];
+    let ones = vec![1; i.shape().ndims()];
+    i_range_shape.extend(&ones);
+    // shape is [size, 1, 1, ...]
+    let i_range: Tensor<_, i32, I> = Tensor::new(
+        &i_range_shape,
+        (0..i_range_shape.size() as i32)
+            .collect::<Vec<_>>()
+            .as_slice(),
+    );
+    // shape is [size, i.shape]
+    let i_one_hot = i.eq(&i_range).cast::<E>();
+    // make room in the result for the new dimensions by adding 1s after the current dimension, dim.
+    // We need as many as there are dimentsions in i.
+    let mut result_shape = result.shape().to_vec();
+    result_shape.splice((dim_result + 1)..=dim_result, ones);
+
+    // also reshape the i_one_hot to add any needed 1s after the current dimension. (Any needed 1s before are added by broadcasting)
+    let mut i_one_hot_shape = i_one_hot.shape().to_vec();
+    i_one_hot_shape.extend(vec![1; result.shape().ndims() - (dim_result + 1)]);
+
+    *result = result.reshape(&result_shape);
+    let i_one_hot = i_one_hot.reshape(&i_one_hot_shape);
+    *result = &*result * &i_one_hot;
+    *result = result.sum(&[dim_result]).squeeze(&Axes::Axis(dim_result));
 }
 
 impl<E: Bool, I: DiffableOps> Tensor<I::Repr<E>, E, I> {
@@ -537,7 +640,7 @@ impl<E: Bool, I: DiffableOps> Tensor<I::Repr<E>, E, I> {
 #[cfg(test)]
 mod tests {
 
-    use crate::CpuI32;
+    use crate::{CpuBool, CpuI32};
 
     use super::*;
 
@@ -667,7 +770,7 @@ mod tests {
     }
 
     #[test]
-    fn test_oix() {
+    fn test_oix_int() {
         // first index - one dimensional index tensor
         let t = CpuI32::linspace(1, 24, 24u8).reshape(&[4, 2, 3]);
         let i = CpuI32::new(&[2], &[2, 0]);
@@ -749,6 +852,37 @@ mod tests {
             r.ravel(),
             &[18, 17, 15, 14, 6, 5, 3, 2, 12, 11, 9, 8, 24, 23, 21, 20]
         );
+    }
+
+    #[test]
+    fn test_oix_bool() {
+        // first index - one dimensional index tensor
+        let t = CpuI32::linspace(1, 24, 24u8).reshape(&[4, 2, 3]);
+        let i = CpuBool::new(&[4], &[false, false, true, false]);
+        let r = t.oix(IndexSpec::advanced().idx(i));
+        assert_eq!(r.shape(), &[1, 2, 3]);
+        assert_eq!(r.ravel(), &[13, 14, 15, 16, 17, 18]);
+
+        // second index - one dimensional index tensor
+        let i = CpuBool::new(&[2], &[true, false]);
+        let r = t.oix(IndexSpec::advanced().idx(..).idx(i));
+        assert_eq!(r.shape(), &[4, 1, 3]);
+        assert_eq!(r.ravel(), &[1, 2, 3, 7, 8, 9, 13, 14, 15, 19, 20, 21]);
+
+        // third index - one dimensional index tensor
+        let i = CpuBool::new(&[3], &[true, false, false]);
+        let r = t.oix(IndexSpec::advanced().idx(Ellipsis).idx(i));
+        assert_eq!(r.shape(), &[4, 2, 1]);
+        assert_eq!(r.ravel(), &[1, 4, 7, 10, 13, 16, 19, 22]);
+
+        // first index - two dimensional index tensor
+        let i = CpuBool::new(
+            &[4, 2],
+            &[false, false, true, false, false, false, true, false],
+        );
+        let r = t.oix(IndexSpec::advanced().idx(i));
+        assert_eq!(r.shape(), &[2, 1, 3]);
+        assert_eq!(r.ravel(), &[7, 8, 9, 19, 20, 21]);
     }
 
     #[test]
