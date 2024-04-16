@@ -26,12 +26,14 @@ pub trait BasicIndex<Idx> {
 
 /// Following a proposal for numpy: <https://numpy.org/neps/nep-0021-advanced-indexing.html/>
 /// There are two methods that differ in their handling of int tensor indexes.
-pub trait FancyIndex<Idx> {
+pub trait OuterIndex<Idx> {
     /// Outer indexing. A straightforward generalization of slicing with int tensor indexes.
     /// Copying if tensor indexes are used.
     #[must_use]
     fn oix(&self, index: Idx) -> Self;
+}
 
+pub trait VectorizedIndex<Idx> {
     /// Vectorized indexing. More powerful than oix, but also more complex.
     /// Copying if tensor indexes are used.
     #[must_use]
@@ -65,7 +67,8 @@ pub enum IndexElement<I: DiffableOps> {
 }
 
 pub enum BasicIndexingWitness {}
-pub enum AdvancedIndexingWitness {}
+pub enum OuterIndexingWitness {}
+pub enum VectorizedIndexingWitness {}
 
 /// Specifies what to select along each axis.
 #[must_use]
@@ -75,7 +78,7 @@ pub struct IndexSpec<I: DiffableOps, IndexingWitness> {
 }
 
 impl<I: DiffableOps> IndexSpec<I, BasicIndexingWitness> {
-    pub fn basic() -> Self {
+    pub fn ix() -> Self {
         Self {
             axes: Vec::new(),
             witness: PhantomData,
@@ -83,8 +86,17 @@ impl<I: DiffableOps> IndexSpec<I, BasicIndexingWitness> {
     }
 }
 
-impl<I: DiffableOps> IndexSpec<I, AdvancedIndexingWitness> {
-    pub fn advanced() -> Self {
+impl<I: DiffableOps> IndexSpec<I, VectorizedIndexingWitness> {
+    pub fn vix() -> Self {
+        Self {
+            axes: Vec::new(),
+            witness: PhantomData,
+        }
+    }
+}
+
+impl<I: DiffableOps> IndexSpec<I, OuterIndexingWitness> {
+    pub fn oix() -> Self {
         Self {
             axes: Vec::new(),
             witness: PhantomData,
@@ -395,7 +407,7 @@ impl<E: Bool, I: DiffableOps> BasicIndex<IndexSpec<I, BasicIndexingWitness>>
 }
 
 impl<I: DiffableOps> IndexSpecBuilder<Tensor<I::Repr<i32>, i32, I>>
-    for IndexSpec<I, AdvancedIndexingWitness>
+    for IndexSpec<I, OuterIndexingWitness>
 {
     fn idx(mut self, t: Tensor<I::Repr<i32>, i32, I>) -> Self {
         self.axes.push(IndexElement::Fancy(Fancy::IntTensor(t)));
@@ -404,7 +416,7 @@ impl<I: DiffableOps> IndexSpecBuilder<Tensor<I::Repr<i32>, i32, I>>
 }
 
 impl<I: DiffableOps> IndexSpecBuilder<Tensor<I::Repr<bool>, bool, I>>
-    for IndexSpec<I, AdvancedIndexingWitness>
+    for IndexSpec<I, OuterIndexingWitness>
 {
     fn idx(mut self, t: Tensor<I::Repr<bool>, bool, I>) -> Self {
         self.axes.push(IndexElement::Fancy(Fancy::BoolTensor(t)));
@@ -413,10 +425,10 @@ impl<I: DiffableOps> IndexSpecBuilder<Tensor<I::Repr<bool>, bool, I>>
 }
 
 impl<T, E: Num + CastFrom<bool>, I: DiffableOps<Repr<E> = T> + ToCpu<Repr<E> = T>>
-    FancyIndex<IndexSpec<I, AdvancedIndexingWitness>> for Tensor<T, E, I>
+    OuterIndex<IndexSpec<I, OuterIndexingWitness>> for Tensor<T, E, I>
 {
     #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-    fn oix(&self, index: IndexSpec<I, AdvancedIndexingWitness>) -> Self {
+    fn oix(&self, index: IndexSpec<I, OuterIndexingWitness>) -> Self {
         // first do the basic indexing - no copy.
         let resolution = index.resolve_basic(self.shape());
         let basic = self
@@ -482,25 +494,26 @@ impl<T, E: Num + CastFrom<bool>, I: DiffableOps<Repr<E> = T> + ToCpu<Repr<E> = T
                     oix_int(size, &i_tensor, &mut result, dim_result);
                     dim_result += 1;
                     dim_shape += 1;
-
-                    // let mut one_hot_shape = one_hot.shape().to_vec();
-                    // one_hot_shape.extend(vec![
-                    //     1;
-                    //     result
-                    //         .shape()
-                    //         .ndims()
-                    //         .saturating_sub(dim_result + b.shape().ndims())
-                    // ]);
-                    // let one_hot = one_hot.reshape(&one_hot_shape);
-                    // result = result * &one_hot;
-                    // dim_result += b.shape().ndims();
                 }
             };
         }
         result
     }
+}
 
-    fn vix(&self, index: IndexSpec<I, AdvancedIndexingWitness>) -> Self {
+impl<I: DiffableOps> IndexSpecBuilder<Tensor<I::Repr<i32>, i32, I>>
+    for IndexSpec<I, VectorizedIndexingWitness>
+{
+    fn idx(mut self, t: Tensor<I::Repr<i32>, i32, I>) -> Self {
+        self.axes.push(IndexElement::Fancy(Fancy::IntTensor(t)));
+        self
+    }
+}
+
+impl<T, E: Num + CastFrom<bool>, I: DiffableOps<Repr<E> = T> + ToCpu<Repr<E> = T>>
+    VectorizedIndex<IndexSpec<I, VectorizedIndexingWitness>> for Tensor<T, E, I>
+{
+    fn vix(&self, index: IndexSpec<I, VectorizedIndexingWitness>) -> Self {
         // first do the basic indexing - no copy.
         let resolution = index.resolve_basic(self.shape());
         let basic = self
@@ -554,7 +567,8 @@ impl<T, E: Num + CastFrom<bool>, I: DiffableOps<Repr<E> = T> + ToCpu<Repr<E> = T
                         .squeeze(&Axes::Axis(dim + max_i_ndims));
                     squeezed += 1;
                     // we removed a dim, so don't update dim.
-                } //todo add a witness and a IndexSpec:oix/vix to disallow this statically
+                }
+                // vix + bool indexing is statically disallowed, we should never hit this.
                 Fancy::BoolTensor(_) => panic!("bool tensor fancy indexing in vix not supported"),
             };
         }
@@ -601,7 +615,7 @@ impl<E: Bool, I: DiffableOps> Tensor<I::Repr<E>, E, I> {
     where
         IndexSpec<I, BasicIndexingWitness>: IndexSpecBuilder<T>,
     {
-        self.ix(IndexSpec::basic().idx(index))
+        self.ix(IndexSpec::ix().idx(index))
     }
 
     /// Shorthand for outer indexing along the first two axes.
@@ -609,7 +623,7 @@ impl<E: Bool, I: DiffableOps> Tensor<I::Repr<E>, E, I> {
     where
         IndexSpec<I, BasicIndexingWitness>: IndexSpecBuilder<T1> + IndexSpecBuilder<T2>,
     {
-        self.ix(IndexSpec::basic().idx(index1).idx(index2))
+        self.ix(IndexSpec::ix().idx(index1).idx(index2))
     }
 
     /// Shorthand for outer indexing along the first three axes.
@@ -618,7 +632,7 @@ impl<E: Bool, I: DiffableOps> Tensor<I::Repr<E>, E, I> {
         IndexSpec<I, BasicIndexingWitness>:
             IndexSpecBuilder<T1> + IndexSpecBuilder<T2> + IndexSpecBuilder<T3>,
     {
-        self.ix(IndexSpec::basic().idx(index1).idx(index2).idx(index3))
+        self.ix(IndexSpec::ix().idx(index1).idx(index2).idx(index3))
     }
 
     /// Shorthand for outer indexing along the first four axes.
@@ -629,11 +643,99 @@ impl<E: Bool, I: DiffableOps> Tensor<I::Repr<E>, E, I> {
             + IndexSpecBuilder<T3>
             + IndexSpecBuilder<T4>,
     {
-        self.ix(IndexSpec::basic()
+        self.ix(IndexSpec::ix()
             .idx(index1)
             .idx(index2)
             .idx(index3)
             .idx(index4))
+    }
+}
+
+impl<T, E: Num + CastFrom<bool>, I: DiffableOps<Repr<E> = T> + ToCpu<Repr<E> = T>> Tensor<T, E, I> {
+    /// Shorthand for outer indexing along the first axis.
+    pub fn vix1<T1>(&self, index: T1) -> Self
+    where
+        IndexSpec<I, VectorizedIndexingWitness>: IndexSpecBuilder<T1>,
+    {
+        self.vix(IndexSpec::vix().idx(index))
+    }
+
+    /// Shorthand for outer indexing along the first two axes.
+    pub fn vix2<T1, T2>(&self, index1: T1, index2: T2) -> Self
+    where
+        IndexSpec<I, VectorizedIndexingWitness>: IndexSpecBuilder<T1> + IndexSpecBuilder<T2>,
+    {
+        self.vix(IndexSpec::vix().idx(index1).idx(index2))
+    }
+
+    /// Shorthand for outer indexing along the first three axes.
+    pub fn vix3<T1, T2, T3>(&self, index1: T1, index2: T2, index3: T3) -> Self
+    where
+        IndexSpec<I, VectorizedIndexingWitness>:
+            IndexSpecBuilder<T1> + IndexSpecBuilder<T2> + IndexSpecBuilder<T3>,
+    {
+        self.vix(IndexSpec::vix().idx(index1).idx(index2).idx(index3))
+    }
+
+    /// Shorthand for outer indexing along the first four axes.
+    pub fn vix4<T1, T2, T3, T4>(&self, index1: T1, index2: T2, index3: T3, index4: T4) -> Self
+    where
+        IndexSpec<I, VectorizedIndexingWitness>: IndexSpecBuilder<T1>
+            + IndexSpecBuilder<T2>
+            + IndexSpecBuilder<T3>
+            + IndexSpecBuilder<T4>,
+    {
+        self.vix(
+            IndexSpec::vix()
+                .idx(index1)
+                .idx(index2)
+                .idx(index3)
+                .idx(index4),
+        )
+    }
+}
+
+impl<T, E: Num + CastFrom<bool>, I: DiffableOps<Repr<E> = T> + ToCpu<Repr<E> = T>> Tensor<T, E, I> {
+    /// Shorthand for outer indexing along the first axis.
+    pub fn oix1<T1>(&self, index: T1) -> Self
+    where
+        IndexSpec<I, OuterIndexingWitness>: IndexSpecBuilder<T1>,
+    {
+        self.oix(IndexSpec::oix().idx(index))
+    }
+
+    /// Shorthand for outer indexing along the first two axes.
+    pub fn oix2<T1, T2>(&self, index1: T1, index2: T2) -> Self
+    where
+        IndexSpec<I, OuterIndexingWitness>: IndexSpecBuilder<T1> + IndexSpecBuilder<T2>,
+    {
+        self.oix(IndexSpec::oix().idx(index1).idx(index2))
+    }
+
+    /// Shorthand for outer indexing along the first three axes.
+    pub fn oix3<T1, T2, T3>(&self, index1: T1, index2: T2, index3: T3) -> Self
+    where
+        IndexSpec<I, OuterIndexingWitness>:
+            IndexSpecBuilder<T1> + IndexSpecBuilder<T2> + IndexSpecBuilder<T3>,
+    {
+        self.oix(IndexSpec::oix().idx(index1).idx(index2).idx(index3))
+    }
+
+    /// Shorthand for outer indexing along the first four axes.
+    pub fn oix4<T1, T2, T3, T4>(&self, index1: T1, index2: T2, index3: T3, index4: T4) -> Self
+    where
+        IndexSpec<I, OuterIndexingWitness>: IndexSpecBuilder<T1>
+            + IndexSpecBuilder<T2>
+            + IndexSpecBuilder<T3>
+            + IndexSpecBuilder<T4>,
+    {
+        self.oix(
+            IndexSpec::oix()
+                .idx(index1)
+                .idx(index2)
+                .idx(index3)
+                .idx(index4),
+        )
     }
 }
 
@@ -774,13 +876,13 @@ mod tests {
         // first index - one dimensional index tensor
         let t = CpuI32::linspace(1, 24, 24u8).reshape(&[4, 2, 3]);
         let i = CpuI32::new(&[2], &[2, 0]);
-        let r = t.oix(IndexSpec::advanced().idx(i));
+        let r = t.oix1(i);
         assert_eq!(r.shape(), &[2, 2, 3]);
         assert_eq!(r.ravel(), &[13, 14, 15, 16, 17, 18, 1, 2, 3, 4, 5, 6]);
 
         // second index - one dimensional index tensor
         let i = CpuI32::new(&[2], &[1, 0]);
-        let r = t.oix(IndexSpec::advanced().idx(..).idx(i));
+        let r = t.oix2(.., i);
         assert_eq!(r.shape(), &[4, 2, 3]);
         assert_eq!(
             r.ravel(),
@@ -794,7 +896,7 @@ mod tests {
 
         // third index - one dimensional index tensor
         let i = CpuI32::new(&[2], &[1, 0]);
-        let r = t.oix(IndexSpec::advanced().idx(Ellipsis).idx(i));
+        let r = t.oix2(Ellipsis, i);
         assert_eq!(r.shape(), &[4, 2, 2]);
         assert_eq!(
             r.ravel(),
@@ -808,7 +910,7 @@ mod tests {
 
         // first index - two dimensional index tensor
         let i = CpuI32::new(&[2, 2], &[2, 0, 1, 3]);
-        let r = t.oix(IndexSpec::advanced().idx(i));
+        let r = t.oix1(i);
         assert_eq!(r.shape(), &[2, 2, 2, 3]);
         assert_eq!(
             r.ravel(),
@@ -824,7 +926,7 @@ mod tests {
         let i0 = CpuI32::new(&[4], &[2, 0, 1, 3]);
         let i1 = CpuI32::new(&[2], &[1, 0]);
         let i2 = CpuI32::new(&[2], &[2, 1]);
-        let r = t.oix(IndexSpec::advanced().idx(i0).idx(i1).idx(i2));
+        let r = t.oix3(i0, i1, i2);
         assert_eq!(r.shape(), &[4, 2, 2]);
         assert_eq!(
             r.ravel(),
@@ -835,7 +937,7 @@ mod tests {
         let i0 = CpuI32::new(&[2, 2], &[2, 0, 1, 3]);
         let i1 = CpuI32::new(&[2], &[1, 0]);
         let i2 = CpuI32::new(&[2], &[2, 1]);
-        let r = t.oix(IndexSpec::advanced().idx(i0).idx(i1).idx(i2));
+        let r = t.oix3(i0, i1, i2);
         assert_eq!(r.shape(), &[2, 2, 2, 2]);
         assert_eq!(
             r.ravel(),
@@ -846,7 +948,7 @@ mod tests {
         let i0 = CpuI32::new(&[2, 2], &[2, 0, 1, 3]);
         let i1 = CpuI32::new(&[1, 2], &[1, 0]);
         let i2 = CpuI32::new(&[2, 1], &[2, 1]);
-        let r = t.oix(IndexSpec::advanced().idx(i0).idx(i1).idx(i2));
+        let r = t.oix3(i0, i1, i2);
         assert_eq!(r.shape(), &[2, 2, 1, 2, 2, 1]);
         assert_eq!(
             r.ravel(),
@@ -859,19 +961,19 @@ mod tests {
         // first index - one dimensional index tensor
         let t = CpuI32::linspace(1, 24, 24u8).reshape(&[4, 2, 3]);
         let i = CpuBool::new(&[4], &[false, false, true, false]);
-        let r = t.oix(IndexSpec::advanced().idx(i));
+        let r = t.oix1(i);
         assert_eq!(r.shape(), &[1, 2, 3]);
         assert_eq!(r.ravel(), &[13, 14, 15, 16, 17, 18]);
 
         // second index - one dimensional index tensor
         let i = CpuBool::new(&[2], &[true, false]);
-        let r = t.oix(IndexSpec::advanced().idx(..).idx(i));
+        let r = t.oix2(.., i);
         assert_eq!(r.shape(), &[4, 1, 3]);
         assert_eq!(r.ravel(), &[1, 2, 3, 7, 8, 9, 13, 14, 15, 19, 20, 21]);
 
         // third index - one dimensional index tensor
         let i = CpuBool::new(&[3], &[true, false, false]);
-        let r = t.oix(IndexSpec::advanced().idx(Ellipsis).idx(i));
+        let r = t.oix2(Ellipsis, i);
         assert_eq!(r.shape(), &[4, 2, 1]);
         assert_eq!(r.ravel(), &[1, 4, 7, 10, 13, 16, 19, 22]);
 
@@ -880,7 +982,7 @@ mod tests {
             &[4, 2],
             &[false, false, true, false, false, false, true, false],
         );
-        let r = t.oix(IndexSpec::advanced().idx(i));
+        let r = t.oix1(i);
         assert_eq!(r.shape(), &[2, 1, 3]);
         assert_eq!(r.ravel(), &[7, 8, 9, 19, 20, 21]);
     }
@@ -890,13 +992,13 @@ mod tests {
         // first index - one dimensional index tensor
         let t = CpuI32::linspace(1, 24, 24u8).reshape(&[4, 2, 3]);
         let i = CpuI32::new(&[2], &[2, 0]);
-        let r = t.vix(IndexSpec::advanced().idx(i));
+        let r = t.vix1(i);
         assert_eq!(r.shape(), &[2, 2, 3]);
         assert_eq!(r.ravel(), &[13, 14, 15, 16, 17, 18, 1, 2, 3, 4, 5, 6]);
 
         // second index - one dimensional index tensor
         let i = CpuI32::new(&[2], &[1, 0]);
-        let r = t.vix(IndexSpec::advanced().idx(..).idx(i));
+        let r = t.vix2(.., i);
         // compared to oix, the new dimensions are always added at the front.
         assert_eq!(r.shape(), &[2, 4, 3]);
         // permute to get the oix result.
@@ -912,7 +1014,7 @@ mod tests {
 
         // third index - one dimensional index tensor
         let i = CpuI32::new(&[2], &[1, 0]);
-        let r = t.vix(IndexSpec::advanced().idx(Ellipsis).idx(i));
+        let r = t.vix2(Ellipsis, i);
         assert_eq!(r.shape(), &[2, 4, 2]);
         assert_eq!(
             r.permute(&[1, 2, 0]).ravel(),
@@ -926,7 +1028,7 @@ mod tests {
 
         // first index - two dimensional index tensor
         let i = CpuI32::new(&[2, 2], &[2, 0, 1, 3]);
-        let r = t.vix(IndexSpec::advanced().idx(i));
+        let r = t.vix1(i);
         assert_eq!(r.shape(), &[2, 2, 2, 3]);
         assert_eq!(
             r.ravel(),
@@ -942,7 +1044,7 @@ mod tests {
         let i0 = CpuI32::new(&[2], &[2, 0]);
         let i1 = CpuI32::new(&[2], &[1, 0]);
         let i2 = CpuI32::new(&[2], &[2, 1]);
-        let r = t.vix(IndexSpec::advanced().idx(i0).idx(i1).idx(i2));
+        let r = t.vix3(i0, i1, i2);
         assert_eq!(r.shape(), &[2]);
         assert_eq!(r.ravel(), &[18, 2]);
 
@@ -950,7 +1052,7 @@ mod tests {
         let i0 = CpuI32::new(&[2, 2], &[2, 0, 1, 3]);
         let i1 = CpuI32::new(&[1, 2], &[1, 0]);
         let i2 = CpuI32::new(&[2, 1], &[2, 1]);
-        let r = t.vix(IndexSpec::advanced().idx(i0).idx(i1).idx(i2));
+        let r = t.vix3(i0, i1, i2);
         assert_eq!(r.shape(), &[2, 2]);
 
         // 2 0      2,1,2   0,0,2
@@ -966,7 +1068,7 @@ mod tests {
         let i0 = CpuI32::new(&[2, 2], &[2, 0, 1, 3]);
         let i1 = CpuI32::new(&[2], &[1, 0]);
         let i2 = CpuI32::new(&[2], &[2, 1]);
-        let r = t.vix(IndexSpec::advanced().idx(i0).idx(i1).idx(i2));
+        let r = t.vix3(i0, i1, i2);
         assert_eq!(r.shape(), &[2, 2]);
         assert_eq!(r.ravel(), &[18, 2, 12, 20]);
     }
