@@ -406,20 +406,22 @@ impl<E: Bool, I: DiffableOps> BasicIndex<IndexSpec<I, BasicIndexingWitness>>
     }
 }
 
-impl<I: DiffableOps> IndexSpecBuilder<Tensor<I::Repr<i32>, i32, I>>
+impl<I: DiffableOps + Clone> IndexSpecBuilder<&Tensor<I::Repr<i32>, i32, I>>
     for IndexSpec<I, OuterIndexingWitness>
 {
-    fn idx(mut self, t: Tensor<I::Repr<i32>, i32, I>) -> Self {
-        self.axes.push(IndexElement::Fancy(Fancy::IntTensor(t)));
+    fn idx(mut self, t: &Tensor<I::Repr<i32>, i32, I>) -> Self {
+        self.axes
+            .push(IndexElement::Fancy(Fancy::IntTensor(t.clone())));
         self
     }
 }
 
-impl<I: DiffableOps> IndexSpecBuilder<Tensor<I::Repr<bool>, bool, I>>
+impl<I: DiffableOps + Clone> IndexSpecBuilder<&Tensor<I::Repr<bool>, bool, I>>
     for IndexSpec<I, OuterIndexingWitness>
 {
-    fn idx(mut self, t: Tensor<I::Repr<bool>, bool, I>) -> Self {
-        self.axes.push(IndexElement::Fancy(Fancy::BoolTensor(t)));
+    fn idx(mut self, t: &Tensor<I::Repr<bool>, bool, I>) -> Self {
+        self.axes
+            .push(IndexElement::Fancy(Fancy::BoolTensor(t.clone())));
         self
     }
 }
@@ -501,11 +503,12 @@ impl<T, E: Num + CastFrom<bool>, I: DiffableOps<Repr<E> = T> + ToCpu<Repr<E> = T
     }
 }
 
-impl<I: DiffableOps> IndexSpecBuilder<Tensor<I::Repr<i32>, i32, I>>
+impl<I: DiffableOps + Clone> IndexSpecBuilder<&Tensor<I::Repr<i32>, i32, I>>
     for IndexSpec<I, VectorizedIndexingWitness>
 {
-    fn idx(mut self, t: Tensor<I::Repr<i32>, i32, I>) -> Self {
-        self.axes.push(IndexElement::Fancy(Fancy::IntTensor(t)));
+    fn idx(mut self, t: &Tensor<I::Repr<i32>, i32, I>) -> Self {
+        self.axes
+            .push(IndexElement::Fancy(Fancy::IntTensor(t.clone())));
         self
     }
 }
@@ -876,13 +879,13 @@ mod tests {
         // first index - one dimensional index tensor
         let t = CpuI32::linspace(1, 24, 24u8).reshape(&[4, 2, 3]);
         let i = CpuI32::new(&[2], &[2, 0]);
-        let r = t.oix1(i);
+        let r = t.oix1(&i);
         assert_eq!(r.shape(), &[2, 2, 3]);
         assert_eq!(r.ravel(), &[13, 14, 15, 16, 17, 18, 1, 2, 3, 4, 5, 6]);
 
         // second index - one dimensional index tensor
         let i = CpuI32::new(&[2], &[1, 0]);
-        let r = t.oix2(.., i);
+        let r = t.oix2(.., &i);
         assert_eq!(r.shape(), &[4, 2, 3]);
         assert_eq!(
             r.ravel(),
@@ -896,7 +899,7 @@ mod tests {
 
         // third index - one dimensional index tensor
         let i = CpuI32::new(&[2], &[1, 0]);
-        let r = t.oix2(Ellipsis, i);
+        let r = t.oix2(Ellipsis, &i);
         assert_eq!(r.shape(), &[4, 2, 2]);
         assert_eq!(
             r.ravel(),
@@ -910,7 +913,7 @@ mod tests {
 
         // first index - two dimensional index tensor
         let i = CpuI32::new(&[2, 2], &[2, 0, 1, 3]);
-        let r = t.oix1(i);
+        let r = t.oix1(&i);
         assert_eq!(r.shape(), &[2, 2, 2, 3]);
         assert_eq!(
             r.ravel(),
@@ -926,7 +929,7 @@ mod tests {
         let i0 = CpuI32::new(&[4], &[2, 0, 1, 3]);
         let i1 = CpuI32::new(&[2], &[1, 0]);
         let i2 = CpuI32::new(&[2], &[2, 1]);
-        let r = t.oix3(i0, i1, i2);
+        let r = t.oix3(&i0, &i1, &i2);
         assert_eq!(r.shape(), &[4, 2, 2]);
         assert_eq!(
             r.ravel(),
@@ -937,7 +940,7 @@ mod tests {
         let i0 = CpuI32::new(&[2, 2], &[2, 0, 1, 3]);
         let i1 = CpuI32::new(&[2], &[1, 0]);
         let i2 = CpuI32::new(&[2], &[2, 1]);
-        let r = t.oix3(i0, i1, i2);
+        let r = t.oix3(&i0, &i1, &i2);
         assert_eq!(r.shape(), &[2, 2, 2, 2]);
         assert_eq!(
             r.ravel(),
@@ -948,7 +951,7 @@ mod tests {
         let i0 = CpuI32::new(&[2, 2], &[2, 0, 1, 3]);
         let i1 = CpuI32::new(&[1, 2], &[1, 0]);
         let i2 = CpuI32::new(&[2, 1], &[2, 1]);
-        let r = t.oix3(i0, i1, i2);
+        let r = t.oix3(&i0, &i1, &i2);
         assert_eq!(r.shape(), &[2, 2, 1, 2, 2, 1]);
         assert_eq!(
             r.ravel(),
@@ -961,19 +964,19 @@ mod tests {
         // first index - one dimensional index tensor
         let t = CpuI32::linspace(1, 24, 24u8).reshape(&[4, 2, 3]);
         let i = CpuBool::new(&[4], &[false, false, true, false]);
-        let r = t.oix1(i);
+        let r = t.oix1(&i);
         assert_eq!(r.shape(), &[1, 2, 3]);
         assert_eq!(r.ravel(), &[13, 14, 15, 16, 17, 18]);
 
         // second index - one dimensional index tensor
         let i = CpuBool::new(&[2], &[true, false]);
-        let r = t.oix2(.., i);
+        let r = t.oix2(.., &i);
         assert_eq!(r.shape(), &[4, 1, 3]);
         assert_eq!(r.ravel(), &[1, 2, 3, 7, 8, 9, 13, 14, 15, 19, 20, 21]);
 
         // third index - one dimensional index tensor
         let i = CpuBool::new(&[3], &[true, false, false]);
-        let r = t.oix2(Ellipsis, i);
+        let r = t.oix2(Ellipsis, &i);
         assert_eq!(r.shape(), &[4, 2, 1]);
         assert_eq!(r.ravel(), &[1, 4, 7, 10, 13, 16, 19, 22]);
 
@@ -982,7 +985,7 @@ mod tests {
             &[4, 2],
             &[false, false, true, false, false, false, true, false],
         );
-        let r = t.oix1(i);
+        let r = t.oix1(&i);
         assert_eq!(r.shape(), &[2, 1, 3]);
         assert_eq!(r.ravel(), &[7, 8, 9, 19, 20, 21]);
     }
@@ -992,13 +995,13 @@ mod tests {
         // first index - one dimensional index tensor
         let t = CpuI32::linspace(1, 24, 24u8).reshape(&[4, 2, 3]);
         let i = CpuI32::new(&[2], &[2, 0]);
-        let r = t.vix1(i);
+        let r = t.vix1(&i);
         assert_eq!(r.shape(), &[2, 2, 3]);
         assert_eq!(r.ravel(), &[13, 14, 15, 16, 17, 18, 1, 2, 3, 4, 5, 6]);
 
         // second index - one dimensional index tensor
         let i = CpuI32::new(&[2], &[1, 0]);
-        let r = t.vix2(.., i);
+        let r = t.vix2(.., &i);
         // compared to oix, the new dimensions are always added at the front.
         assert_eq!(r.shape(), &[2, 4, 3]);
         // permute to get the oix result.
@@ -1014,7 +1017,7 @@ mod tests {
 
         // third index - one dimensional index tensor
         let i = CpuI32::new(&[2], &[1, 0]);
-        let r = t.vix2(Ellipsis, i);
+        let r = t.vix2(Ellipsis, &i);
         assert_eq!(r.shape(), &[2, 4, 2]);
         assert_eq!(
             r.permute(&[1, 2, 0]).ravel(),
@@ -1028,7 +1031,7 @@ mod tests {
 
         // first index - two dimensional index tensor
         let i = CpuI32::new(&[2, 2], &[2, 0, 1, 3]);
-        let r = t.vix1(i);
+        let r = t.vix1(&i);
         assert_eq!(r.shape(), &[2, 2, 2, 3]);
         assert_eq!(
             r.ravel(),
@@ -1044,7 +1047,7 @@ mod tests {
         let i0 = CpuI32::new(&[2], &[2, 0]);
         let i1 = CpuI32::new(&[2], &[1, 0]);
         let i2 = CpuI32::new(&[2], &[2, 1]);
-        let r = t.vix3(i0, i1, i2);
+        let r = t.vix3(&i0, &i1, &i2);
         assert_eq!(r.shape(), &[2]);
         assert_eq!(r.ravel(), &[18, 2]);
 
@@ -1052,7 +1055,7 @@ mod tests {
         let i0 = CpuI32::new(&[2, 2], &[2, 0, 1, 3]);
         let i1 = CpuI32::new(&[1, 2], &[1, 0]);
         let i2 = CpuI32::new(&[2, 1], &[2, 1]);
-        let r = t.vix3(i0, i1, i2);
+        let r = t.vix3(&i0, &i1, &i2);
         assert_eq!(r.shape(), &[2, 2]);
 
         // 2 0      2,1,2   0,0,2
@@ -1068,7 +1071,7 @@ mod tests {
         let i0 = CpuI32::new(&[2, 2], &[2, 0, 1, 3]);
         let i1 = CpuI32::new(&[2], &[1, 0]);
         let i2 = CpuI32::new(&[2], &[2, 1]);
-        let r = t.vix3(i0, i1, i2);
+        let r = t.vix3(&i0, &i1, &i2);
         assert_eq!(r.shape(), &[2, 2]);
         assert_eq!(r.ravel(), &[18, 2, 12, 20]);
     }
