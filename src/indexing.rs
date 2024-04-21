@@ -16,7 +16,6 @@ use crate::{
 /// to return new tensors, which we can't give a lifetime long enough so
 /// they can be returned from the index method.
 /// This means we also can't use the actual [] syntax.
-
 pub trait BasicIndex<Idx> {
     /// Basic indexing. Supports single indexing, slices, new axes, and ellipsis.
     /// Always non-copying.
@@ -24,17 +23,17 @@ pub trait BasicIndex<Idx> {
     fn ix(&self, index: Idx) -> Self;
 }
 
-/// Following a proposal for numpy: <https://numpy.org/neps/nep-0021-advanced-indexing.html/>
-/// There are two methods that differ in their handling of int tensor indexes.
-pub trait OuterIndex<Idx> {
-    /// Outer indexing. A straightforward generalization of slicing with int tensor indexes.
+/// In addition to basic indexing (slicing), allow indexing with bool and int tensors.
+/// Following a proposal for numpy: <https://numpy.org/neps/nep-0021-advanced-indexing.html/>,
+/// there are two methods that differ in their handling of int tensor indexes.
+pub trait AdvancedIndex<Idx> {
+    /// Outer indexing. A straightforward generalization of slicing, with tensor indexes.
     /// Copying if tensor indexes are used.
     #[must_use]
     fn oix(&self, index: Idx) -> Self;
-}
 
-pub trait VectorizedIndex<Idx> {
-    /// Vectorized indexing. More powerful than oix, but also more complex.
+    /// Vectorized indexing. More powerful than oix, but also more complex. As opposed to
+    /// `oix`, any int tensor indexes are broadcasted together.
     /// Copying if tensor indexes are used.
     #[must_use]
     fn vix(&self, index: Idx) -> Self;
@@ -67,8 +66,7 @@ pub enum IndexElement<I: DiffableOps> {
 }
 
 pub enum BasicIndexingWitness {}
-pub enum OuterIndexingWitness {}
-pub enum VectorizedIndexingWitness {}
+pub enum AdvancedIndexingWitness {}
 
 /// Specifies what to select along each axis.
 #[must_use]
@@ -77,8 +75,10 @@ pub struct IndexSpec<I: DiffableOps, IndexingWitness> {
     witness: PhantomData<IndexingWitness>,
 }
 
+/// Basic indexing is alwas non-copying. Start an index
+/// specification with `IndexSpec::basic()` to ensure you don't copy.
 impl<I: DiffableOps> IndexSpec<I, BasicIndexingWitness> {
-    pub fn ix() -> Self {
+    pub fn basic() -> Self {
         Self {
             axes: Vec::new(),
             witness: PhantomData,
@@ -86,17 +86,10 @@ impl<I: DiffableOps> IndexSpec<I, BasicIndexingWitness> {
     }
 }
 
-impl<I: DiffableOps> IndexSpec<I, VectorizedIndexingWitness> {
-    pub fn vix() -> Self {
-        Self {
-            axes: Vec::new(),
-            witness: PhantomData,
-        }
-    }
-}
-
-impl<I: DiffableOps> IndexSpec<I, OuterIndexingWitness> {
-    pub fn oix() -> Self {
+/// Advanced indexing is always copying. Start an index
+/// specification with `IndexSpec::advanced()` if you want to use advanced indexing.
+impl<I: DiffableOps> IndexSpec<I, AdvancedIndexingWitness> {
+    pub fn advanced() -> Self {
         Self {
             axes: Vec::new(),
             witness: PhantomData,
@@ -109,8 +102,6 @@ pub trait IndexSpecBuilder<Idx> {
     #[must_use]
     fn idx(self, index: Idx) -> Self;
 }
-
-pub trait AdvancedIndexSpecBuilder<Idx>: IndexSpecBuilder<Idx> {}
 
 impl<I: DiffableOps, W> IndexSpecBuilder<Range<usize>> for IndexSpec<I, W> {
     fn idx(self, index: Range<usize>) -> Self {
@@ -167,11 +158,15 @@ impl<I: DiffableOps, W> IndexSpecBuilder<usize> for IndexSpec<I, W> {
     }
 }
 
+/// Select a single index along an axis, where `i`  is a zero-based index
+/// starting from the head, i.e. the beginning of the dimension.
 #[must_use]
 pub const fn hd(i: usize) -> SingleIndex {
     SingleIndex::Head(i)
 }
 
+/// Select a single index along an axis, where `i` is a zero-based index
+/// starting from the tail, i.e. the end of the dimension. `tl(0)` is the last element.
 #[must_use]
 pub const fn tl(i: usize) -> SingleIndex {
     SingleIndex::Tail(i)
@@ -184,6 +179,7 @@ impl<I: DiffableOps, W> IndexSpecBuilder<SingleIndex> for IndexSpec<I, W> {
     }
 }
 
+/// Indicate that a new axis with size 1 should be added at this point.
 pub struct NewAxis;
 
 impl<I: DiffableOps, W> IndexSpecBuilder<NewAxis> for IndexSpec<I, W> {
@@ -193,6 +189,8 @@ impl<I: DiffableOps, W> IndexSpecBuilder<NewAxis> for IndexSpec<I, W> {
     }
 }
 
+/// Indicates that any remaining dimensions should be kept as is.
+/// You can only use one `Ellipsis` per index spec.
 pub struct Ellipsis;
 
 impl<I: DiffableOps, W> IndexSpecBuilder<Ellipsis> for IndexSpec<I, W> {
@@ -392,10 +390,7 @@ impl<W, I: DiffableOps> IndexSpec<I, W> {
 impl<E: Bool, I: DiffableOps> BasicIndex<IndexSpec<I, BasicIndexingWitness>>
     for Tensor<I::Repr<E>, E, I>
 {
-    /// Index a tensor using outer indexing. See [sl] to build an [`IndexSpec`].
-    /// In outer indexing, indexes that are int tensors are treated similarly to slices.
-    /// Any new dimensions are added where the int tensor is. `oix` is more intuitive to
-    /// understand, but `vix` is more powerful.
+    /// Index a tensor using basic indexing. See [`IndexSpec::basic()`] to build an [`IndexSpec`].
     fn ix(&self, index: IndexSpec<I, BasicIndexingWitness>) -> Self {
         // first do the basic indexing - no copy.
         let resolution = index.resolve_basic(self.shape());
@@ -407,7 +402,7 @@ impl<E: Bool, I: DiffableOps> BasicIndex<IndexSpec<I, BasicIndexingWitness>>
 }
 
 impl<I: DiffableOps + Clone> IndexSpecBuilder<&Tensor<I::Repr<i32>, i32, I>>
-    for IndexSpec<I, OuterIndexingWitness>
+    for IndexSpec<I, AdvancedIndexingWitness>
 {
     fn idx(mut self, t: &Tensor<I::Repr<i32>, i32, I>) -> Self {
         self.axes
@@ -417,7 +412,7 @@ impl<I: DiffableOps + Clone> IndexSpecBuilder<&Tensor<I::Repr<i32>, i32, I>>
 }
 
 impl<I: DiffableOps + Clone> IndexSpecBuilder<&Tensor<I::Repr<bool>, bool, I>>
-    for IndexSpec<I, OuterIndexingWitness>
+    for IndexSpec<I, AdvancedIndexingWitness>
 {
     fn idx(mut self, t: &Tensor<I::Repr<bool>, bool, I>) -> Self {
         self.axes
@@ -432,10 +427,10 @@ impl<
         I: DiffableOps<Repr<E> = T>
             + ToCpu<Repr<E> = T>
             + ToCpu<Repr<bool> = <I as DiffableOps>::Repr<bool>>,
-    > OuterIndex<IndexSpec<I, OuterIndexingWitness>> for Tensor<T, E, I>
+    > AdvancedIndex<IndexSpec<I, AdvancedIndexingWitness>> for Tensor<T, E, I>
 {
     #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-    fn oix(&self, index: IndexSpec<I, OuterIndexingWitness>) -> Self {
+    fn oix(&self, index: IndexSpec<I, AdvancedIndexingWitness>) -> Self {
         // first do the basic indexing - no copy.
         let resolution = index.resolve_basic(self.shape());
         let basic = self
@@ -486,37 +481,8 @@ impl<
         }
         result
     }
-}
 
-impl<I: DiffableOps + Clone> IndexSpecBuilder<&Tensor<I::Repr<i32>, i32, I>>
-    for IndexSpec<I, VectorizedIndexingWitness>
-{
-    fn idx(mut self, t: &Tensor<I::Repr<i32>, i32, I>) -> Self {
-        self.axes
-            .push(IndexElement::Fancy(Fancy::IntTensor(t.clone())));
-        self
-    }
-}
-
-impl<I: DiffableOps + Clone> IndexSpecBuilder<&Tensor<I::Repr<bool>, bool, I>>
-    for IndexSpec<I, VectorizedIndexingWitness>
-{
-    fn idx(mut self, t: &Tensor<I::Repr<bool>, bool, I>) -> Self {
-        self.axes
-            .push(IndexElement::Fancy(Fancy::BoolTensor(t.clone())));
-        self
-    }
-}
-
-impl<
-        T,
-        E: Num + CastFrom<bool>,
-        I: DiffableOps<Repr<E> = T>
-            + ToCpu<Repr<E> = T>
-            + ToCpu<Repr<bool> = <I as DiffableOps>::Repr<bool>>,
-    > VectorizedIndex<IndexSpec<I, VectorizedIndexingWitness>> for Tensor<T, E, I>
-{
-    fn vix(&self, index: IndexSpec<I, VectorizedIndexingWitness>) -> Self {
+    fn vix(&self, index: IndexSpec<I, AdvancedIndexingWitness>) -> Self {
         // first do the basic indexing - no copy.
         let resolution = index.resolve_basic(self.shape());
         let basic = self
@@ -636,7 +602,7 @@ impl<E: Bool, I: DiffableOps> Tensor<I::Repr<E>, E, I> {
     where
         IndexSpec<I, BasicIndexingWitness>: IndexSpecBuilder<T>,
     {
-        self.ix(IndexSpec::ix().idx(index))
+        self.ix(IndexSpec::basic().idx(index))
     }
 
     /// Shorthand for outer indexing along the first two axes.
@@ -644,7 +610,7 @@ impl<E: Bool, I: DiffableOps> Tensor<I::Repr<E>, E, I> {
     where
         IndexSpec<I, BasicIndexingWitness>: IndexSpecBuilder<T1> + IndexSpecBuilder<T2>,
     {
-        self.ix(IndexSpec::ix().idx(index1).idx(index2))
+        self.ix(IndexSpec::basic().idx(index1).idx(index2))
     }
 
     /// Shorthand for outer indexing along the first three axes.
@@ -653,7 +619,7 @@ impl<E: Bool, I: DiffableOps> Tensor<I::Repr<E>, E, I> {
         IndexSpec<I, BasicIndexingWitness>:
             IndexSpecBuilder<T1> + IndexSpecBuilder<T2> + IndexSpecBuilder<T3>,
     {
-        self.ix(IndexSpec::ix().idx(index1).idx(index2).idx(index3))
+        self.ix(IndexSpec::basic().idx(index1).idx(index2).idx(index3))
     }
 
     /// Shorthand for outer indexing along the first four axes.
@@ -664,7 +630,7 @@ impl<E: Bool, I: DiffableOps> Tensor<I::Repr<E>, E, I> {
             + IndexSpecBuilder<T3>
             + IndexSpecBuilder<T4>,
     {
-        self.ix(IndexSpec::ix()
+        self.ix(IndexSpec::basic()
             .idx(index1)
             .idx(index2)
             .idx(index3)
@@ -681,91 +647,82 @@ impl<
     > Tensor<T, E, I>
 {
     /// Shorthand for outer indexing along the first axis.
-    pub fn vix1<T1>(&self, index: T1) -> Self
+    pub fn oix1<T1>(&self, index: T1) -> Self
     where
-        IndexSpec<I, VectorizedIndexingWitness>: IndexSpecBuilder<T1>,
+        IndexSpec<I, AdvancedIndexingWitness>: IndexSpecBuilder<T1>,
     {
-        self.vix(IndexSpec::vix().idx(index))
+        self.oix(IndexSpec::advanced().idx(index))
     }
 
     /// Shorthand for outer indexing along the first two axes.
-    pub fn vix2<T1, T2>(&self, index1: T1, index2: T2) -> Self
+    pub fn oix2<T1, T2>(&self, index1: T1, index2: T2) -> Self
     where
-        IndexSpec<I, VectorizedIndexingWitness>: IndexSpecBuilder<T1> + IndexSpecBuilder<T2>,
+        IndexSpec<I, AdvancedIndexingWitness>: IndexSpecBuilder<T1> + IndexSpecBuilder<T2>,
     {
-        self.vix(IndexSpec::vix().idx(index1).idx(index2))
+        self.oix(IndexSpec::advanced().idx(index1).idx(index2))
     }
 
     /// Shorthand for outer indexing along the first three axes.
-    pub fn vix3<T1, T2, T3>(&self, index1: T1, index2: T2, index3: T3) -> Self
+    pub fn oix3<T1, T2, T3>(&self, index1: T1, index2: T2, index3: T3) -> Self
     where
-        IndexSpec<I, VectorizedIndexingWitness>:
+        IndexSpec<I, AdvancedIndexingWitness>:
             IndexSpecBuilder<T1> + IndexSpecBuilder<T2> + IndexSpecBuilder<T3>,
     {
-        self.vix(IndexSpec::vix().idx(index1).idx(index2).idx(index3))
+        self.oix(IndexSpec::advanced().idx(index1).idx(index2).idx(index3))
     }
 
     /// Shorthand for outer indexing along the first four axes.
-    pub fn vix4<T1, T2, T3, T4>(&self, index1: T1, index2: T2, index3: T3, index4: T4) -> Self
+    pub fn oix4<T1, T2, T3, T4>(&self, index1: T1, index2: T2, index3: T3, index4: T4) -> Self
     where
-        IndexSpec<I, VectorizedIndexingWitness>: IndexSpecBuilder<T1>
+        IndexSpec<I, AdvancedIndexingWitness>: IndexSpecBuilder<T1>
             + IndexSpecBuilder<T2>
             + IndexSpecBuilder<T3>
             + IndexSpecBuilder<T4>,
     {
-        self.vix(
-            IndexSpec::vix()
+        self.oix(
+            IndexSpec::advanced()
                 .idx(index1)
                 .idx(index2)
                 .idx(index3)
                 .idx(index4),
         )
     }
-}
 
-impl<
-        T,
-        E: Num + CastFrom<bool>,
-        I: DiffableOps<Repr<E> = T>
-            + ToCpu<Repr<E> = T>
-            + ToCpu<Repr<bool> = <I as DiffableOps>::Repr<bool>>,
-    > Tensor<T, E, I>
-{
     /// Shorthand for outer indexing along the first axis.
-    pub fn oix1<T1>(&self, index: T1) -> Self
+    pub fn vix1<T1>(&self, index: T1) -> Self
     where
-        IndexSpec<I, OuterIndexingWitness>: IndexSpecBuilder<T1>,
+        IndexSpec<I, AdvancedIndexingWitness>: IndexSpecBuilder<T1>,
     {
-        self.oix(IndexSpec::oix().idx(index))
+        self.vix(IndexSpec::advanced().idx(index))
     }
 
     /// Shorthand for outer indexing along the first two axes.
-    pub fn oix2<T1, T2>(&self, index1: T1, index2: T2) -> Self
+    pub fn vix2<T1, T2>(&self, index1: T1, index2: T2) -> Self
     where
-        IndexSpec<I, OuterIndexingWitness>: IndexSpecBuilder<T1> + IndexSpecBuilder<T2>,
+        IndexSpec<I, AdvancedIndexingWitness>: IndexSpecBuilder<T1> + IndexSpecBuilder<T2>,
     {
-        self.oix(IndexSpec::oix().idx(index1).idx(index2))
+        self.vix(IndexSpec::advanced().idx(index1).idx(index2))
     }
 
     /// Shorthand for outer indexing along the first three axes.
-    pub fn oix3<T1, T2, T3>(&self, index1: T1, index2: T2, index3: T3) -> Self
+    pub fn vix3<T1, T2, T3>(&self, index1: T1, index2: T2, index3: T3) -> Self
     where
-        IndexSpec<I, OuterIndexingWitness>:
+        IndexSpec<I, AdvancedIndexingWitness>:
             IndexSpecBuilder<T1> + IndexSpecBuilder<T2> + IndexSpecBuilder<T3>,
     {
-        self.oix(IndexSpec::oix().idx(index1).idx(index2).idx(index3))
+        self.vix(IndexSpec::advanced().idx(index1).idx(index2).idx(index3))
     }
 
     /// Shorthand for outer indexing along the first four axes.
-    pub fn oix4<T1, T2, T3, T4>(&self, index1: T1, index2: T2, index3: T3, index4: T4) -> Self
+    pub fn vix4<T1, T2, T3, T4>(&self, index1: T1, index2: T2, index3: T3, index4: T4) -> Self
     where
-        IndexSpec<I, OuterIndexingWitness>: IndexSpecBuilder<T1>
+        IndexSpec<I, AdvancedIndexingWitness>: IndexSpecBuilder<T1>
             + IndexSpecBuilder<T2>
             + IndexSpecBuilder<T3>
             + IndexSpecBuilder<T4>,
     {
-        self.oix(
-            IndexSpec::oix()
+        self.vix(
+            IndexSpec::advanced()
                 .idx(index1)
                 .idx(index2)
                 .idx(index3)
@@ -777,7 +734,7 @@ impl<
 #[cfg(test)]
 mod tests {
 
-    use crate::{CpuBool, CpuI32};
+    use crate::{Cpu32, CpuBool, CpuI32};
 
     use super::*;
 
@@ -1142,7 +1099,7 @@ mod tests {
     #[test]
     fn test_pytorch_bug() {
         // test case as reported in https://dev-discuss.pytorch.org/t/how-does-advanced-indexing-work-when-i-combine-a-tensor-and-a-single-index/558
-        let x = CpuI32::new(&[2, 2], &[1, 2, 3, 4]);
+        let x = Cpu32::new(&[2, 2], &[1., 2., 3., 4.]);
         let m = CpuBool::new(&[2], &[true, true]);
 
         // ezyang example
@@ -1150,10 +1107,10 @@ mod tests {
         let r2 = x.oix2(&m, 0);
 
         assert_eq!(r1.shape(), &[2]);
-        assert_eq!(r1.ravel(), &[1, 2]);
+        assert_eq!(r1.ravel(), &[1., 2.]);
 
         assert_eq!(r2.shape(), &[2]);
-        assert_eq!(r2.ravel(), &[1, 3]);
+        assert_eq!(r2.ravel(), &[1., 3.]);
 
         // example from bug report
         let x = CpuI32::new(&[5, 5, 2], &(0..50).collect::<Vec<_>>());
