@@ -22,7 +22,7 @@ fn main() {
     let_example!(t, Tr::linspace(1., 15.0, 15u8).reshape(&[5, 3]));
     let_example!(i, TrI::new(&[2], &[2, 0]));
 
-    // we want: t.oidx(i, ..)
+    // we want: t.oix(i, ..)
 
     // first convert the indexing tensor i to a one hot tensor i_one_hot
     let_example!(

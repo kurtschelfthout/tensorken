@@ -433,8 +433,6 @@ impl<
             + ToCpu<Repr<E> = T>
             + ToCpu<Repr<bool> = <I as DiffableOps>::Repr<bool>>,
     > OuterIndex<IndexSpec<I, OuterIndexingWitness>> for Tensor<T, E, I>
-//where
-//<I as RawTensorOps>::Repr<bool> = <I as DiffableOps>::Repr<bool>>,
 {
     #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     fn oix(&self, index: IndexSpec<I, OuterIndexingWitness>) -> Self {
@@ -500,8 +498,23 @@ impl<I: DiffableOps + Clone> IndexSpecBuilder<&Tensor<I::Repr<i32>, i32, I>>
     }
 }
 
-impl<T, E: Num + CastFrom<bool>, I: DiffableOps<Repr<E> = T> + ToCpu<Repr<E> = T>>
-    VectorizedIndex<IndexSpec<I, VectorizedIndexingWitness>> for Tensor<T, E, I>
+impl<I: DiffableOps + Clone> IndexSpecBuilder<&Tensor<I::Repr<bool>, bool, I>>
+    for IndexSpec<I, VectorizedIndexingWitness>
+{
+    fn idx(mut self, t: &Tensor<I::Repr<bool>, bool, I>) -> Self {
+        self.axes
+            .push(IndexElement::Fancy(Fancy::BoolTensor(t.clone())));
+        self
+    }
+}
+
+impl<
+        T,
+        E: Num + CastFrom<bool>,
+        I: DiffableOps<Repr<E> = T>
+            + ToCpu<Repr<E> = T>
+            + ToCpu<Repr<bool> = <I as DiffableOps>::Repr<bool>>,
+    > VectorizedIndex<IndexSpec<I, VectorizedIndexingWitness>> for Tensor<T, E, I>
 {
     fn vix(&self, index: IndexSpec<I, VectorizedIndexingWitness>) -> Self {
         // first do the basic indexing - no copy.
@@ -514,52 +527,70 @@ impl<T, E: Num + CastFrom<bool>, I: DiffableOps<Repr<E> = T> + ToCpu<Repr<E> = T
         // then any advanced indexing - always copy.
         let mut result = basic;
 
-        // the dimension we're at in the result
-        let mut dim = 0;
-        let mut squeezed = 0;
-        let orig_result_shape_ndims = result.shape().ndims();
-        // the max number of dimensions seen in any index tensor so far
+        // the dimension we're at in the result, without any int tensor index dimensions added at the front.
+        let mut dim_result = 0;
+        // the max number of dimensions seen in any index tensor so far - this is the number of dimensions added at the front of the result so far.
         let mut max_i_ndims = 0;
+        // how many dimensions we've removed from the original tensor so far as a result of int tensor indexing.
+        let mut squeezed = 0;
+
+        let orig_result_shape_ndims = result.shape().ndims();
+
         #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
         for (fancy, size) in resolution.fancy.iter().zip(resolution.shape) {
             match fancy {
-                Fancy::Full => dim += 1, //dim_result += 1,
+                Fancy::Full => dim_result += 1,
                 Fancy::IntTensor(i) => {
-                    max_i_ndims = max(max_i_ndims, i.shape().ndims());
-                    let mut i_range_shape = vec![1; i.shape().ndims()];
-                    i_range_shape.push(size);
-                    // shape is [1, 1, ..., size]
-                    let i_range: Tensor<<I as DiffableOps>::Repr<i32>, i32, I> = Tensor::new(
-                        &i_range_shape,
-                        (0..i_range_shape.size() as i32)
-                            .collect::<Vec<_>>()
-                            .as_slice(),
-                    );
+                    // i_range.shape is [size]
+                    let i_range =
+                        Tensor::new(&[size], (0..size as i32).collect::<Vec<_>>().as_slice());
                     let mut i_shape = i.shape().to_vec();
                     i_shape.push(1);
-                    // shape is [i.shape, size]
+                    // i_shape is [i.shape, 1]
                     let i_one_hot = i.reshape(&i_shape).eq(&i_range).cast::<E>();
-
-                    // reshape the i_one_hot to add any needed 1s before and after the size:
+                    // i_one_hot is thus [i.shape, size] via broadcasting on eq.
+                    // Now, reshape i_one_hot to add any needed 1s before and after the size:
                     // [i.shape, 1, 1, ..., size, 1, 1, ...]
                     let mut i_one_hot_shape = i.shape().to_vec();
-                    i_one_hot_shape.extend(iter::repeat(1).take(dim));
+                    i_one_hot_shape.extend(iter::repeat(1).take(dim_result));
                     i_one_hot_shape.push(size);
                     i_one_hot_shape.extend(
-                        iter::repeat(1)
-                            .take(orig_result_shape_ndims.saturating_sub(dim + 1 + squeezed)),
+                        iter::repeat(1).take(
+                            orig_result_shape_ndims.saturating_sub(dim_result + 1 + squeezed),
+                        ),
                     );
                     let i_one_hot = i_one_hot.reshape(&i_one_hot_shape);
 
                     result = &result * &i_one_hot;
+
+                    max_i_ndims = max(max_i_ndims, i.shape().ndims());
                     result = result
-                        .sum(&[dim + max_i_ndims])
-                        .squeeze(&Axes::Axis(dim + max_i_ndims));
+                        .sum(&[dim_result + max_i_ndims])
+                        .squeeze(&Axes::Axis(dim_result + max_i_ndims));
+
                     squeezed += 1;
-                    // we removed a dim, so don't update dim.
+                    // we removed a dim, so don't update dim_result.
                 }
-                // vix + bool indexing is statically disallowed, we should never hit this.
-                Fancy::BoolTensor(_) => panic!("bool tensor fancy indexing in vix not supported"),
+                Fancy::BoolTensor(b) => {
+                    // Create the equivalent int index tensor, then use oix_int.
+                    let vec = b.ravel();
+                    let i_vec: Vec<_> = vec
+                        .iter()
+                        .enumerate()
+                        .filter_map(|t| if *t.1 { Some(t.0 as i32) } else { None })
+                        .collect();
+                    let i_tensor: Tensor<_, i32, I> = Tensor::new(&[i_vec.len()], i_vec.as_slice());
+                    let mut result_shape = result.shape().to_vec();
+                    let dim_shape = max_i_ndims + dim_result;
+                    result_shape.splice(
+                        dim_shape..(dim_shape + b.shape().ndims()),
+                        [b.shape().size()],
+                    );
+                    result = result.reshape(&result_shape);
+                    oix_int(b.shape().size(), &i_tensor, &mut result, dim_shape);
+                    dim_result += b.shape().ndims();
+                    squeezed += b.shape().ndims().saturating_sub(1);
+                }
             };
         }
         result
@@ -575,14 +606,14 @@ fn oix_int<T, E: Num + CastFrom<bool>, I: DiffableOps<Repr<E> = T> + ToCpu<Repr<
     let mut i_range_shape = vec![size];
     let ones = vec![1; i.shape().ndims()];
     i_range_shape.extend(&ones);
-    // shape is [size, 1, 1, ...]
-    let i_range: Tensor<_, i32, I> = Tensor::new(
+    // i_range.shape is [size, 1, 1, ...]
+    let i_range = Tensor::new(
         &i_range_shape,
         (0..i_range_shape.size() as i32)
             .collect::<Vec<_>>()
             .as_slice(),
     );
-    // shape is [size, i.shape]
+    // i_one_hot.shape is [size, i.shape] by broadcasting on eq.
     let i_one_hot = i.eq(&i_range).cast::<E>();
     // make room in the result for the new dimensions by adding 1s after the current dimension, dim.
     // We need as many as there are dimentsions in i.
@@ -641,7 +672,14 @@ impl<E: Bool, I: DiffableOps> Tensor<I::Repr<E>, E, I> {
     }
 }
 
-impl<T, E: Num + CastFrom<bool>, I: DiffableOps<Repr<E> = T> + ToCpu<Repr<E> = T>> Tensor<T, E, I> {
+impl<
+        T,
+        E: Num + CastFrom<bool>,
+        I: DiffableOps<Repr<E> = T>
+            + ToCpu<Repr<E> = T>
+            + ToCpu<Repr<bool> = <I as DiffableOps>::Repr<bool>>,
+    > Tensor<T, E, I>
+{
     /// Shorthand for outer indexing along the first axis.
     pub fn vix1<T1>(&self, index: T1) -> Self
     where
@@ -957,22 +995,22 @@ mod tests {
     fn test_oix_bool() {
         // first index - one dimensional index tensor
         let t = CpuI32::linspace(1, 24, 24u8).reshape(&[4, 2, 3]);
-        // let i = CpuBool::new(&[4], &[false, false, true, false]);
-        // let r = t.oix1(&i);
-        // assert_eq!(r.shape(), &[1, 2, 3]);
-        // assert_eq!(r.ravel(), &[13, 14, 15, 16, 17, 18]);
+        let i = CpuBool::new(&[4], &[false, false, true, false]);
+        let r = t.oix1(&i);
+        assert_eq!(r.shape(), &[1, 2, 3]);
+        assert_eq!(r.ravel(), &[13, 14, 15, 16, 17, 18]);
 
-        // // second index - one dimensional index tensor
-        // let i = CpuBool::new(&[2], &[true, false]);
-        // let r = t.oix2(.., &i);
-        // assert_eq!(r.shape(), &[4, 1, 3]);
-        // assert_eq!(r.ravel(), &[1, 2, 3, 7, 8, 9, 13, 14, 15, 19, 20, 21]);
+        // second index - one dimensional index tensor
+        let i = CpuBool::new(&[2], &[true, false]);
+        let r = t.oix2(.., &i);
+        assert_eq!(r.shape(), &[4, 1, 3]);
+        assert_eq!(r.ravel(), &[1, 2, 3, 7, 8, 9, 13, 14, 15, 19, 20, 21]);
 
-        // // third index - one dimensional index tensor
-        // let i = CpuBool::new(&[3], &[true, false, false]);
-        // let r = t.oix2(Ellipsis, &i);
-        // assert_eq!(r.shape(), &[4, 2, 1]);
-        // assert_eq!(r.ravel(), &[1, 4, 7, 10, 13, 16, 19, 22]);
+        // third index - one dimensional index tensor
+        let i = CpuBool::new(&[3], &[true, false, false]);
+        let r = t.oix2(Ellipsis, &i);
+        assert_eq!(r.shape(), &[4, 2, 1]);
+        assert_eq!(r.ravel(), &[1, 4, 7, 10, 13, 16, 19, 22]);
 
         // first index - two dimensional index tensor
         let i = CpuBool::new(
@@ -985,7 +1023,7 @@ mod tests {
     }
 
     #[test]
-    fn text_vix() {
+    fn text_vix_int() {
         // first index - one dimensional index tensor
         let t = CpuI32::linspace(1, 24, 24u8).reshape(&[4, 2, 3]);
         let i = CpuI32::new(&[2], &[2, 0]);
@@ -1071,6 +1109,37 @@ mod tests {
     }
 
     #[test]
+    fn test_vix_bool() {
+        // first index - one dimensional index tensor
+        let t = CpuI32::linspace(1, 24, 24u8).reshape(&[4, 2, 3]);
+        let i = CpuBool::new(&[4], &[false, false, true, false]);
+        let r = t.vix1(&i);
+        assert_eq!(r.shape(), &[1, 2, 3]);
+        assert_eq!(r.ravel(), &[13, 14, 15, 16, 17, 18]);
+
+        // second index - one dimensional index tensor
+        let i = CpuBool::new(&[2], &[true, false]);
+        let r = t.vix2(.., &i);
+        assert_eq!(r.shape(), &[4, 1, 3]);
+        assert_eq!(r.ravel(), &[1, 2, 3, 7, 8, 9, 13, 14, 15, 19, 20, 21]);
+
+        // third index - one dimensional index tensor
+        let i = CpuBool::new(&[3], &[true, false, false]);
+        let r = t.vix2(Ellipsis, &i);
+        assert_eq!(r.shape(), &[4, 2, 1]);
+        assert_eq!(r.ravel(), &[1, 4, 7, 10, 13, 16, 19, 22]);
+
+        // first index - two dimensional index tensor
+        let i = CpuBool::new(
+            &[4, 2],
+            &[false, false, true, false, false, false, true, false],
+        );
+        let r = t.vix1(&i);
+        assert_eq!(r.shape(), &[2, 3]);
+        assert_eq!(r.ravel(), &[7, 8, 9, 19, 20, 21]);
+    }
+
+    #[test]
     fn test_pytorch_bug() {
         // test case as reported in https://dev-discuss.pytorch.org/t/how-does-advanced-indexing-work-when-i-combine-a-tensor-and-a-single-index/558
         let x = CpuI32::new(&[2, 2], &[1, 2, 3, 4]);
@@ -1152,9 +1221,15 @@ mod tests {
         assert_eq!(r.shape(), &[1, 5, 7]);
 
         // Boolean indices results are always inserted where the index is, exactly as in oindex given how specific they are to the axes they operate on:
-        // TODO bool with vix not yet implemented
+        let r = arr.vix3(.., 0, bindx);
+        assert_eq!(r.shape(), &[5, 1]);
+        let r = arr.vix3(0, .., bindx);
+        assert_eq!(r.shape(), &[6, 1]);
 
         // But other advanced indices are again transposed to the front:
-        // TODO bool with vix not yet implemented
+        let r = arr.vix3(i1, .., bindx);
+        assert_eq!(r.shape(), &[1, 6, 1]);
+        let r = arr.vix3(.., i2, bindx);
+        assert_eq!(r.shape(), &[2, 5, 1]);
     }
 }
