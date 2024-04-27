@@ -308,7 +308,7 @@ impl<W, I: DiffableOps> IndexSpec<I, W> {
             match self.axes.get(idx_i) {
                 None => {
                     // if there are no more index elements, keep the axis as is.
-                    // This is equivalent to adding implicit ELLIPSIS() at the end.
+                    // This is equivalent to adding implicit ellipsis at the end.
                     result.add_full_axis(size);
                     shape_i += 1;
                 }
@@ -429,7 +429,6 @@ impl<
             + ToCpu<Repr<bool> = <I as DiffableOps>::Repr<bool>>,
     > AdvancedIndex<IndexSpec<I, AdvancedIndexingWitness>> for Tensor<T, E, I>
 {
-    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     fn oix(&self, index: IndexSpec<I, AdvancedIndexingWitness>) -> Self {
         // first do the basic indexing - no copy.
         let resolution = index.resolve_basic(self.shape());
@@ -443,39 +442,18 @@ impl<
 
         // the dimension we're at in the resulting shape after indexing
         let mut dim_result = 0;
-        // the dimension we're at in the shape of the tensor being indexed
-        let mut dim_shape = 0;
-        for fancy in resolution.fancy {
-            // this index should always work - unless there's too many indexes for the shape.
-            let size = resolution.shape[dim_shape];
+        for (fancy, size) in resolution.fancy.iter().zip(resolution.shape) {
             match fancy {
                 Fancy::Full => {
                     dim_result += 1;
-                    dim_shape += 1;
                 }
                 Fancy::IntTensor(i) => {
                     oix_int(size, i, &mut result, dim_result);
                     dim_result += i.shape().ndims();
-                    dim_shape += 1;
                 }
                 Fancy::BoolTensor(b) => {
-                    // Create the equivalent int index tensor, then use oix_int.
-                    let vec = b.ravel();
-                    let i_vec: Vec<_> = vec
-                        .iter()
-                        .enumerate()
-                        .filter_map(|t| if *t.1 { Some(t.0 as i32) } else { None })
-                        .collect();
-                    let i_tensor: Tensor<_, i32, I> = Tensor::new(&[i_vec.len()], i_vec.as_slice());
-                    let mut result_shape = result.shape().to_vec();
-                    result_shape.splice(
-                        dim_shape..(dim_shape + b.shape().ndims()),
-                        [b.shape().size()],
-                    );
-                    result = result.reshape(&result_shape);
-                    oix_int(b.shape().size(), &i_tensor, &mut result, dim_result);
+                    ix_bool(b, &mut result, dim_result);
                     dim_result += 1;
-                    dim_shape += b.shape().ndims();
                 }
             };
         }
@@ -493,19 +471,15 @@ impl<
         // then any advanced indexing - always copy.
         let mut result = basic;
 
-        // the dimension we're at in the result, without any int tensor index dimensions added at the front.
-        let mut dim_result = 0;
-        // the max number of dimensions seen in any index tensor so far - this is the number of dimensions added at the front of the result so far.
-        let mut max_i_ndims = 0;
-        // how many dimensions we've removed from the original tensor so far as a result of int tensor indexing.
-        let mut squeezed = 0;
-
-        let orig_result_shape_ndims = result.shape().ndims();
-
+        // The dimension we're at in the result, without any int tensor index dimensions added at the front.
+        let mut dim_result_post = 0;
+        // The number of dimensions added at the front of the result, by int tensor indexes.
+        // This is the max number of dimensions seen in any int index tensor so far.
+        let mut dim_result_pre = 0;
         #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
         for (fancy, size) in resolution.fancy.iter().zip(resolution.shape) {
             match fancy {
-                Fancy::Full => dim_result += 1,
+                Fancy::Full => dim_result_post += 1,
                 Fancy::IntTensor(i) => {
                     // i_range.shape is [size]
                     let i_range =
@@ -518,50 +492,69 @@ impl<
                     // Now, reshape i_one_hot to add any needed 1s before and after the size:
                     // [i.shape, 1, 1, ..., size, 1, 1, ...]
                     let mut i_one_hot_shape = i.shape().to_vec();
-                    i_one_hot_shape.extend(iter::repeat(1).take(dim_result));
+                    i_one_hot_shape.extend(iter::repeat(1).take(dim_result_post));
                     i_one_hot_shape.push(size);
                     i_one_hot_shape.extend(
                         iter::repeat(1).take(
-                            orig_result_shape_ndims.saturating_sub(dim_result + 1 + squeezed),
+                            result
+                                .shape()
+                                .ndims()
+                                .saturating_sub(dim_result_pre + dim_result_post + 1),
                         ),
                     );
                     let i_one_hot = i_one_hot.reshape(&i_one_hot_shape);
 
                     result = &result * &i_one_hot;
 
-                    max_i_ndims = max(max_i_ndims, i.shape().ndims());
-                    result = result
-                        .sum(&[dim_result + max_i_ndims])
-                        .squeeze(&Axes::Axis(dim_result + max_i_ndims));
+                    dim_result_pre = max(dim_result_pre, i.shape().ndims());
+                    let dim_result = dim_result_pre + dim_result_post;
+                    result = result.sum(&[dim_result]).squeeze(&Axes::Axis(dim_result));
 
-                    squeezed += 1;
-                    // we removed a dim, so don't update dim_result.
+                    // "Moved" one dimension from the original to the prefix where int tensor indexes are.
+                    // So no change for dim_result_post.
+                    // dim_result_post += 0;
                 }
                 Fancy::BoolTensor(b) => {
-                    // Create the equivalent int index tensor, then use oix_int.
-                    let vec = b.ravel();
-                    let i_vec: Vec<_> = vec
-                        .iter()
-                        .enumerate()
-                        .filter_map(|t| if *t.1 { Some(t.0 as i32) } else { None })
-                        .collect();
-                    let i_tensor: Tensor<_, i32, I> = Tensor::new(&[i_vec.len()], i_vec.as_slice());
-                    let mut result_shape = result.shape().to_vec();
-                    let dim_shape = max_i_ndims + dim_result;
-                    result_shape.splice(
-                        dim_shape..(dim_shape + b.shape().ndims()),
-                        [b.shape().size()],
-                    );
-                    result = result.reshape(&result_shape);
-                    oix_int(b.shape().size(), &i_tensor, &mut result, dim_shape);
-                    dim_result += b.shape().ndims();
-                    squeezed += b.shape().ndims().saturating_sub(1);
+                    let dim_result = dim_result_pre + dim_result_post;
+                    ix_bool(b, &mut result, dim_result);
+                    dim_result_post += 1;
                 }
             };
         }
         result
     }
 }
+
+#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+fn ix_bool<
+    T,
+    E: Num + CastFrom<bool>,
+    I: DiffableOps<Repr<E> = T>
+        + ToCpu<Repr<E> = T>
+        + ToCpu<Repr<bool> = <I as DiffableOps>::Repr<bool>>,
+>(
+    b: &Tensor<<I as DiffableOps>::Repr<bool>, bool, I>,
+    result: &mut Tensor<T, E, I>,
+    dim_result: usize,
+) {
+    // Create the equivalent int index tensor, then use oix_int.
+    let vec = b.ravel();
+    let i_vec: Vec<_> = vec
+        .iter()
+        .enumerate()
+        .filter_map(|t| if *t.1 { Some(t.0 as i32) } else { None })
+        .collect();
+    let i_tensor: Tensor<_, i32, I> = Tensor::new(&[i_vec.len()], i_vec.as_slice());
+    // flatten the dimensions of the result tensor that are being indexed by the bool tensor to a 1D vector.
+    let mut result_shape = result.shape().to_vec();
+    result_shape.splice(
+        dim_result..(dim_result + b.shape().ndims()),
+        [b.shape().size()],
+    );
+    *result = result.reshape(&result_shape);
+    oix_int(b.shape().size(), &i_tensor, result, dim_result);
+}
+
 #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 fn oix_int<T, E: Num + CastFrom<bool>, I: DiffableOps<Repr<E> = T> + ToCpu<Repr<E> = T>>(
     size: usize,
@@ -977,6 +970,20 @@ mod tests {
         let r = t.oix1(&i);
         assert_eq!(r.shape(), &[2, 3]);
         assert_eq!(r.ravel(), &[7, 8, 9, 19, 20, 21]);
+
+        // second index - two dimensional index tensor
+        let i = CpuBool::new(&[2, 3], &[true, false, true, false, false, false]);
+        let r = t.oix2(.., &i);
+        assert_eq!(r.shape(), &[4, 2]);
+        assert_eq!(r.ravel(), &[1, 3, 7, 9, 13, 15, 19, 21]);
+
+        // all indexes - two-dimensional index tensors
+        let t = t.reshape(&[2, 2, 2, 3]);
+        let i1 = CpuBool::new(&[2, 2], &[true, false, true, false]);
+        let i2 = CpuBool::new(&[2, 3], &[false, false, true, false, true, false]);
+        let r = t.oix2(&i1, &i2);
+        assert_eq!(r.shape(), &[2, 2]);
+        assert_eq!(r.ravel(), &[3, 5, 15, 17]);
     }
 
     #[test]
@@ -1094,6 +1101,20 @@ mod tests {
         let r = t.vix1(&i);
         assert_eq!(r.shape(), &[2, 3]);
         assert_eq!(r.ravel(), &[7, 8, 9, 19, 20, 21]);
+
+        // second index - two dimensional index tensor
+        let i = CpuBool::new(&[2, 3], &[true, false, true, false, false, false]);
+        let r = t.vix2(.., &i);
+        assert_eq!(r.shape(), &[4, 2]);
+        assert_eq!(r.ravel(), &[1, 3, 7, 9, 13, 15, 19, 21]);
+
+        // all indexes - two-dimensional index tensors
+        let t = t.reshape(&[2, 2, 2, 3]);
+        let i1 = CpuBool::new(&[2, 2], &[true, false, true, false]);
+        let i2 = CpuBool::new(&[2, 3], &[false, false, true, false, true, false]);
+        let r = t.vix2(&i1, &i2);
+        assert_eq!(r.shape(), &[2, 2]);
+        assert_eq!(r.ravel(), &[3, 5, 15, 17]);
     }
 
     #[test]
