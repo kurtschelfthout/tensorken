@@ -58,8 +58,8 @@ pub enum Fancy<I: DiffableOps> {
 pub enum IndexElement<I: DiffableOps> {
     // A single element in an axis.
     Single(SingleIndex),
-    // A range of elements in an axis.
-    Slice(SingleIndex, SingleIndex),
+    // A range of elements in an axis. The second element is inclusive if the bool is true.
+    Slice(SingleIndex, SingleIndex, bool),
     NewAxis,
     Ellipsis,
     Fancy(Fancy<I>),
@@ -111,42 +111,58 @@ impl<I: DiffableOps, W> IndexSpecBuilder<Range<usize>> for IndexSpec<I, W> {
 
 impl<I: DiffableOps, W> IndexSpecBuilder<Range<SingleIndex>> for IndexSpec<I, W> {
     fn idx(mut self, index: Range<SingleIndex>) -> Self {
-        self.axes.push(IndexElement::Slice(index.start, index.end));
+        self.axes
+            .push(IndexElement::Slice(index.start, index.end, false));
         self
     }
 }
 
 impl<I: DiffableOps, W> IndexSpecBuilder<RangeFrom<usize>> for IndexSpec<I, W> {
-    fn idx(self, index: RangeFrom<usize>) -> Self {
-        self.idx(SingleIndex::Head(index.start)..SingleIndex::Tail(0))
+    fn idx(mut self, index: RangeFrom<usize>) -> Self {
+        self.axes.push(IndexElement::Slice(
+            SingleIndex::Head(index.start),
+            SingleIndex::Tail(0),
+            true,
+        ));
+        self
     }
 }
 
 impl<I: DiffableOps, W> IndexSpecBuilder<RangeFrom<SingleIndex>> for IndexSpec<I, W> {
     fn idx(mut self, index: RangeFrom<SingleIndex>) -> Self {
         self.axes
-            .push(IndexElement::Slice(index.start, SingleIndex::Tail(0)));
+            .push(IndexElement::Slice(index.start, SingleIndex::Tail(0), true));
         self
     }
 }
 
 impl<I: DiffableOps, W> IndexSpecBuilder<RangeTo<usize>> for IndexSpec<I, W> {
-    fn idx(self, index: RangeTo<usize>) -> Self {
-        self.idx(SingleIndex::Head(0)..SingleIndex::Head(index.end))
+    fn idx(mut self, index: RangeTo<usize>) -> Self {
+        self.axes.push(IndexElement::Slice(
+            SingleIndex::Head(0),
+            SingleIndex::Head(index.end),
+            false,
+        ));
+        self
     }
 }
 
 impl<I: DiffableOps, W> IndexSpecBuilder<RangeTo<SingleIndex>> for IndexSpec<I, W> {
     fn idx(mut self, index: RangeTo<SingleIndex>) -> Self {
         self.axes
-            .push(IndexElement::Slice(SingleIndex::Head(0), index.end));
+            .push(IndexElement::Slice(SingleIndex::Head(0), index.end, false));
         self
     }
 }
 
 impl<I: DiffableOps, W> IndexSpecBuilder<RangeFull> for IndexSpec<I, W> {
-    fn idx(self, _: RangeFull) -> Self {
-        self.idx(SingleIndex::Head(0)..SingleIndex::Tail(0))
+    fn idx(mut self, _: RangeFull) -> Self {
+        self.axes.push(IndexElement::Slice(
+            SingleIndex::Head(0),
+            SingleIndex::Tail(0),
+            true,
+        ));
+        self
     }
 }
 
@@ -203,10 +219,10 @@ impl<I: DiffableOps, W> IndexSpecBuilder<Ellipsis> for IndexSpec<I, W> {
 impl SingleIndex {
     /// Given the index of the last element, return the index in the array.
     /// The min valid index is assumed to be zero.
-    fn get_index(&self, max_valid_index: usize) -> usize {
+    fn get_index(&self, max_valid_index: usize, clamp: usize) -> usize {
         match self {
-            SingleIndex::Head(i) => *std::cmp::min(i, &max_valid_index),
-            SingleIndex::Tail(i) => max_valid_index.saturating_sub(*i),
+            SingleIndex::Head(i) => *std::cmp::min(i, &clamp),
+            SingleIndex::Tail(i) => max_valid_index.saturating_sub(*std::cmp::min(i, &clamp)),
         }
     }
 }
@@ -338,16 +354,20 @@ impl<W, I: DiffableOps> IndexSpec<I, W> {
                     }
                     IndexElement::Single(idx) => {
                         // translate the index to the actual index in the tensor
-                        let s = idx.get_index(size - 1);
+                        let s = idx.get_index(size - 1, size - 1);
                         result.add_single(s);
                         idx_i += 1;
                         shape_i += 1;
                     }
-                    IndexElement::Slice(start, end) => {
+                    IndexElement::Slice(start, end, is_end_inclusive) => {
                         // Get the start index. Pass in size-1 because the last element has index == size-1.
-                        let s = start.get_index(size - 1);
+                        let s = start.get_index(size - 1, size - 1);
                         // Get the end index. Pass size, because the last element of a range is exclusive, so the max valid index is size.
-                        let e = end.get_index(size);
+                        let e = if *is_end_inclusive {
+                            end.get_index(size - 1, size - 1) + 1
+                        } else {
+                            end.get_index(size - 1, size)
+                        };
                         result.add_slice(s, e);
                         idx_i += 1;
                         shape_i += 1;
@@ -795,6 +815,10 @@ mod tests {
         let r = t.ix2(.., 1..2);
         assert_eq!(r.shape(), &[2, 1]);
         assert_eq!(r.ravel(), &[2, 5]);
+
+        let r = t.ix2(..tl(0), ..tl(0));
+        assert_eq!(r.shape(), &[1, 2]);
+        assert_eq!(r.ravel(), &[1, 2]);
     }
 
     #[test]
