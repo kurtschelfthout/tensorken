@@ -257,10 +257,12 @@ impl<'a, I: DiffableOps> BasicIndexResolution<'a, I> {
             self.flips.push(false); // no need to flip
             self.shape.push(e - s); // the new shape is the size of the range
         } else {
-            // if the range is decreasing, we have e..s+1. Add the limits in reverse order.
-            self.limits.push((e, s + 1));
+            // if the range is decreasing, we have e+1..s+1 because inclusive...exclusive is flipped.
+            // E.g. 3..1 is 3, 2. or equivalent with (2..4).rev()
+            // Add the limits in reverse order.
+            self.limits.push((e + 1, s + 1));
             self.flips.push(true); // flip the axis
-            self.shape.push(s + 1 - e);
+            self.shape.push(s - e);
         }
         self.fancy.push(&Fancy::Full);
     }
@@ -806,16 +808,20 @@ mod tests {
         );
 
         let r = t.ix2(tl(0)..hd(0), ..);
-        assert_eq!(r.shape(), &[2, 3]);
-        assert_eq!(r.ravel(), &[4, 5, 6, 1, 2, 3]);
+        assert_eq!(r.shape(), &[1, 3]);
+        assert_eq!(r.ravel(), &[4, 5, 6]);
 
         let r = t.ix2(.., tl(1)..hd(0));
-        assert_eq!(r.shape(), &[2, 2]);
-        assert_eq!(r.ravel(), &[2, 1, 5, 4]);
+        assert_eq!(r.shape(), &[2, 1]);
+        assert_eq!(r.ravel(), &[2, 5]);
 
         let r = t.ix2(tl(0)..hd(0), tl(0)..hd(0));
-        assert_eq!(r.shape(), &[2, 3]);
-        assert_eq!(r.ravel(), &[6, 5, 4, 3, 2, 1]);
+        assert_eq!(r.shape(), &[1, 2]);
+        assert_eq!(r.ravel(), &[6, 5]);
+
+        let r = t.ix2(hd(1)..hd(0), hd(2)..hd(0));
+        assert_eq!(r.shape(), &[1, 2]);
+        assert_eq!(r.ravel(), &[6, 5]);
     }
 
     #[test]
