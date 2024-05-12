@@ -13,30 +13,30 @@ use crate::shape_strider::{ShapeStrider, Stride, TensorIndexIterator};
 // in numpy, this is a byte buffer and dtypes are used to interpret the bytes.
 // Ignoring that here.
 #[derive(Debug)]
-struct Buffer<T> {
-    data: Vec<T>,
+struct Buffer<E> {
+    data: Vec<E>,
 }
 
 /// Operations avoid copying the buffer if possible, but buffers are read-only,
 /// and can be shared between multiple tensors (e.g. with different shapes).
 /// As a result, buffers are reference counted. Cloning a `CpuRawTensor` is cheap.
 #[derive(Clone)]
-pub struct CpuRawTensor<T> {
-    buffer: Arc<Buffer<T>>,
+pub struct CpuRawTensor<E> {
+    buffer: Arc<Buffer<E>>,
     strider: ShapeStrider,
 }
 
-impl<T: Debug> Debug for CpuRawTensor<T> {
+impl<E: Debug> Debug for CpuRawTensor<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "CpuRawTensor({:?}, {:?})", self.buffer, self.strider)
     }
 }
 
-impl<T> CpuRawTensor<T> {
+impl<E> CpuRawTensor<E> {
     /// Return a new tensor with the given shape and data.
     /// Panics if the shape and data are not compatible.
     /// Assumes the data is laid out contiguously, in row-major order.
-    pub(crate) fn new_into(shape: &[usize], data: Vec<T>) -> Self {
+    pub(crate) fn new_into(shape: &[usize], data: Vec<E>) -> Self {
         assert!(shape.size() == data.len(), "Shape size {} and data len {} must match - either too few or too many elements in data.", shape.size(), data.len());
 
         let strider = ShapeStrider::contiguous(shape);
@@ -58,7 +58,7 @@ impl<T> CpuRawTensor<T> {
     /// Return a new tensor with the same shape as this one, but
     /// using the given Vec as data.
     /// Assumes the data is laid out contiguously, in row-major order.
-    fn with_contiguous_data(&self, data: Vec<T>) -> Self {
+    fn with_contiguous_data(&self, data: Vec<E>) -> Self {
         Self::new_into(self.strider.shape(), data)
     }
 }
