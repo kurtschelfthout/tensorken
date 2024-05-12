@@ -60,8 +60,11 @@ pub enum IndexElement<I: DiffableOps> {
     Single(SingleIndex),
     // A range of elements in an axis. The second element is inclusive if the bool is true.
     Slice(SingleIndex, SingleIndex, bool),
+    // Create a new axis with size 1.
     NewAxis,
+    // Keep the remaining dimensions as is.
     Ellipsis,
+    // Fancy index - mask or int tensor.
     Fancy(Fancy<I>),
 }
 

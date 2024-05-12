@@ -85,14 +85,13 @@ fn main() {
 
     let_example!(t, &Tr::new(&[3, 2], &[2.0, 1.0, 4.0, 2.0, 8.0, 4.0]));
     do_example!(t.crop(&[(0, 2), (1, 2)]));
-
-    let_example!(t, &Tr::new(&[3, 2], &[2.0, 1.0, 4.0, 2.0, 8.0, 4.0]));
+    do_example!(t.reshape(&[1, 6]));
     do_example!(t.pad(&[(1, 2), (1, 3)]));
 
     let_example!(t, &Tr::linspace(1.0, 24.0, 24u8).reshape(&[2, 3, 4]));
     do_example!(t.ix1(1));
     do_example!(t.ix2(1, 0));
-    do_example!(t.ix2(..tl(1), Ellipsis));
+    do_example!(t.ix2(..tl(0), Ellipsis));
     // hd counts from the front, tl from the back
     do_example!(t.ix2(Ellipsis, hd(1)..tl(1)));
     // invert the range to flip. First bound is still inclusive, second exclusive.
