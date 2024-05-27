@@ -37,6 +37,17 @@ type TrB = CpuBool;
 fn main() {
     let_example!(t, TrI::new(&[4, 3, 2], &(1..25).collect::<Vec<_>>()));
 
+    // intro
+    // slicing
+    do_example!(t.vix3(1..3, 2.., ..));
+    // slicing and int indexing
+    let_example!(i, TrI::new(&[2], &[2, 1]));
+    do_example!(t.vix3(&i, &i, 1));
+
+    // slicing and masking
+    let_example!(b, TrB::new(&[4], &[false, false, true, false]));
+    do_example!(t.vix3(&b, &i, 1..));
+
     // basic indexing
     do_example!(t.ix3(0, 1, 2).to_scalar());
     with_shapes!(t, t.ix1(1));
