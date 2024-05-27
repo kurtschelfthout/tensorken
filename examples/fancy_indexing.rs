@@ -82,7 +82,7 @@ fn main() {
     let_example!(i, TrI::new(&[4], &[0, 0, 1, 1]));
     with_shapes!(t, t.oix1(&i));
 
-    let_example!(i, TrI::new(&[6], &[1; 6]));
+    let_example!(i, TrI::new(&[5], &[1; 5]));
     with_shapes!(t, t.oix1(&i));
 
     let_example!(i, TrI::new(&[2, 2], &[0, 1, 1, 0]));

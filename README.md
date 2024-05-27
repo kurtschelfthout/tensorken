@@ -33,3 +33,4 @@ Emerging posts with more explanation of the various stages of development of Ten
 - [v0.1](https://github.com/kurtschelfthout/tensorken/releases/tag/v0.1): [Fun and Hackable Tensors in Rust, From Scratch](https://getcode.substack.com/p/fun-and-hackable-tensors-in-rust)
 - [v0.2](https://github.com/kurtschelfthout/tensorken/releases/tag/v0.2): [Massively Parallel Fun with GPUs: Accelerating Tensors in Rust](https://getcode.substack.com/p/massively-parallel-fun-with-gpus)
 - [v0.3](https://github.com/kurtschelfthout/tensorken/releases/tag/v0.3): [Beyond Backpropagation - Higher Order, Forward and Reverse-mode Automatic Differentiation for Tensorken](https://getcode.substack.com/p/beyond-backpropagation-higher-order)
+- [v0.4](https://github.com/kurtschelfthout/tensorken/releases/tag/v0.4): [From Basic to Fancy Indexing - 50 ways to index your tensor](https://getcode.substack.com/p/from-basic-to-fancy-indexing)
