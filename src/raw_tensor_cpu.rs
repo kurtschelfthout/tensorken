@@ -174,7 +174,7 @@ pub struct CpuRawTensorIterator<'a, E> {
     index_iter: TensorIndexIterator<'a>,
 }
 
-impl<'a, E: Clone> Iterator for CpuRawTensorIterator<'a, E> {
+impl<E: Clone> Iterator for CpuRawTensorIterator<'_, E> {
     type Item = E;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -344,7 +344,7 @@ impl ToCpu for CpuRawTensorImpl {
 #[cfg(test)]
 mod tests {
 
-    use std::{iter::repeat, vec};
+    use std::{iter::repeat_n, vec};
 
     use super::*;
 
@@ -441,7 +441,7 @@ mod tests {
 
         assert_eq!(I::shape(&t), &[4]);
         assert_eq!(assert_pos_strides(&t), &[0]);
-        assert_eq!(t.ravel(), repeat(42.0).take(4).collect::<Vec<_>>());
+        assert_eq!(t.ravel(), repeat_n(42.0, 4).collect::<Vec<_>>());
     }
 
     #[test]

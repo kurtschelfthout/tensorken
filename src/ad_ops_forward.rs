@@ -123,5 +123,3 @@ impl<T: Clone, E: Bool, I: DiffableOps<Repr<E> = T>> UnaryDiffOp<T> for CropOp<E
         I::crop::<E>(d, &self.0)
     }
 }
-
-

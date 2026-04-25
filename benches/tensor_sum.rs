@@ -14,10 +14,10 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         let t1_cpu = Cpu32::from(&t1_gpu);
 
         group.bench_with_input(BenchmarkId::new("cpu", size), &size, |b, _| {
-            b.iter(|| (black_box(t1_cpu.sum(&[0]).realize())))
+            b.iter(|| black_box(t1_cpu.sum(&[0]).realize()))
         });
         group.bench_with_input(BenchmarkId::new("gpu", size), &size, |b, _| {
-            b.iter(|| (black_box(t1_gpu.sum(&[0]).realize())))
+            b.iter(|| black_box(t1_gpu.sum(&[0]).realize()))
         });
     }
     group.finish();

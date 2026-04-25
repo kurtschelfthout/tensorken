@@ -1,6 +1,5 @@
 use std::{
     cmp::max,
-    iter,
     marker::PhantomData,
     ops::{Range, RangeFrom, RangeFull, RangeTo},
 };
@@ -304,7 +303,7 @@ impl<'a, I: DiffableOps> BasicIndexResolution<'a, I> {
 }
 
 impl<W, I: DiffableOps> IndexSpec<I, W> {
-    fn resolve_basic(&self, shape: &[usize]) -> BasicIndexResolution<I> {
+    fn resolve_basic(&self, shape: &[usize]) -> BasicIndexResolution<'_, I> {
         // could be more, but oh well.
         let new_shape_len = std::cmp::max(shape.len(), self.axes.len());
         let mut result = BasicIndexResolution {
@@ -480,7 +479,7 @@ impl<
                     ix_bool(b, &mut result, dim_result);
                     dim_result += 1;
                 }
-            };
+            }
         }
         result
     }
@@ -517,16 +516,15 @@ impl<
                     // Now, reshape i_one_hot to add any needed 1s before and after the size:
                     // [i.shape, 1, 1, ..., size, 1, 1, ...]
                     let mut i_one_hot_shape = i.shape().to_vec();
-                    i_one_hot_shape.extend(iter::repeat(1).take(dim_result_post));
+                    i_one_hot_shape.extend(std::iter::repeat_n(1, dim_result_post));
                     i_one_hot_shape.push(size);
-                    i_one_hot_shape.extend(
-                        iter::repeat(1).take(
-                            result
-                                .shape()
-                                .ndims()
-                                .saturating_sub(dim_result_pre + dim_result_post + 1),
-                        ),
-                    );
+                    i_one_hot_shape.extend(std::iter::repeat_n(
+                        1,
+                        result
+                            .shape()
+                            .ndims()
+                            .saturating_sub(dim_result_pre + dim_result_post + 1),
+                    ));
                     let i_one_hot = i_one_hot.reshape(&i_one_hot_shape);
 
                     result = &result * &i_one_hot;
@@ -544,7 +542,7 @@ impl<
                     ix_bool(b, &mut result, dim_result);
                     dim_result_post += 1;
                 }
-            };
+            }
         }
         result
     }

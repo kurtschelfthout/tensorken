@@ -65,7 +65,11 @@ fn binary_no_fuse<T, TR>(lhs: &Fuse<T>, rhs: &Fuse<T>, op: impl Fn(&T, &T) -> TR
 pub struct FuseImpl<I>(PhantomData<I>);
 
 impl<I: RawTensorOps> RawTensorOps for FuseImpl<I> {
-    type Repr<E> = Fuse<I::Repr<E>> where E: Clone, Self::Repr<E>: Clone;
+    type Repr<E>
+        = Fuse<I::Repr<E>>
+    where
+        E: Clone,
+        Self::Repr<E>: Clone;
 
     fn exp<E: Float>(t: &Self::Repr<E>) -> Self::Repr<E> {
         unary_no_fuse(t, I::exp)

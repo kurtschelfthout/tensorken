@@ -116,7 +116,7 @@ impl ShapeStrider {
     }
 
     /// Iterate over tensor indexes, in increasing order.
-    pub(crate) fn iter_tensor_index(&self) -> TensorIndexIterator {
+    pub(crate) fn iter_tensor_index(&self) -> TensorIndexIterator<'_> {
         TensorIndexIterator::new(self)
     }
 
@@ -439,7 +439,7 @@ impl<'a> TensorIndexIterator<'a> {
     }
 }
 
-impl<'a> Iterator for TensorIndexIterator<'a> {
+impl Iterator for TensorIndexIterator<'_> {
     type Item = Vec<usize>;
 
     fn next(&mut self) -> Option<Self::Item> {
