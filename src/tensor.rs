@@ -150,14 +150,12 @@ impl<T, E: Num, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
 
     /// Reduce to sum along the given axes.
     /// Keeps the reduced dimensions, but with size 1.
-
     pub fn sum(&self, axes: &[usize]) -> Self {
         Self(I::sum::<E>(&self.0, axes), PhantomData)
     }
 
     /// Expand the tensor to the given shape. Only dimensions of length 1 can be expanded.
     /// Like numpy's `broadcast_to` but simpler - does not add dimensions of size 1.
-
     pub fn expand(&self, shape: &[usize]) -> Self {
         Self(I::expand::<E>(&self.0, shape), PhantomData)
     }
@@ -716,7 +714,6 @@ impl<T, E: Clone, I: ToCpu<Repr<E> = T>> Tensor<T, E, I> {
     }
 
     /// Create a new Tensor that has any lazy operations realized.
-
     pub fn realize(&self) -> Self {
         Self(I::realize::<E>(&self.0), PhantomData)
     }

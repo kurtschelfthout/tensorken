@@ -18,11 +18,11 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         if size <= 256 {
             // cpu too slow - already takes 3 mins at 256.
             group.bench_with_input(BenchmarkId::new("cpu", size), &size, |b, _| {
-                b.iter(|| (black_box(t1_cpu.matmul(&t2_cpu).realize())))
+                b.iter(|| black_box(t1_cpu.matmul(&t2_cpu).realize()))
             });
         }
         group.bench_with_input(BenchmarkId::new("gpu", size), &size, |b, _| {
-            b.iter(|| (black_box(t1_gpu.matmul(&t2_gpu).realize())))
+            b.iter(|| black_box(t1_gpu.matmul(&t2_gpu).realize()))
         });
     }
     group.finish();

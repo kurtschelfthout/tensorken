@@ -1,7 +1,7 @@
 use std::{
     borrow::Cow,
     collections::HashMap,
-    sync::{Arc, Once, RwLock},
+    sync::{Arc, LazyLock, RwLock},
 };
 
 /// Size of a workgroup (number of threads) in X and Y dimensions. Z dimension is always 1 at the moment, it's not included.
@@ -260,15 +260,9 @@ impl WgpuContext {
     }
 }
 
-static mut WGPU_DEVICE: Option<WgpuContext> = None;
-static INIT_WGPU_DEVICE: Once = Once::new();
+static WGPU_DEVICE: LazyLock<WgpuContext> = LazyLock::new(WgpuContext::new);
 
 /// Returns a reference to the global wgpu context, creating it if necessary.
 pub(crate) fn get_wgpu_device() -> &'static WgpuContext {
-    unsafe {
-        INIT_WGPU_DEVICE.call_once(|| {
-            WGPU_DEVICE = Some(WgpuContext::new());
-        });
-        return WGPU_DEVICE.as_ref().unwrap();
-    }
+    &WGPU_DEVICE
 }

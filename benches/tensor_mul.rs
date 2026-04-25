@@ -26,20 +26,20 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         let t2_cpu_nc = Cpu32::from(&t2_gpu_nc);
 
         group.bench_with_input(BenchmarkId::new("cpu contiguous", size), &size, |b, _| {
-            b.iter(|| (black_box((&t1_cpu * &t2_cpu).realize())))
+            b.iter(|| black_box((&t1_cpu * &t2_cpu).realize()))
         });
         group.bench_with_input(
             BenchmarkId::new("cpu non-contiguous", size),
             &size,
-            |b, _| b.iter(|| (black_box((&t1_cpu_nc * &t2_cpu_nc).realize()))),
+            |b, _| b.iter(|| black_box((&t1_cpu_nc * &t2_cpu_nc).realize())),
         );
         group.bench_with_input(BenchmarkId::new("gpu contiguous", size), &size, |b, _| {
-            b.iter(|| (black_box((&t1_gpu * &t2_gpu).realize())))
+            b.iter(|| black_box((&t1_gpu * &t2_gpu).realize()))
         });
         group.bench_with_input(
             BenchmarkId::new("gpu non-contiguous", size),
             &size,
-            |b, _| b.iter(|| (black_box((&t1_gpu_nc * &t2_gpu_nc).realize()))),
+            |b, _| b.iter(|| black_box((&t1_gpu_nc * &t2_gpu_nc).realize())),
         );
     }
     group.finish();

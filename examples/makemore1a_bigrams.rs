@@ -79,7 +79,7 @@ fn dict_bigram(names: &[String]) {
     // show the bigram_counts hashmap, sorted by count.
     // (on ties, these are in a slightly different order than in Karpathy's notebook)
     let mut bigrams_sorted_by_count: Vec<_> = bigram_counts.into_iter().collect();
-    bigrams_sorted_by_count.sort_by(|a, b| b.1.cmp(&a.1));
+    bigrams_sorted_by_count.sort_by_key(|x| std::cmp::Reverse(x.1));
     println!("bigram_counts: {:?}", &bigrams_sorted_by_count[..10]);
 }
 

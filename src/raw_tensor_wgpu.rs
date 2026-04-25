@@ -54,7 +54,7 @@ impl<E> Debug for WgpuRawTensor<'_, E> {
     }
 }
 
-impl<'a, E> WgpuRawTensor<'a, E> {
+impl<E> WgpuRawTensor<'_, E> {
     /// Return a new tensor with the same buffer as this one, but
     /// with a different shape. Assumes the new shape is compatible.
     fn with_strider(&self, strider: ShapeStrider) -> Self {
@@ -330,6 +330,7 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
     /// - workgroup size (the number of threads in each workgroup, x and y. y is always 1.),
     /// - workgroup count (the number of workgroups to run)
     /// - chunk size (the number of elements each thread will process)
+    ///
     /// This is based on the size of the output tensor, as for all operations except
     /// reduce, that's the maximum amount of parallelism we can have.
     /// The idea is to maximize workgroup size, then workgroup count, then chunk size -
@@ -339,14 +340,12 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
             return ((output_tensor_size, 1), 1, 1);
         }
 
-        let workgroup_count =
-            (output_tensor_size + Self::MAX_WORKGROUP_SIZE - 1) / Self::MAX_WORKGROUP_SIZE;
+        let workgroup_count = output_tensor_size.div_ceil(Self::MAX_WORKGROUP_SIZE);
         if workgroup_count <= Self::MAX_WORKGROUP_COUNT {
             return ((Self::MAX_WORKGROUP_SIZE, 1), workgroup_count, 1);
         }
 
-        let chunk_size =
-            (output_tensor_size + Self::MAX_WORKGROUP_COUNT - 1) / Self::MAX_WORKGROUP_COUNT;
+        let chunk_size = output_tensor_size.div_ceil(Self::MAX_WORKGROUP_COUNT);
         (
             (Self::MAX_WORKGROUP_SIZE, 1),
             Self::MAX_WORKGROUP_COUNT,
@@ -368,6 +367,7 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
     /// - workgroup size (the number of threads in each workgroup, x and y.),
     /// - workgroup count (the number of workgroups to run)
     /// - chunk size (the number of elements each thread will process)
+    ///
     /// Specifically for the reduce operation.
     /// Reduce is suboptimal if we'd only base it on the output tensor size: in the extreme,
     /// reducing to a single element achieves no parallelism at all.
@@ -785,7 +785,7 @@ impl ToCpu for WgpuRawTensorImpl {
 #[cfg(test)]
 mod tests {
 
-    use std::{f32::consts::E, iter::repeat};
+    use std::{f32::consts::E, iter::repeat_n};
 
     use crate::wgpu_context::get_wgpu_device;
 
@@ -989,7 +989,7 @@ mod tests {
             let expected = t1
                 .ravel()
                 .into_iter()
-                .zip(t2.ravel().into_iter())
+                .zip(t2.ravel())
                 .map(|(a, b)| apply_binary_op(op, a, b))
                 .collect::<Vec<f32>>();
             assert_vec_eq(&actual, &expected);
@@ -1074,7 +1074,7 @@ mod tests {
 
         assert_eq!(I::shape(&t), &[5, 4]);
         assert_eq!(&t.strides(), &[Stride::ZERO, Stride::ZERO]);
-        assert_eq!(t.ravel(), repeat(42.0).take(20).collect::<Vec<_>>());
+        assert_eq!(t.ravel(), repeat_n(42.0, 20).collect::<Vec<_>>());
     }
 
     #[test]
