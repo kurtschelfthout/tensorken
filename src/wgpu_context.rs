@@ -74,7 +74,9 @@ impl WgpuContext {
                 label: Some(operation),
                 layout: None,
                 module,
-                entry_point: ENTRY_POINT,
+                entry_point: Some(ENTRY_POINT),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                cache: None,
             },
         ));
         pipelines.insert(
@@ -241,14 +243,14 @@ impl WgpuContext {
         // `request_device` instantiates the feature specific connection to the GPU, defining some parameters,
         //  `features` being the available features.
         let r = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: None,
-                    required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits::downlevel_defaults(),
-                },
-                None, // Some(Path::new("./trace")),
-            )
+            .request_device(&wgpu::DeviceDescriptor {
+                label: None,
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::downlevel_defaults(),
+                experimental_features: wgpu::ExperimentalFeatures::default(),
+                memory_hints: wgpu::MemoryHints::default(),
+                trace: wgpu::Trace::Off,
+            })
             .await
             .unwrap();
         Some(r)

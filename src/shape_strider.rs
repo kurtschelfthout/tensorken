@@ -277,7 +277,7 @@ impl ShapeStrider {
         if permutation.iter().any(|x| *x >= self.shape.ndims()) {
             return Err("Invalid permutation: at least one target axis is greater than number of dimensions.".to_string());
         }
-        if permutation.len() * (permutation.len() - 1) / 2 != permutation.iter().sum() {
+        if permutation.len() * (permutation.len() - 1) / 2 != permutation.iter().sum::<usize>() {
             return Err(
                 "Invalid permutation: all axes must be specified exactly once.".to_string(),
             );
