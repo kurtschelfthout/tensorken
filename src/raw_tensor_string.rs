@@ -105,6 +105,11 @@ impl RawTensorOps for StringImpl {
         (s.crop(limits), format!("{t}.crop({limits:?})"))
     }
 
+    fn im2col<E: Clone>((s, t): &Self::Repr<E>, dims: &[(usize, usize)]) -> Self::Repr<E> {
+        let s = s.im2col(dims).unwrap();
+        (s, format!("{t}.im2col({dims:?})"))
+    }
+
     fn new<E: Clone>(shape: &[usize], data: &[E]) -> Self::Repr<E> {
         (
             ShapeStrider::contiguous(shape),

@@ -5,7 +5,7 @@ impl Shape for ShapeStrider {
         &self.shape
     }
 }
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Stride {
     Pos(usize),
     Neg(usize),
@@ -148,7 +148,7 @@ impl ShapeStrider {
         for (&dim, stride) in self.shape.iter().zip(self.strides.iter()) {
             if dim != 1 {
                 shape.push(dim);
-                strides.push(stride.clone());
+                strides.push(*stride);
             }
         }
         Self {
@@ -241,7 +241,7 @@ impl ShapeStrider {
             }
 
             // now calculate new strides - going back to front as usual.
-            new_strides[nj - 1] = old_strides[oj - 1].clone();
+            new_strides[nj - 1] = old_strides[oj - 1];
             for nk in (ni + 1..nj).rev() {
                 new_strides[nk - 1] = new_strides[nk].mul(new_shape[nk]);
             }
@@ -253,12 +253,12 @@ impl ShapeStrider {
         }
 
         let last_stride = if ni >= 1 {
-            new_strides[ni - 1].clone()
+            new_strides[ni - 1]
         } else {
             Stride::ONE
         };
         for new_stride in new_strides.iter_mut().take(newnd).skip(ni) {
-            *new_stride = last_stride.clone();
+            *new_stride = last_stride;
         }
 
         Ok(Self {
@@ -291,7 +291,7 @@ impl ShapeStrider {
         let mut strides = Vec::with_capacity(self.shape.ndims());
         for &i in permutation {
             shape.push(self.shape[i]);
-            strides.push(self.strides[i].clone());
+            strides.push(self.strides[i]);
         }
         Self {
             shape,
@@ -319,7 +319,7 @@ impl ShapeStrider {
         for (fro_dim, to_dim) in (0..self.shape.ndims()).rev().zip((0..shape.ndims()).rev()) {
             if self.shape[fro_dim] == shape[to_dim] {
                 new_shape.push(self.shape[fro_dim]);
-                new_strides.push(self.strides[fro_dim].clone());
+                new_strides.push(self.strides[fro_dim]);
             } else if self.shape[fro_dim] == 1 {
                 new_shape.push(shape[to_dim]);
                 new_strides.push(Stride::ZERO);
@@ -409,7 +409,7 @@ impl ShapeStrider {
                 if f {
                     self.strides[i].flip()
                 } else {
-                    self.strides[i].clone()
+                    self.strides[i]
                 }
             })
             .collect();
@@ -418,6 +418,107 @@ impl ShapeStrider {
             strides: new_strides,
             offset: self.offset,
         }
+    }
+
+    /// Generalized implicit im2col. Given a list of N (len, stride) stride
+    /// pairs, the last N dims of the input shape
+    ///
+    /// The 2-dimensional case is instructive, and used for implementing 2D
+    /// cross-correlation (called conv2d). Given an input shape of [.., iH, iW]
+    /// and parameter [(kH, strideH), (kW, strideW)], this generates a shape
+    /// [.., oH, oW, kH, kW] over subimages of shape [kH, kW] at a spacing of
+    /// [strideH, strideW], which must be nonzero in both directions. The
+    /// leftmost dimensions are left untouched.
+    ///
+    /// For example, given the following input array:
+    ///
+    /// ```text
+    /// /  0  1  2  3 \
+    /// [  4  5  6  7 ]
+    /// [  8  9 10 11 ]
+    /// \ 12 13 14 15 /
+    /// ```
+    ///
+    /// im2col(&[(3, 1), (3, 1)]) would return the following array of shape (2, 2, 3, 3):
+    ///
+    /// ```text
+    /// /                              \
+    /// [  /  0  1  2 \  /  1  2  3 \  ]
+    /// [  [  4  5  6 ]  [  5  6  7 ]  ]
+    /// [  \  8  9 10 /  \  9 10 11 /  ]
+    /// [                              ]
+    /// [  /  4  5  6 \  /  5  6  7 \  ]
+    /// [  [  8  9 10 ]  [  9 10 11 ]  ]
+    /// [  \ 12 13 14 /  \ 13 14 15 /  ]
+    /// \                              /
+    /// ```
+    ///
+    /// NOTE: A traditional explicit im2col would generate a matrix of shape
+    /// (Ho*Wo, hk*wk), like the following:
+    ///
+    /// ```text
+    /// /  0  1  2  4  5  6  8  9 10 \
+    /// |  1  2  3  5  6  7  9 10 11 |
+    /// |  4  5  6  8  9 10 12 13 14 |
+    /// \  5  6  7  9 10 11 13 14 15 /
+    /// ```
+    ///
+    /// A result of this shape could in principle be achieved with a reshape,
+    /// but this would require reallocation due to the noncontiguous access
+    /// pattern.
+    pub(crate) fn im2col(&self, dims: &[(usize, usize)]) -> Result<ShapeStrider, String> {
+        if dims.is_empty() {
+            return Err("im2col requires at least 1 dimension".to_string());
+        }
+        if dims.len() > self.shape.len() {
+            return Err(format!(
+                "im2col input has {} dims, but param has {} dims",
+                self.shape.len(),
+                dims.len()
+            ));
+        }
+
+        let outer = self.shape.len() - dims.len();
+
+        let mut shape = Vec::with_capacity(outer + 2 * dims.len());
+        let mut strides = Vec::with_capacity(outer + 2 * dims.len());
+
+        // copy outer dimensions
+        for i in 0..outer {
+            shape.push(self.shape[i]);
+            strides.push(self.strides[i]);
+        }
+
+        // add window dimensions
+        for (i, (klen, kstride)) in dims.iter().copied().enumerate() {
+            let ilen = self.shape[outer + i];
+
+            if kstride == 0 {
+                return Err(format!("im2col dim {i} has stride of zero"));
+            }
+            if klen > ilen {
+                return Err(format!(
+                    "im2col dim {i} has len {ilen}, too big for shape {:?}",
+                    self.shape
+                ));
+            }
+
+            let olen = (ilen - klen) / kstride + 1;
+            shape.push(olen);
+            strides.push(self.strides[outer + i].mul(kstride));
+        }
+
+        // add kernel dimensions
+        for (i, (klen, _)) in dims.iter().copied().enumerate() {
+            shape.push(klen);
+            strides.push(self.strides[outer + i]);
+        }
+
+        Ok(ShapeStrider {
+            shape,
+            strides,
+            offset: self.offset,
+        })
     }
 }
 

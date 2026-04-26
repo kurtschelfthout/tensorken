@@ -160,6 +160,10 @@ impl<I: RawTensorOps> RawTensorOps for FuseImpl<I> {
         unary_no_fuse(t, move |x| I::crop(x, &vec))
     }
 
+    fn im2col<E: Elem>(t: &Self::Repr<E>, dims: &[(usize, usize)]) -> Self::Repr<E> {
+        unary_no_fuse(t, move |x| I::im2col(x, dims))
+    }
+
     fn new<E: Elem>(shape: &[usize], data: &[E]) -> Self::Repr<E> {
         let traw = I::new(shape, data);
         Fuse::new(traw)

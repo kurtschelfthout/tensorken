@@ -143,6 +143,10 @@ impl<I: DiffableOps> DiffableOps for ForwardImpl<I> {
         t.unary::<FlipOp<E, I>, _>(flips)
     }
 
+    fn im2col<E: Elem>(_t: &Self::Repr<E>, _shape: &[(usize, usize)]) -> Self::Repr<E> {
+        todo!()
+    }
+
     fn new<E: Elem>(shape: &[usize], data: &[E]) -> Self::Repr<E> {
         Forward::Lift(I::new::<E>(shape, data))
     }

@@ -55,6 +55,8 @@ pub trait DiffableOps {
 
     fn flip<E: Bool>(t: &Self::Repr<E>, flips: &[bool]) -> Self::Repr<E>;
 
+    fn im2col<E: Elem>(t: &Self::Repr<E>, dims: &[(usize, usize)]) -> Self::Repr<E>;
+
     fn new<E: Elem>(shape: &[usize], data: &[E]) -> Self::Repr<E>;
 
     fn shape<E: Clone>(t: &Self::Repr<E>) -> &[usize];

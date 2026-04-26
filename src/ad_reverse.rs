@@ -169,6 +169,10 @@ impl<I: 'static + DiffableOps> DiffableOps for ReverseImpl<I> {
         t.unary::<FlipOp<E, I>, _>(flips)
     }
 
+    fn im2col<E: Elem>(_t: &Self::Repr<E>, _dims: &[(usize, usize)]) -> Self::Repr<E> {
+        todo!()
+    }
+
     fn new<E: Elem>(shape: &[usize], data: &[E]) -> Self::Repr<E> {
         Reverse::Lift(I::new::<E>(shape, data))
     }

@@ -85,6 +85,10 @@ pub trait RawTensorOps {
     /// Needs as many limits as there are dimensions in the tensor.
     fn crop<E: Clone>(t: &Self::Repr<E>, limits: &[(usize, usize)]) -> Self::Repr<E>;
 
+    /// Reshape the tensor for performing convolution with a kernel of the given shape and spacing.
+    /// See [`ShapeStrider::im2col`](`crate::shape_strider::ShapeStrider::im2col`) for more information
+    fn im2col<E: Elem>(t: &Self::Repr<E>, dims: &[(usize, usize)]) -> Self::Repr<E>;
+
     // creation
     // --------
 

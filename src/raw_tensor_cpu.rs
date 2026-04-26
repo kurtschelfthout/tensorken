@@ -318,6 +318,10 @@ impl RawTensorOps for CpuRawTensorImpl {
         t.with_strider(strider)
     }
 
+    fn im2col<E: Elem>(t: &Self::Repr<E>, dims: &[(usize, usize)]) -> Self::Repr<E> {
+        t.with_strider(t.strider.im2col(dims).unwrap())
+    }
+
     fn new<E: Clone>(shape: &[usize], data: &[E]) -> Self::Repr<E> {
         CpuRawTensor::new_into(shape, data.to_vec())
     }
@@ -535,13 +539,13 @@ mod tests {
     fn test_reduce_ops_empty() {
         let t: CpuRawTensor<f32> = CpuRawTensor::new_into(&[], vec![]);
         let s = I::sum(&t, &[]);
-        assert_eq!(I::shape(&s), &[]);
-        assert_eq!(s.buffer.data, vec![]);
+        assert_eq!(I::shape(&s), &[] as &[usize]);
+        assert_eq!(s.buffer.data, vec![] as Vec<f32>);
 
         let t: CpuRawTensor<f32> = CpuRawTensor::new_into(&[], vec![]);
         let s = I::max(&t, &[]);
-        assert_eq!(I::shape(&s), &[]);
-        assert_eq!(s.buffer.data, vec![]);
+        assert_eq!(I::shape(&s), &[] as &[usize]);
+        assert_eq!(s.buffer.data, vec![] as Vec<f32>);
     }
 
     #[test]

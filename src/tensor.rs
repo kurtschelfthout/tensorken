@@ -87,6 +87,10 @@ impl<I: RawTensorOps> DiffableOps for I {
         I::flip(t, flips)
     }
 
+    fn im2col<E: Elem>(t: &Self::Repr<E>, dims: &[(usize, usize)]) -> Self::Repr<E> {
+        I::im2col(t, dims)
+    }
+
     fn new<E: Elem>(shape: &[usize], data: &[E]) -> Self::Repr<E> {
         I::new(shape, data)
     }
@@ -684,6 +688,129 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
         // after reshape:  [..., m, ..., o]
         let s = sum.shape();
         sum.reshape(&s[..s.ndims() - 1])
+    }
+
+    /// 2D cross-correlation of this tensor with the given kernel.
+    ///
+    /// Parameters:
+    /// - `self`: A tensor of shape [..., iC, iH, iW]
+    /// - `kernel`: A tensor of shape [oC, iC, kH, kW]
+    ///
+    /// Where:
+    /// - iC and oC are the input and output channel counts.
+    /// - iH and iW are the input image height and width.
+    /// - kH and kW are the kernel height and width.
+    ///
+    /// Returns a tensor of shape [..., oC, oH, oW] where oH and oW depend on
+    /// the size of the input image and kernel. For example, a 10x10 image and a
+    /// 3x3 kernel would result in an 8x8 output. This is the behavior of
+    /// `padding='valid'` in PyTorch and `mode='valid'` in SciPy. If padding is
+    /// needed, it should be handled separately.
+    ///
+    /// # Broadcasting
+    ///
+    /// If `self` has only 2 dimensions, iC is taken to be 1.
+    ///
+    /// `kernel` will be broadcast on the iC dimension. In other words:
+    /// - Shape [kH, kW] is broadcast to [1, iC, kH, kW] for the computation,
+    ///   then a result of shape [..., oH, oW] is returned.
+    /// - Shape [oC, kH, kW] is broadcast to [oC, iC, kH, kW] for the computation,
+    ///   then a result of shape [..., oC, oH, oW] is returned.
+    ///
+    /// # Terminology note
+    ///
+    /// This is called `conv2d` for consistency with PyTorch, but is
+    /// actually cross-correlation. The distinction is that for a proper
+    /// convolution we would flip the kernel then do cross-correlation.)
+    ///
+    /// # Panics
+    ///
+    /// This operation can panic on various misconfigured input shapes, such
+    /// as having the wrong number of dimensions, mismatched dimensions, or
+    /// if the kernel is bigger than the image.
+    #[allow(clippy::doc_markdown)]
+    pub fn conv2d(&self, kernel: &Self) -> Self
+    where
+        E: Num,
+    {
+        let (im_s, ker_s) = (self.shape(), kernel.shape());
+        let (im_nd, ker_nd) = (im_s.ndims(), ker_s.ndims());
+
+        assert!(im_nd >= 2, "conv2d image has too few dims");
+        assert!(ker_nd >= 2, "conv2d kernel has too few dims");
+        assert!(ker_nd <= 4, "conv2d kernel has too many dims");
+
+        if im_nd < 3 {
+            // broadcast and try again
+            return self.expand_dims(0).conv2d(kernel);
+        }
+
+        let batch_nd = im_nd - 3;
+
+        let ic = im_s[im_nd - 3];
+        let ih = im_s[im_nd - 2];
+        let iw = im_s[im_nd - 1];
+        let kh = ker_s[ker_nd - 2];
+        let kw = ker_s[ker_nd - 1];
+
+        if ker_nd == 2 {
+            // broadcast and try again
+            let ker = kernel.expand_dims(0).expand_dims(0);
+            let ker = Tensor(I::expand::<E>(&ker.0, &[1, ic, kh, kw]), PhantomData);
+            return self.conv2d(&ker).squeeze(&Axes::Axis(batch_nd));
+        }
+
+        let oc = ker_s[0];
+
+        if ker_nd == 3 {
+            // broadcast and try again
+            let ker = kernel.expand_dims(1);
+            let ker = Tensor(I::expand::<E>(&ker.0, &[oc, ic, kh, kw]), PhantomData);
+            return self.conv2d(&ker);
+        }
+
+        assert!(
+            ker_s[1] == ic,
+            "conv2d kernel channels {} does not match image channels {ic}",
+            ker_s[1],
+        );
+        assert!(
+            kh <= ih && kw <= iw,
+            "conv2d kernel shape [...,{kh},{kw}] too big for image shape [...,{ih},{iw}]"
+        );
+
+        let oh = ih - kh + 1;
+        let ow = iw - kw + 1;
+
+        // [..., iC, iH, iW] -> [..., 1, iC, oH, oW, kH, kW]
+        let im: Self = {
+            // [..., iC, iH, iW] -> [..., iC, oH, oW, kH, kW]
+            let im = Tensor(I::im2col::<E>(&self.0, &[(kh, 1), (kw, 1)]), PhantomData);
+            let mut shape: Vec<usize> = Vec::new();
+            shape.extend_from_slice(&im_s[..batch_nd]);
+            shape.extend_from_slice(&[1, ic, oh, ow, kh, kw]);
+            im.reshape(&shape[..])
+        };
+
+        // [oC, iC, kH, kW] -> [..., oC, iC, 1, 1, kH, kW]
+        let ker: Self = {
+            let mut shape: Vec<usize> = Vec::new();
+            shape.extend(std::iter::repeat_n(1, batch_nd));
+            shape.extend_from_slice(&[oc, ic, 1, 1, kh, kw]);
+            kernel.reshape(&shape[..])
+        };
+
+        //    [...,  1, iC, oH, oW, kH, kW]
+        // *  [..., oC, iC,  1,  1, kH, kW]
+        // =  [..., oC, iC, oH, oW, kH, kW]
+        let prod = im.mul(&ker);
+
+        // batch_nd+ 0   1   2   3   4   5
+        //    [..., oC, iC, oH, oW, kH, kW]
+        // -> [..., oC,  1, oH, oW,  1,  1] sum
+        // -> [..., oC,     oH, oW        ] squeeze
+        let dims = vec![batch_nd + 1, batch_nd + 4, batch_nd + 5];
+        prod.sum(&dims[..]).squeeze(&Axes::Axes(dims))
     }
 
     // activation functions

@@ -767,6 +767,10 @@ impl RawTensorOps for WgpuRawTensorImpl {
         t.with_strider(strider)
     }
 
+    fn im2col<E: Elem>(t: &Self::Repr<E>, dims: &[(usize, usize)]) -> Self::Repr<E> {
+        t.with_strider(t.strider.im2col(dims).unwrap())
+    }
+
     fn new<E: Elem>(shape: &[usize], data: &[E]) -> Self::Repr<E> {
         WgpuRawTensor::new(shape, data, get_wgpu_device())
     }
