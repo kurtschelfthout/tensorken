@@ -1,6 +1,6 @@
 use crate::{
     num::{Bool, CastFrom, Elem, Float, Num},
-    Shape,
+    CorrelateOpts, Shape,
 };
 
 /// Contains "mid level" operations (this is tinygrad terminology) that are differentiable.
@@ -85,5 +85,9 @@ pub trait DiffableOps {
 
     // a special case
 
-    fn conv2d<E: Num>(im: &Self::Repr<E>, ker: &Self::Repr<E>) -> Self::Repr<E>;
+    fn correlate<E: Num, const N: usize>(
+        im: &Self::Repr<E>,
+        ker: &Self::Repr<E>,
+        opts: CorrelateOpts<N>,
+    ) -> Self::Repr<E>;
 }

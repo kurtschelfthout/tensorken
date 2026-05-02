@@ -1,3 +1,97 @@
+/// A struct for cross-correlation parameters.
+///
+/// Given an image shape and kernel, a cross-correlation can be thought of as
+/// a sparse matrix mapping the flattened input image to the flattened output
+/// image and whose nonzero elements are taken from the kernel. For example,
+/// consider the following 2x2 kernel:
+///
+/// ```text
+/// [[1, 2],
+///  [3, 4]]
+/// ```
+///
+/// With this kernel and `CorrelateOpts::default()`, the output of `correlate()`
+/// on a 3x3 image is a 2x2 image, and the flattened output is the same as
+/// multiplying the following matrix with the flattened input image:
+///
+/// ```text
+/// [[1, 2, 0, 3, 4, 0, 0, 0, 0],
+///  [0, 1, 2, 0, 3, 4, 0, 0, 0],
+///  [0, 0, 0, 1, 2, 0, 3, 4, 0],
+///  [0, 0, 0, 0, 1, 2, 0, 3, 4]]
+/// ```
+///
+/// `CorrelateOpts` can represent a wide variety of such sparse matrices.
+/// `iter_tensor_index` provides a way to iterate over the elements that are
+/// taken from the kernel.
+///
+/// # Transposes
+///
+/// It gets interesting when we consider the *transpose* of this matrix, and
+/// thus the transpose of this correlation. A natural question to ask is whether
+/// the resulting matrix can also be represented with `CorrelateOpts`, and
+/// indeed it can.
+///
+/// Before we continue, notice that every row in the above matrix contains
+/// `1, 2, ..., 3, 4` at some offset, where the number of zeros between these
+/// entries are fixed. If `CorrelateOpts` is going to be able to represent
+/// a matrix, a necessary (but not sufficient) condition is that all rows have
+/// this sequence or a truncated version of it.
+///
+/// Let's start by considering the correlation of a 2x2 image padded with zeros.
+/// The padded image will have 16 elements, and the matrix will be 9x16:
+///
+/// ```text
+///                                                    [0,
+///                                                     0,
+///                                                     0,
+/// [[1, 2, 0, 0, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],  0,
+///  [0, 1, 2, 0, 0, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0],  0,
+///  [0, 0, 1, 2, 0, 0, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0],  a,
+///  [0, 0, 0, 0, 1, 2, 0, 0, 3, 4, 0, 0, 0, 0, 0, 0],  b,
+///  [0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4, 0, 0, 0, 0, 0],  0,
+///  [0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4, 0, 0, 0, 0],  0,
+///  [0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4, 0, 0],  c,
+///  [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4, 0],  d,
+///  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4]]  0,
+///                                                     0,
+///                                                     0,
+///                                                     0,
+///                                                     0]
+/// ```
+///
+/// Many of the columns of this matrix are `4 3 0 2 1` or a truncation of
+/// it at some offset. However, a few, such as the middle two, are not.
+/// Thus, the transpose of this matrix can't be represented by `CorrelateOpts`.
+/// However, since since the padding in the input image is known to be zero,
+/// we can delete columns for padding elements without changing the result,
+/// giving the following 9x4 matrix and 4-element image:
+///
+/// ```text
+/// [[4, 0, 0, 0,],
+///  [3, 4, 0, 0,],
+///  [0, 3, 0, 0,], [a,
+///  [2, 0, 4, 0,],  b,
+///  [1, 2, 3, 4,],  c,
+///  [0, 1, 0, 3,],  d]
+///  [0, 0, 2, 0,],
+///  [0, 0, 1, 2,],
+///  [0, 0, 0, 1,]]
+/// ```
+///
+/// Transposing this we get the following:
+///
+/// ```text
+/// [[4, 3, 0, 2, 1, 0, 0, 0, 0],
+///  [0, 4, 3, 0, 2, 1, 0, 0, 0],
+///  [0, 0, 0, 4, 3, 0, 2, 1, 0],
+///  [0, 0, 0, 0, 4, 3, 0, 2, 1]]
+/// ```
+///
+/// Note that this matrix can be interpreted as an un-padded correlation with
+/// the kernel `[[4, 3], [2, 1]]`. Thus the transpose of our initial padded
+/// correlation with `[[1, 2], [3, 4]]` is a regular correlation with the
+/// kernel flipped.
 #[derive(Copy, Clone, Debug)]
 pub struct CorrelateOpts<const N: usize> {
     /// The spacing within the image at which the kernel will be applied. Has

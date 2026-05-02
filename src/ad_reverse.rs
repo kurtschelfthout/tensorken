@@ -8,7 +8,7 @@ use crate::{
     ad_ops_reverse::{CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
     ad_trace::{Trace, TracedOp},
     num::{Bool, CastFrom, Elem, Float, Num},
-    DiffableOps, Shape, Tensor,
+    CorrelateOpts, DiffableOps, Shape, Tensor,
 };
 
 /// Reverse AD implementation.
@@ -181,7 +181,11 @@ impl<I: 'static + DiffableOps> DiffableOps for ReverseImpl<I> {
         Reverse::Lift(I::cast(t.primal()))
     }
 
-    fn conv2d<E: Num>(im: &Self::Repr<E>, ker: &Self::Repr<E>) -> Self::Repr<E> {
+    fn correlate<E: Num, const N: usize>(
+        _im: &Self::Repr<E>,
+        _ker: &Self::Repr<E>,
+        _opts: CorrelateOpts<N>,
+    ) -> Self::Repr<E> {
         todo!()
     }
 }

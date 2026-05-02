@@ -7,7 +7,7 @@ use crate::{
     },
     ad_ops_forward::{CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
     num::{Bool, CastFrom, Elem, Float, Num},
-    DiffableOps, Shape, Tensor,
+    CorrelateOpts, DiffableOps, Shape, Tensor,
 };
 
 /// Forward AD implementation.
@@ -155,7 +155,11 @@ impl<I: DiffableOps> DiffableOps for ForwardImpl<I> {
         Forward::Lift(I::cast(t.primal()))
     }
 
-    fn conv2d<E: Num>(im: &Self::Repr<E>, ker: &Self::Repr<E>) -> Self::Repr<E> {
+    fn correlate<E: Num, const N: usize>(
+        _im: &Self::Repr<E>,
+        _ker: &Self::Repr<E>,
+        _opts: CorrelateOpts<N>,
+    ) -> Self::Repr<E> {
         todo!()
     }
 }

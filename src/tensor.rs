@@ -99,12 +99,12 @@ impl<I: RawTensorOps> DiffableOps for I {
         I::cast(t)
     }
 
-    fn conv2d<E: Num>(im: &Self::Repr<E>, ker: &Self::Repr<E>) -> Self::Repr<E> {
-        I::correlate(
-            im,
-            ker,
-            CorrelateOpts::default().with_dilation(2).pad_same(),
-        )
+    fn correlate<E: Num, const N: usize>(
+        im: &Self::Repr<E>,
+        ker: &Self::Repr<E>,
+        opts: CorrelateOpts<N>,
+    ) -> Self::Repr<E> {
+        I::correlate(im, ker, opts)
     }
 }
 
@@ -697,15 +697,15 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
     /// 2D cross-correlation of this tensor with the given kernel.
     ///
     /// Parameters:
-    /// - `self`: A tensor of shape [..., iC, iH, iW]
-    /// - `kernel`: A tensor of shape [oC, iC, kH, kW]
+    /// - `self`: A tensor of shape `[..., iC, iH, iW]`
+    /// - `kernel`: A tensor of shape `[oC, iC, kH, kW]`
     ///
     /// Where:
     /// - iC and oC are the input and output channel counts.
     /// - iH and iW are the input image height and width.
     /// - kH and kW are the kernel height and width.
     ///
-    /// Returns a tensor of shape [..., oC, oH, oW] where oH and oW depend on
+    /// Returns a tensor of shape `[..., oC, oH, oW]` where oH and oW depend on
     /// the size of the input image and kernel. For example, a 10x10 image and a
     /// 3x3 kernel would result in an 8x8 output. This is the behavior of
     /// `padding='valid'` in PyTorch and `mode='valid'` in SciPy. If padding is
@@ -716,16 +716,16 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
     /// If `self` has only 2 dimensions, iC is taken to be 1.
     ///
     /// `kernel` will be broadcast on the iC dimension. In other words:
-    /// - Shape [kH, kW] is broadcast to [1, iC, kH, kW] for the computation,
-    ///   then a result of shape [..., oH, oW] is returned.
-    /// - Shape [oC, kH, kW] is broadcast to [oC, iC, kH, kW] for the computation,
-    ///   then a result of shape [..., oC, oH, oW] is returned.
+    /// - Shape `[kH, kW]` is broadcast to `[1, iC, kH, kW]` for the computation,
+    ///   then a result of shape `[..., oH, oW]` is returned.
+    /// - Shape `[oC, kH, kW]` is broadcast to `[oC, iC, kH, kW]` for the computation,
+    ///   then a result of shape `[..., oC, oH, oW]` is returned.
     ///
     /// # Terminology note
     ///
     /// This is called `conv2d` for consistency with PyTorch, but is
     /// actually cross-correlation. The distinction is that for a proper
-    /// convolution we would flip the kernel then do cross-correlation.)
+    /// convolution we would flip the kernel then do cross-correlation.
     ///
     /// # Panics
     ///
@@ -783,7 +783,10 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
             "conv2d kernel shape [...,{kh},{kw}] too big for image shape [...,{ih},{iw}]"
         );
 
-        Self(I::conv2d::<E>(&self.0, &kernel.0), PhantomData)
+        Self(
+            I::correlate::<E, 2>(&self.0, &kernel.0, CorrelateOpts::default()),
+            PhantomData,
+        )
     }
 
     // activation functions
