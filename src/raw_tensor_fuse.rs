@@ -160,10 +160,6 @@ impl<I: RawTensorOps> RawTensorOps for FuseImpl<I> {
         unary_no_fuse(t, move |x| I::crop(x, &vec))
     }
 
-    fn im2col<E: Elem>(t: &Self::Repr<E>, dims: &[(usize, usize)]) -> Self::Repr<E> {
-        unary_no_fuse(t, move |x| I::im2col(x, dims))
-    }
-
     fn new<E: Elem>(shape: &[usize], data: &[E]) -> Self::Repr<E> {
         let traw = I::new(shape, data);
         Fuse::new(traw)
@@ -174,6 +170,14 @@ impl<I: RawTensorOps> RawTensorOps for FuseImpl<I> {
             Fuse::Mul(lhs, _, _) => I::shape(lhs),
             Fuse::Val(t) => I::shape(t),
         }
+    }
+
+    fn correlate<const N: usize, E: Num>(
+        im: &Self::Repr<E>,
+        ker: &Self::Repr<E>,
+        opts: crate::CorrelateOpts<N>,
+    ) -> Self::Repr<E> {
+        binary_no_fuse(im, ker, move |im, ker| I::correlate(im, ker, opts))
     }
 
     fn fused_multiply_add<E: Num>(

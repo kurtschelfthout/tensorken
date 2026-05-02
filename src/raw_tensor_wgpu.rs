@@ -13,7 +13,7 @@ use crate::{
     shape::Shape,
     shape_strider::{ShapeStrider, Stride},
     wgpu_context::{get_wgpu_device, WgpuContext, WorkgroupSize},
-    CpuRawTensor,
+    CorrelateOpts, CpuRawTensor,
 };
 
 // Misc WGSL notes/tips:
@@ -767,16 +767,20 @@ impl RawTensorOps for WgpuRawTensorImpl {
         t.with_strider(strider)
     }
 
-    fn im2col<E: Elem>(t: &Self::Repr<E>, dims: &[(usize, usize)]) -> Self::Repr<E> {
-        t.with_strider(t.strider.im2col(dims).unwrap())
-    }
-
     fn new<E: Elem>(shape: &[usize], data: &[E]) -> Self::Repr<E> {
         WgpuRawTensor::new(shape, data, get_wgpu_device())
     }
 
     fn shape<E: Clone>(t: &Self::Repr<E>) -> &[usize] {
         t.strider.shape()
+    }
+
+    fn correlate<const N: usize, E: Num>(
+        _im: &Self::Repr<E>,
+        _ker: &Self::Repr<E>,
+        _opts: CorrelateOpts<N>,
+    ) -> Self::Repr<E> {
+        todo!()
     }
 
     fn fused_multiply_add<E: Num>(

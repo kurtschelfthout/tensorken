@@ -6,6 +6,7 @@ mod ad_ops_forward;
 mod ad_ops_reverse;
 mod ad_reverse;
 mod ad_trace;
+mod conv;
 mod diffable;
 mod indexing;
 mod math_macros;
@@ -30,6 +31,7 @@ pub use ad_reverse::{
     grad1, grad2, jacrev, value_and_grad1, value_and_grad2, value_and_gradn, vjpn, PullBack,
     Reverse, ReverseImpl,
 };
+pub use conv::{CorrelateOpts, CorrelatePad};
 pub use diffable::DiffableOps;
 pub use indexing::{hd, tl, BasicIndex, Ellipsis, IndexSpec, IndexSpecBuilder, NewAxis};
 pub use raw_tensor::{RawTensorOps, ToCpu};

@@ -1,7 +1,7 @@
 use crate::{
     num::{Bool, CastFrom, Float, Num},
     shape_strider::ShapeStrider,
-    RawTensorOps, Shape,
+    CorrelateOpts, RawTensorOps, Shape,
 };
 
 #[derive(Clone, Debug)]
@@ -105,11 +105,6 @@ impl RawTensorOps for StringImpl {
         (s.crop(limits), format!("{t}.crop({limits:?})"))
     }
 
-    fn im2col<E: Clone>((s, t): &Self::Repr<E>, dims: &[(usize, usize)]) -> Self::Repr<E> {
-        let s = s.im2col(dims).unwrap();
-        (s, format!("{t}.im2col({dims:?})"))
-    }
-
     fn new<E: Clone>(shape: &[usize], data: &[E]) -> Self::Repr<E> {
         (
             ShapeStrider::contiguous(shape),
@@ -119,6 +114,16 @@ impl RawTensorOps for StringImpl {
 
     fn shape<E: Clone>(t: &Self::Repr<E>) -> &[usize] {
         t.0.shape()
+    }
+
+    fn correlate<const N: usize, E: Num>(
+        (ims, imt): &Self::Repr<E>,
+        (ks, kt): &Self::Repr<E>,
+        opts: CorrelateOpts<N>,
+    ) -> Self::Repr<E> {
+        let s = opts.output_shape(ims.shape(), ks.shape()).unwrap();
+        let s = ShapeStrider::contiguous(&s);
+        (s, format!("{imt}.correlate({kt}, {opts:?})"))
     }
 
     fn fused_multiply_add<E: Num>(

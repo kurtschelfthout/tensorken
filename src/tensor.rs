@@ -12,7 +12,7 @@ use crate::{
     raw_tensor::{RawTensorOps, ToCpu},
     raw_tensor_cpu::{CpuRawTensor, CpuRawTensorImpl},
     tensor_mut::TensorMut,
-    DiffableOps, Forward, ForwardImpl, Reverse, ReverseImpl, Shape,
+    CorrelateOpts, DiffableOps, Forward, ForwardImpl, Reverse, ReverseImpl, Shape,
 };
 
 /// Blanket implementation to translate from diffable tensor ops (`DiffableOps`) to low-level tensor ops (`RawTensorOps`).
@@ -87,10 +87,6 @@ impl<I: RawTensorOps> DiffableOps for I {
         I::flip(t, flips)
     }
 
-    fn im2col<E: Elem>(t: &Self::Repr<E>, dims: &[(usize, usize)]) -> Self::Repr<E> {
-        I::im2col(t, dims)
-    }
-
     fn new<E: Elem>(shape: &[usize], data: &[E]) -> Self::Repr<E> {
         I::new(shape, data)
     }
@@ -101,6 +97,14 @@ impl<I: RawTensorOps> DiffableOps for I {
 
     fn cast<EFro: Elem, ETo: CastFrom<EFro> + Elem>(t: &Self::Repr<EFro>) -> Self::Repr<ETo> {
         I::cast(t)
+    }
+
+    fn conv2d<E: Num>(im: &Self::Repr<E>, ker: &Self::Repr<E>) -> Self::Repr<E> {
+        I::correlate(
+            im,
+            ker,
+            CorrelateOpts::default().with_dilation(2).pad_same(),
+        )
     }
 }
 
@@ -779,38 +783,7 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
             "conv2d kernel shape [...,{kh},{kw}] too big for image shape [...,{ih},{iw}]"
         );
 
-        let oh = ih - kh + 1;
-        let ow = iw - kw + 1;
-
-        // [..., iC, iH, iW] -> [..., 1, iC, oH, oW, kH, kW]
-        let im: Self = {
-            // [..., iC, iH, iW] -> [..., iC, oH, oW, kH, kW]
-            let im = Tensor(I::im2col::<E>(&self.0, &[(kh, 1), (kw, 1)]), PhantomData);
-            let mut shape: Vec<usize> = Vec::new();
-            shape.extend_from_slice(&im_s[..batch_nd]);
-            shape.extend_from_slice(&[1, ic, oh, ow, kh, kw]);
-            im.reshape(&shape[..])
-        };
-
-        // [oC, iC, kH, kW] -> [..., oC, iC, 1, 1, kH, kW]
-        let ker: Self = {
-            let mut shape: Vec<usize> = Vec::new();
-            shape.extend(std::iter::repeat_n(1, batch_nd));
-            shape.extend_from_slice(&[oc, ic, 1, 1, kh, kw]);
-            kernel.reshape(&shape[..])
-        };
-
-        //    [...,  1, iC, oH, oW, kH, kW]
-        // *  [..., oC, iC,  1,  1, kH, kW]
-        // =  [..., oC, iC, oH, oW, kH, kW]
-        let prod = im.mul(&ker);
-
-        // batch_nd+ 0   1   2   3   4   5
-        //    [..., oC, iC, oH, oW, kH, kW]
-        // -> [..., oC,  1, oH, oW,  1,  1] sum
-        // -> [..., oC,     oH, oW        ] squeeze
-        let dims = vec![batch_nd + 1, batch_nd + 4, batch_nd + 5];
-        prod.sum(&dims[..]).squeeze(&Axes::Axes(dims))
+        Self(I::conv2d::<E>(&self.0, &kernel.0), PhantomData)
     }
 
     // activation functions
