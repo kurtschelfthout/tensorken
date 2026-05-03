@@ -1,9 +1,9 @@
 use std::marker::PhantomData;
 
 use crate::{
-    ad_ops::{UnaryDiffOp, UnaryOp},
+    ad_ops::{BinaryDiffOp, BinaryOp, UnaryDiffOp, UnaryOp},
     num::{Bool, CastFrom, Elem, Num},
-    DiffableOps,
+    CorrelateOpts, DiffableOps,
 };
 
 pub(crate) struct SumOp<E, I>(Vec<usize>, PhantomData<(E, I)>);
@@ -159,6 +159,77 @@ impl<T: Clone, E: Bool, I: DiffableOps<Repr<E> = T>> UnaryOp<T> for CropOp<E, I>
 impl<T: Clone, E: Bool, I: DiffableOps<Repr<E> = T>> UnaryDiffOp<T> for CropOp<E, I> {
     fn dfda(&self, d: &T) -> T {
         I::pad::<E>(d, &self.0)
+    }
+}
+
+pub(crate) struct CorrelateOp<T, E, I, const N: usize> {
+    im: T,
+    ker: T,
+    opts: CorrelateOpts<N>,
+    _phantom: PhantomData<(E, I)>,
+}
+
+impl<T, E, I, const N: usize> CorrelateOp<T, E, I, N> {
+    fn flips() -> Vec<bool> {
+        let mut res = vec![true; N + 2];
+        res[0] = false;
+        res[1] = false;
+        res
+    }
+
+    fn permutes() -> Vec<usize> {
+        let mut res: Vec<_> = (0..N + 2).collect();
+        res.swap(0, 1);
+        res
+    }
+}
+
+impl<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>, const N: usize> BinaryOp<T>
+    for CorrelateOp<T, E, I, N>
+{
+    type Args = CorrelateOpts<N>;
+
+    fn f(im: &T, ker: &T, &args: &CorrelateOpts<N>) -> (T, Self) {
+        let op = CorrelateOp {
+            im: im.clone(),
+            ker: ker.clone(),
+            opts: args,
+            _phantom: PhantomData,
+        };
+        (I::correlate::<E, N>(im, ker, args), op)
+    }
+}
+
+impl<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>, const N: usize> BinaryDiffOp<T>
+    for CorrelateOp<T, E, I, N>
+{
+    //           [ B, iC, iH, iW] * [oC, iC, kH, kW] -> [ B, oC, oH, oW]
+    // for f     [20,  3, 50, 60] * [ 8,  3,  5,  5] -> [20,  8, 46, 56]
+    // for dfda  [20,  8, 54, 64] * [ 3,  8,  5,  5] -> [20,  3, 50, 60]
+    //                  pad-^   permute-^  flip-^
+    // for dfdb  [ 3, 20, 50, 60] * [ 8, 20, 46, 56] -> [ 3,  8,  5,  5]
+    //       permute-^          permute-^           permute-^
+
+    fn dfda(&self, d: &T) -> T {
+        // wrt image. kernel is constant
+        I::correlate::<E, N>(
+            d,
+            &I::permute::<E>(&I::flip::<E>(&self.ker, &Self::flips()), &Self::permutes()),
+            self.opts.for_kernel_transpose(),
+        )
+    }
+
+    fn dfdb(&self, d: &T) -> T {
+        // wrt kernel. image is constant
+        let permutes = Self::permutes();
+        I::permute::<E>(
+            &I::correlate::<E, N>(
+                &I::permute::<E>(&self.im, &permutes),
+                &I::permute::<E>(d, &permutes),
+                self.opts.for_image_transpose(),
+            ),
+            &permutes,
+        )
     }
 }
 

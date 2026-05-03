@@ -5,7 +5,7 @@ use crate::{
         AddOp, BinaryDiffOp, BinaryOp, DivOp, ExpOp, FlipOp, LogOp, MulOp, PowOp, SubOp,
         UnaryDiffOp, UnaryOp,
     },
-    ad_ops_forward::{CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
+    ad_ops_forward::{CorrelateOp, CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
     num::{Bool, CastFrom, Elem, Float, Num},
     CorrelateOpts, DiffableOps, Shape, Tensor,
 };
@@ -53,11 +53,12 @@ impl<T> Forward<T> {
         }
     }
 
-    fn binary<Op: BinaryOp<T> + BinaryDiffOp<T>, E: Num, I: DiffableOps<Repr<E> = T>>(
+    fn binary_args<Op: BinaryOp<T> + BinaryDiffOp<T>, E: Num, I: DiffableOps<Repr<E> = T>>(
         &self,
         rhs: &Self,
+        args: &Op::Args,
     ) -> Self {
-        let (primal, op) = Op::f(self.primal(), rhs.primal());
+        let (primal, op) = Op::f(self.primal(), rhs.primal(), args);
         match (self, rhs) {
             (Self::Lift(_), Self::Lift(_)) => Self::Lift(primal),
             (Self::Lift(_), Self::Forward(_, tan)) => Self::Forward(primal, op.dfdb(tan)),
@@ -67,6 +68,13 @@ impl<T> Forward<T> {
                 I::elementwise_add::<E>(&op.dfda(left), &op.dfdb(right)),
             ),
         }
+    }
+
+    fn binary<Op: BinaryOp<T, Args = ()> + BinaryDiffOp<T>, E: Num, I: DiffableOps<Repr<E> = T>>(
+        &self,
+        rhs: &Self,
+    ) -> Self {
+        self.binary_args::<Op, E, I>(rhs, &())
     }
 }
 
@@ -156,11 +164,11 @@ impl<I: DiffableOps> DiffableOps for ForwardImpl<I> {
     }
 
     fn correlate<E: Num, const N: usize>(
-        _im: &Self::Repr<E>,
-        _ker: &Self::Repr<E>,
-        _opts: CorrelateOpts<N>,
+        im: &Self::Repr<E>,
+        ker: &Self::Repr<E>,
+        opts: CorrelateOpts<N>,
     ) -> Self::Repr<E> {
-        todo!()
+        im.binary_args::<CorrelateOp<I::Repr<E>, E, I, N>, E, I>(ker, &opts)
     }
 }
 

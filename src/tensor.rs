@@ -697,10 +697,11 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
     /// 2D cross-correlation of this tensor with the given kernel.
     ///
     /// Parameters:
-    /// - `self`: A tensor of shape `[..., iC, iH, iW]`
+    /// - `self`: A tensor of shape `[B, iC, iH, iW]`
     /// - `kernel`: A tensor of shape `[oC, iC, kH, kW]`
     ///
     /// Where:
+    /// - B is the batch dimension
     /// - iC and oC are the input and output channel counts.
     /// - iH and iW are the input image height and width.
     /// - kH and kW are the kernel height and width.
@@ -711,15 +712,8 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
     /// `padding='valid'` in PyTorch and `mode='valid'` in SciPy. If padding is
     /// needed, it should be handled separately.
     ///
-    /// # Broadcasting
-    ///
-    /// If `self` has only 2 dimensions, iC is taken to be 1.
-    ///
-    /// `kernel` will be broadcast on the iC dimension. In other words:
-    /// - Shape `[kH, kW]` is broadcast to `[1, iC, kH, kW]` for the computation,
-    ///   then a result of shape `[..., oH, oW]` is returned.
-    /// - Shape `[oC, kH, kW]` is broadcast to `[oC, iC, kH, kW]` for the computation,
-    ///   then a result of shape `[..., oC, oH, oW]` is returned.
+    /// This function performs no broadcasting, and both inputs must have
+    /// exactly 4 dimensions.
     ///
     /// # Terminology note
     ///
@@ -740,43 +734,18 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
         let (im_s, ker_s) = (self.shape(), kernel.shape());
         let (im_nd, ker_nd) = (im_s.ndims(), ker_s.ndims());
 
-        assert!(im_nd >= 2, "conv2d image has too few dims");
-        assert!(ker_nd >= 2, "conv2d kernel has too few dims");
-        assert!(ker_nd <= 4, "conv2d kernel has too many dims");
+        assert_eq!(im_nd, 4, "conv2d image has wrong dimension");
+        assert_eq!(ker_nd, 4, "conv2d kernel has wrong dimension");
 
-        if im_nd < 3 {
-            // broadcast and try again
-            return self.expand_dims(0).conv2d(kernel);
-        }
+        let ic = im_s[1];
+        let ih = im_s[2];
+        let iw = im_s[3];
+        let kh = ker_s[2];
+        let kw = ker_s[3];
 
-        let batch_nd = im_nd - 3;
-
-        let ic = im_s[im_nd - 3];
-        let ih = im_s[im_nd - 2];
-        let iw = im_s[im_nd - 1];
-        let kh = ker_s[ker_nd - 2];
-        let kw = ker_s[ker_nd - 1];
-
-        if ker_nd == 2 {
-            // broadcast and try again
-            let ker = kernel.expand_dims(0).expand_dims(0);
-            let ker = Tensor(I::expand::<E>(&ker.0, &[1, ic, kh, kw]), PhantomData);
-            return self.conv2d(&ker).squeeze(&Axes::Axis(batch_nd));
-        }
-
-        let oc = ker_s[0];
-
-        if ker_nd == 3 {
-            // broadcast and try again
-            let ker = kernel.expand_dims(1);
-            let ker = Tensor(I::expand::<E>(&ker.0, &[oc, ic, kh, kw]), PhantomData);
-            return self.conv2d(&ker);
-        }
-
-        assert!(
-            ker_s[1] == ic,
-            "conv2d kernel channels {} does not match image channels {ic}",
-            ker_s[1],
+        assert_eq!(
+            ker_s[1], ic,
+            "conv2d kernel channels does not match image channels",
         );
         assert!(
             kh <= ih && kw <= iw,

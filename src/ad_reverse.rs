@@ -5,7 +5,7 @@ use crate::{
         AddOp, BinaryDiffOp, BinaryOp, DivOp, ExpOp, FlipOp, LogOp, MulOp, PowOp, SubOp,
         UnaryDiffOp, UnaryOp,
     },
-    ad_ops_reverse::{CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
+    ad_ops_reverse::{CorrelateOp, CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
     ad_trace::{Trace, TracedOp},
     num::{Bool, CastFrom, Elem, Float, Num},
     CorrelateOpts, DiffableOps, Shape, Tensor,
@@ -75,8 +75,12 @@ impl<T> Reverse<T> {
         }
     }
 
-    fn binary<Op: BinaryOp<T> + BinaryDiffOp<T> + 'static>(&self, rhs: &Self) -> Self {
-        let (primal, op) = Op::f(self.primal(), rhs.primal());
+    fn binary_args<Op: BinaryOp<T> + BinaryDiffOp<T> + 'static>(
+        &self,
+        rhs: &Self,
+        args: &Op::Args,
+    ) -> Self {
+        let (primal, op) = Op::f(self.primal(), rhs.primal(), args);
         match (self, rhs) {
             (Self::Lift(_), Self::Lift(_)) => Self::Lift(primal),
             (Self::Lift(_), Self::Reverse(trace, _, idx)) => {
@@ -93,6 +97,10 @@ impl<T> Reverse<T> {
                 Self::push_op(left_trace, primal, op)
             }
         }
+    }
+
+    fn binary<Op: BinaryOp<T, Args = ()> + BinaryDiffOp<T> + 'static>(&self, rhs: &Self) -> Self {
+        self.binary_args::<Op>(rhs, &())
     }
 }
 
@@ -182,11 +190,11 @@ impl<I: 'static + DiffableOps> DiffableOps for ReverseImpl<I> {
     }
 
     fn correlate<E: Num, const N: usize>(
-        _im: &Self::Repr<E>,
-        _ker: &Self::Repr<E>,
-        _opts: CorrelateOpts<N>,
+        im: &Self::Repr<E>,
+        ker: &Self::Repr<E>,
+        opts: CorrelateOpts<N>,
     ) -> Self::Repr<E> {
-        todo!()
+        im.binary_args::<CorrelateOp<I::Repr<E>, E, I, N>>(ker, &opts)
     }
 }
 

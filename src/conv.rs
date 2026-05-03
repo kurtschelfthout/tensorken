@@ -24,74 +24,6 @@
 /// `CorrelateOpts` can represent a wide variety of such sparse matrices.
 /// `iter_tensor_index` provides a way to iterate over the elements that are
 /// taken from the kernel.
-///
-/// # Transposes
-///
-/// It gets interesting when we consider the *transpose* of this matrix, and
-/// thus the transpose of this correlation. A natural question to ask is whether
-/// the resulting matrix can also be represented with `CorrelateOpts`, and
-/// indeed it can.
-///
-/// Before we continue, notice that every row in the above matrix contains
-/// `1, 2, ..., 3, 4` at some offset, where the number of zeros between these
-/// entries are fixed. If `CorrelateOpts` is going to be able to represent
-/// a matrix, a necessary (but not sufficient) condition is that all rows have
-/// this sequence or a truncated version of it.
-///
-/// Let's start by considering the correlation of a 2x2 image padded with zeros.
-/// The padded image will have 16 elements, and the matrix will be 9x16:
-///
-/// ```text
-///                                                    [0,
-///                                                     0,
-///                                                     0,
-/// [[1, 2, 0, 0, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],  0,
-///  [0, 1, 2, 0, 0, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0],  0,
-///  [0, 0, 1, 2, 0, 0, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0],  a,
-///  [0, 0, 0, 0, 1, 2, 0, 0, 3, 4, 0, 0, 0, 0, 0, 0],  b,
-///  [0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4, 0, 0, 0, 0, 0],  0,
-///  [0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4, 0, 0, 0, 0],  0,
-///  [0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4, 0, 0],  c,
-///  [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4, 0],  d,
-///  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4]]  0,
-///                                                     0,
-///                                                     0,
-///                                                     0,
-///                                                     0]
-/// ```
-///
-/// Many of the columns of this matrix are `4 3 0 2 1` or a truncation of
-/// it at some offset. However, a few, such as the middle two, are not.
-/// Thus, the transpose of this matrix can't be represented by `CorrelateOpts`.
-/// However, since since the padding in the input image is known to be zero,
-/// we can delete columns for padding elements without changing the result,
-/// giving the following 9x4 matrix and 4-element image:
-///
-/// ```text
-/// [[4, 0, 0, 0,],
-///  [3, 4, 0, 0,],
-///  [0, 3, 0, 0,], [a,
-///  [2, 0, 4, 0,],  b,
-///  [1, 2, 3, 4,],  c,
-///  [0, 1, 0, 3,],  d]
-///  [0, 0, 2, 0,],
-///  [0, 0, 1, 2,],
-///  [0, 0, 0, 1,]]
-/// ```
-///
-/// Transposing this we get the following:
-///
-/// ```text
-/// [[4, 3, 0, 2, 1, 0, 0, 0, 0],
-///  [0, 4, 3, 0, 2, 1, 0, 0, 0],
-///  [0, 0, 0, 4, 3, 0, 2, 1, 0],
-///  [0, 0, 0, 0, 4, 3, 0, 2, 1]]
-/// ```
-///
-/// Note that this matrix can be interpreted as an un-padded correlation with
-/// the kernel `[[4, 3], [2, 1]]`. Thus the transpose of our initial padded
-/// correlation with `[[1, 2], [3, 4]]` is a regular correlation with the
-/// kernel flipped.
 #[derive(Copy, Clone, Debug)]
 pub struct CorrelateOpts<const N: usize> {
     /// The spacing within the image at which the kernel will be applied. Has
@@ -129,26 +61,26 @@ impl<const N: usize> CorrelateOpts<N> {
     ///
     /// If the shapes are inconsistent with the rules.
     pub fn output_shape(&self, im: &[usize], ker: &[usize]) -> Result<Vec<usize>, String> {
-        if im.len() < N + 1 {
+        if im.len() != N + 2 {
             return Err(format!("invalid image shape for correlate(): {im:?}"));
         }
         if ker.len() != N + 2 {
             return Err(format!("invalid kernel shape for correlate(): {ker:?}"));
         }
 
-        let n_batch = im.len() - N - 1;
-        let ic = im[n_batch];
+        let batch = im[0];
         let oc = ker[0];
-        if ker[1] != ic {
+        let ic = ker[1];
+        if im[1] != ic {
             return Err(format!("image and kernel mismatch in iC: {im:?} {ker:?}"));
         }
 
-        let im0 = &im[n_batch + 1..];
+        let im0 = &im[2..];
         let ker0 = &ker[2..];
         let padding = self.padding.as_pad(self.dilation, ker0);
 
-        let mut out = Vec::with_capacity(n_batch + 1 + N);
-        out.extend_from_slice(&im[..n_batch]);
+        let mut out = Vec::with_capacity(N + 2);
+        out.push(batch);
         out.push(oc);
 
         for i in 0..N {
@@ -171,6 +103,27 @@ impl<const N: usize> CorrelateOpts<N> {
         }
 
         Ok(out)
+    }
+
+    fn assert_can_transpose(&self) {
+        // While in principle we can compute the parameters for the transpose,
+        // the math is tricky and I haven't gotten around to figuring it out yet.
+        assert!(self.stride.iter().all(|x| *x == 1));
+        assert!(self.dilation.iter().all(|x| *x == 1));
+        assert!(self.fill.iter().all(|x| *x == 1));
+        assert_eq!(self.padding, CorrelatePad::Valid);
+    }
+
+    #[must_use]
+    pub fn for_image_transpose(&self) -> Self {
+        self.assert_can_transpose();
+        Self::default()
+    }
+
+    #[must_use]
+    pub fn for_kernel_transpose(&self) -> Self {
+        self.assert_can_transpose();
+        Self::default().pad_full()
     }
 
     /// Given an output tensor index, return an iterator over image and kernel
@@ -241,18 +194,18 @@ impl<const N: usize> CorrelateOpts<N> {
     }
 }
 
-impl Default for CorrelateOpts<2> {
+impl<const N: usize> Default for CorrelateOpts<N> {
     fn default() -> Self {
         Self {
-            stride: [1, 1],
-            dilation: [1, 1],
-            fill: [1, 1],
+            stride: [1; N],
+            dilation: [1; N],
+            fill: [1; N],
             padding: CorrelatePad::Valid,
         }
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum CorrelatePad<const N: usize> {
     /// No padding
     Valid,
@@ -412,25 +365,25 @@ fn test_correlate_index_increment() {
 
 #[derive(Debug)]
 pub struct CorrelateIndexIterator<const N: usize> {
+    batch: usize,
+    channel: usize,
     dilation: CorrelateIndex<N>,
     fill: CorrelateIndex<N>,
     im_start: CorrelateIndex<N>,
     im_mod: CorrelateIndex<N>,
-    im_extra: Vec<usize>,
     ker_mod: CorrelateIndex<N>,
-    ker_extra: Vec<usize>,
     next: CorrelateIndex<N>,
 }
 
-// In the two dimensional case, [.., oc, oy, ox] maps to starting indices
-// [.., 0, iy, ix] and [oc, 0, ky, kx], and we just iterate over all valid
+// In the two dimensional case, [b, oc, oy, ox] maps to starting indices
+// [b, 0, iy, ix] and [oc, 0, ky, kx], and we just iterate over all valid
 // values of the last 3 indices.
 
 impl<const N: usize> CorrelateIndexIterator<N> {
     fn new(opts: &CorrelateOpts<N>, im: &[usize], ker: &[usize], out: &[usize]) -> Self {
         use std::array::from_fn;
 
-        let n = out.len() - N - 1;
+        assert_eq!(out.len(), N + 2);
 
         let im_start: Vec<isize> = {
             opts.padding
@@ -440,7 +393,7 @@ impl<const N: usize> CorrelateIndexIterator<N> {
                 .map(|(i, (pad, _))| {
                     let pad = pad.cast_signed();
                     let fill = opts.fill[i].cast_signed();
-                    let out = out[n + i + 1].cast_signed();
+                    let out = out[i + 2].cast_signed();
                     let stride = opts.stride[i].cast_signed();
                     -pad * fill + out * stride
                 })
@@ -448,13 +401,13 @@ impl<const N: usize> CorrelateIndexIterator<N> {
         };
 
         Self {
+            batch: out[0],
+            channel: out[1],
             dilation: CorrelateIndex(1, from_fn(|i| opts.dilation[i].cast_signed())),
             fill: CorrelateIndex(1, from_fn(|i| opts.fill[i].cast_signed())),
             im_start: CorrelateIndex(0, from_fn(|i| im_start[i])),
-            im_mod: CorrelateIndex::from_usize_slice(&im[n..]),
-            im_extra: out[..n].to_vec(),
+            im_mod: CorrelateIndex::from_usize_slice(&im[1..]),
             ker_mod: CorrelateIndex::from_usize_slice(&ker[1..]),
-            ker_extra: vec![out[n]],
             next: CorrelateIndex::zero(),
         }
     }
@@ -475,8 +428,8 @@ impl<const N: usize> Iterator for CorrelateIndexIterator<N> {
 
             if let Some(im_next) = im_filled_next.try_divide(&self.fill) {
                 if self.im_mod.contains(&im_next) {
-                    let mut im_at = self.im_extra.clone();
-                    let mut ker_at = self.ker_extra.clone();
+                    let mut im_at = vec![self.batch];
+                    let mut ker_at = vec![self.channel];
                     im_at.extend(im_next.iter_usize());
                     ker_at.extend(ker_next.iter_usize());
                     return Some((im_at, ker_at));

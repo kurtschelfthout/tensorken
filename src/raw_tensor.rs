@@ -106,13 +106,13 @@ pub trait RawTensorOps {
 
     /// Return the N-dimensional cross-correlation of `im` with the given kernel.
     ///
-    /// - `im` should have shape `[..N, iC, ..isize]`
+    /// - `im` should have shape `[B, iC, ..isize]`
     /// - `ker` should have shape [oC, iC, ..ksize]
     /// - Returns a tensor with shape `[..N, oC, ..osize]`
     ///
     /// Where:
     ///
-    /// - `..N` is an arbitrary shape
+    /// - `B` is the batch size
     /// - `iC` is the number of input channels
     /// - `oC` is the number of output channels
     /// - `..isize` is an N-D shape representing the image dimensions
@@ -128,9 +128,9 @@ pub trait RawTensorOps {
     /// For example, a 2D convolution of 20 300x100 RGB images with a single 5x5
     /// kernel would involve the following shapes:
     ///
-    /// - `im` is `[30, 3, 100, 300]`
+    /// - `im` is `[20, 3, 100, 300]`
     /// - `ker` is `[1, 3, 5, 5]`
-    /// - Returns `[1, 3, 100, 300]`
+    /// - Returns `[20, 1, 100, 300]`
     ///
     /// This operation is in principle equivalent to some movement operations
     /// and a fused multiply-add, but can be done more efficiently in a single
