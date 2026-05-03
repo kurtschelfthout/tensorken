@@ -95,6 +95,28 @@ impl ShapeStrider {
         self.offset
     }
 
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_possible_wrap)]
+    #[allow(clippy::cast_lossless)]
+    pub(crate) fn i32_strides(&self) -> Vec<i32> {
+        let zero_offset = self.i32_offset();
+        (0..self.shape.len())
+            .map(|i| {
+                let index: Vec<_> = (0..self.shape.len()).map(|j| (i == j) as usize).collect();
+                let dim_offset = self.buffer_index(&index) as i32;
+                dim_offset - zero_offset
+            })
+            .collect()
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_possible_wrap)]
+    #[allow(clippy::cast_lossless)]
+    pub(crate) fn i32_offset(&self) -> i32 {
+        let zeros = vec![0; self.shape.len()];
+        self.buffer_index(&zeros) as i32
+    }
+
     pub(crate) fn buffer_index(&self, index: &[usize]) -> usize {
         self.offset
             + index

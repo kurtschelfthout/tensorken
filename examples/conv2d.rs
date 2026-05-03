@@ -1,4 +1,4 @@
-type Tr = tensorken::Cpu32;
+type Tr = tensorken::Wgpu32;
 
 fn ofshape(s: &[usize]) -> Tr {
     let prod: usize = s.iter().product();

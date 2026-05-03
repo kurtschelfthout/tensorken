@@ -298,12 +298,13 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
         // benchmarks like matmul fail at higher sizes.
         // See https://github.com/gfx-rs/wgpu/issues/3806
         let index = self.queue().submit(Some(encoder.finish()));
-        self.device()
-            .poll(wgpu::PollType::Wait {
-                submission_index: Some(index),
-                timeout: None,
-            })
-            .expect("poll failed");
+        // self.device()
+        //     .poll(wgpu::PollType::Wait {
+        //         submission_index: Some(index),
+        //         timeout: None,
+        //     })
+        //     .expect("poll failed");
+        let _ = index;
     }
 
     fn pipeline_for(
@@ -568,6 +569,87 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
         self.with_buffer_strider(output_buffer, output_strider)
     }
 
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_possible_wrap)]
+    fn correlate_impl<const N: usize>(&self, ker: &Self, opts: CorrelateOpts<N>) -> Self {
+        assert_eq!(N, 2, "wgpu backend currently only supports 2D correlation");
+
+        let im_shape = self.strider.shape();
+        let ker_shape = ker.strider.shape();
+
+        let out_shape = opts.output_shape(im_shape, ker_shape).unwrap();
+        let out_strider = ShapeStrider::contiguous(&out_shape);
+        let out_buffer = self.make_output_buffer(out_strider.size(), "corr");
+
+        let (workgroup_size, workgroup_count, chunk_size) =
+            Self::counts_n_sizes(out_strider.size());
+        let compute_pipeline =
+            self.pipeline_for("correlate2d", E::WGPU_ELEMENT_NAME, workgroup_size);
+
+        let params = {
+            let mut buf = BufferBuilder::new();
+
+            let pads = opts.padding(ker_shape);
+            let pad_start: Vec<_> = pads.into_iter().map(|(a, _)| a).collect();
+            let pad_end: Vec<_> = pads.into_iter().map(|(_, b)| b).collect();
+
+            buf.push_vec4i(&cast_vec4i(im_shape));
+            buf.push_vec4i(&self.strider.i32_strides());
+            buf.push_vec4i(&cast_vec4i(ker_shape));
+            buf.push_vec4i(&ker.strider.i32_strides());
+            buf.push_vec4i(&cast_vec4i(&out_shape));
+            buf.push_vec4i(&out_strider.i32_strides());
+
+            buf.push_vec2i(&cast_vec2i(&opts.stride));
+            buf.push_vec2i(&cast_vec2i(&opts.dilation));
+            buf.push_vec2i(&cast_vec2i(&opts.fill));
+            buf.push_vec2i(&cast_vec2i(&pad_start));
+            buf.push_vec2i(&cast_vec2i(&pad_end));
+
+            // the shader thinks chunk_size is a u32. just saves us a bitcast
+            buf.push_i32(chunk_size as i32);
+            buf.push_i32(self.strider.i32_offset());
+            buf.push_i32(ker.strider.i32_offset());
+
+            self.device()
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    usage: wgpu::BufferUsages::UNIFORM,
+                    label: Some("correlate2d params"),
+                    contents: buf.finish().as_slice(),
+                })
+        };
+
+        let bind_group = {
+            let bind_group_layout = compute_pipeline.get_bind_group_layout(0);
+            self.device().create_bind_group(&wgpu::BindGroupDescriptor {
+                label: None,
+                layout: &bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: self.buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: ker.buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: out_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: params.as_entire_binding(),
+                    },
+                ],
+            })
+        };
+
+        self.encode_and_submit(compute_pipeline.as_ref(), &bind_group, workgroup_count);
+
+        self.with_buffer_strider(out_buffer, out_strider)
+    }
+
     /// Elementwise multiply of self with other, followed by summing along the given axes, in
     /// a single operation.
     /// Allocates a new buffer. Resulting tensor is contiguous.
@@ -668,6 +750,60 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
             panic!("Failed to read buffer from GPU")
         }
     }
+}
+
+struct BufferBuilder {
+    max_align: usize,
+    data: Vec<u8>,
+}
+
+impl BufferBuilder {
+    fn new() -> BufferBuilder {
+        BufferBuilder {
+            max_align: 0,
+            data: Vec::new(),
+        }
+    }
+
+    fn finish(mut self) -> Vec<u8> {
+        self.align(self.max_align);
+        self.data
+    }
+
+    fn align(&mut self, alignment: usize) {
+        self.max_align = self.max_align.max(alignment);
+        while !self.data.len().is_multiple_of(alignment) {
+            self.data.push(0);
+        }
+    }
+
+    fn push_vec4i(&mut self, vec: &[i32]) {
+        self.align(16);
+        self.data
+            .extend(vec[..4].iter().flat_map(|x| x.to_ne_bytes().into_iter()));
+    }
+
+    fn push_vec2i(&mut self, vec: &[i32]) {
+        self.align(8);
+        self.data
+            .extend(vec[..2].iter().flat_map(|x| x.to_ne_bytes().into_iter()));
+    }
+
+    fn push_i32(&mut self, data: i32) {
+        self.align(4);
+        self.data.extend_from_slice(&data.to_ne_bytes());
+    }
+}
+
+#[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::cast_possible_wrap)]
+fn cast_vec4i(x: &[usize]) -> [i32; 4] {
+    [x[0] as i32, x[1] as i32, x[2] as i32, x[3] as i32]
+}
+#[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::cast_possible_wrap)]
+fn cast_vec2i(x: &[usize]) -> [i32; 2] {
+    [x[0] as i32, x[1] as i32]
 }
 
 #[derive(Debug, Clone)]
@@ -776,11 +912,11 @@ impl RawTensorOps for WgpuRawTensorImpl {
     }
 
     fn correlate<const N: usize, E: Num>(
-        _im: &Self::Repr<E>,
-        _ker: &Self::Repr<E>,
-        _opts: CorrelateOpts<N>,
+        im: &Self::Repr<E>,
+        ker: &Self::Repr<E>,
+        opts: CorrelateOpts<N>,
     ) -> Self::Repr<E> {
-        todo!()
+        im.correlate_impl(ker, opts)
     }
 
     fn fused_multiply_add<E: Num>(

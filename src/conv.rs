@@ -105,6 +105,11 @@ impl<const N: usize> CorrelateOpts<N> {
         Ok(out)
     }
 
+    #[must_use]
+    pub fn padding(&self, ker: &[usize]) -> [(usize, usize); N] {
+        self.padding.as_pad(self.dilation, ker)
+    }
+
     fn assert_can_transpose(&self) {
         // While in principle we can compute the parameters for the transpose,
         // the math is tricky and I haven't gotten around to figuring it out yet.
