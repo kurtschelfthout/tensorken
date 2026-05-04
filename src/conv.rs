@@ -110,7 +110,7 @@ impl<const N: usize> CorrelateOpts<N> {
 
     #[must_use]
     pub fn for_image_transpose(&self, im: &[usize], ker: &[usize]) -> Self {
-        let res = Self {
+        Self {
             stride: self.dilation,
             dilation: self.stride,
             fill: self.fill,
@@ -121,13 +121,12 @@ impl<const N: usize> CorrelateOpts<N> {
                 let (pl, pr) = self.padding[i];
                 (pl, k + s * ((n - k + pl + pr) / s) - n - pl)
             }),
-        };
-        res
+        }
     }
 
     #[must_use]
     pub fn for_kernel_transpose(&self, im: &[usize], ker: &[usize]) -> Self {
-        let res = Self {
+        Self {
             stride: self.fill,
             dilation: self.dilation,
             fill: self.stride,
@@ -138,8 +137,7 @@ impl<const N: usize> CorrelateOpts<N> {
                 let (pl, pr) = self.padding[i];
                 (k - pl - 1, n + pl - 1 - s * ((n - k + pl + pr) / s))
             }),
-        };
-        res
+        }
     }
 
     /// Given an output tensor index, return an iterator over image and kernel
