@@ -31,7 +31,6 @@ pub use ad_reverse::{
     grad1, grad2, jacrev, value_and_grad1, value_and_grad2, value_and_gradn, vjpn, PullBack,
     Reverse, ReverseImpl,
 };
-pub use conv::{CorrelateOpts, CorrelatePad};
 pub use diffable::DiffableOps;
 pub use indexing::{hd, tl, BasicIndex, Ellipsis, IndexSpec, IndexSpecBuilder, NewAxis};
 pub use raw_tensor::{RawTensorOps, ToCpu};
@@ -41,7 +40,7 @@ pub use raw_tensor_string::StringImpl;
 pub use raw_tensor_wgpu::{WgpuRawTensor, WgpuRawTensorImpl};
 pub use shape::Shape;
 pub use shape_strider::ShapeStrider;
-pub use tensor::{Axes, Tensor};
+pub use tensor::{Axes, ConvOpts, Tensor};
 pub use type_magic::{
     Cpu, Cpu32, CpuBool, CpuI32, Diff, Sym, TensorBase, TensorFwd, TensorRev, Wgpu, Wgpu32,
     WgpuBool, WgpuI32,

@@ -1,3 +1,5 @@
+use tensorken::ConvOpts;
+
 type Tr = tensorken::Wgpu32;
 
 fn ofshape(s: &[usize]) -> Tr {
@@ -8,7 +10,17 @@ fn ofshape(s: &[usize]) -> Tr {
 fn main() {
     let im = ofshape(&[2, 3, 4, 5]);
     let ker = ofshape(&[5, 3, 2, 2]);
-    println!("input\n{im}{ker}\nconv\n{}", im.conv2d(&ker));
+    println!(
+        "input\n{im}{ker}\nconv\n{}",
+        im.conv2d(
+            &ker,
+            ConvOpts {
+                stride: [1, 1],
+                padding: [(0, 0), (0, 0)]
+            }
+        )
+        .realize()
+    );
 }
 
 // tensor([[[[ 2191.,  2257.,  2323.,  2389.],

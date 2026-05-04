@@ -1,6 +1,7 @@
 use crate::{
+    conv::CorrelateOpts,
     num::{Bool, CastFrom, Elem, Float, Num},
-    CorrelateOpts, Shape,
+    Shape,
 };
 
 /// Contains "mid level" operations (this is tinygrad terminology) that are differentiable.

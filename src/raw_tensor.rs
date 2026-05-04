@@ -1,6 +1,6 @@
 use crate::{
+    conv::CorrelateOpts,
     num::{Bool, CastFrom, Elem, Float, Num},
-    CorrelateOpts,
 };
 
 /// Counterpart for tinygrad's "low-level" operations (ops.py).

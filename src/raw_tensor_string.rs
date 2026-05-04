@@ -1,7 +1,8 @@
 use crate::{
+    conv::CorrelateOpts,
     num::{Bool, CastFrom, Float, Num},
     shape_strider::ShapeStrider,
-    CorrelateOpts, RawTensorOps, Shape,
+    RawTensorOps, Shape,
 };
 
 #[derive(Clone, Debug)]

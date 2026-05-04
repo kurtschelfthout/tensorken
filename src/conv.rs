@@ -33,8 +33,8 @@ pub struct CorrelateOpts<const N: usize> {
     pub dilation: [usize; N],
     /// The spacing of image elements. Has the effect of upsampling the image.
     pub fill: [usize; N],
-    /// The padding behavior
-    pub padding: CorrelatePad<N>,
+    /// Padding added to the input (before fill)
+    pub padding: [(usize, usize); N],
 }
 
 impl<const N: usize> CorrelateOpts<N> {
@@ -77,7 +77,6 @@ impl<const N: usize> CorrelateOpts<N> {
 
         let im0 = &im[2..];
         let ker0 = &ker[2..];
-        let padding = self.padding.as_pad(self.dilation, ker0);
 
         let mut out = Vec::with_capacity(N + 2);
         out.push(batch);
@@ -87,7 +86,7 @@ impl<const N: usize> CorrelateOpts<N> {
             let stride = self.stride[i];
             let dilation = self.dilation[i];
             let fill = self.fill[i];
-            let (pl, pr) = padding[i];
+            let (pl, pr) = self.padding[i];
 
             // size of filled and padded image and dilated kernel
             let is = (im0[i] - 1) * fill + 1 + pl + pr;
@@ -105,30 +104,35 @@ impl<const N: usize> CorrelateOpts<N> {
         Ok(out)
     }
 
-    #[must_use]
-    pub fn padding(&self, ker: &[usize]) -> [(usize, usize); N] {
-        self.padding.as_pad(self.dilation, ker)
-    }
-
     fn assert_can_transpose(&self) {
         // While in principle we can compute the parameters for the transpose,
         // the math is tricky and I haven't gotten around to figuring it out yet.
         assert!(self.stride.iter().all(|x| *x == 1));
         assert!(self.dilation.iter().all(|x| *x == 1));
         assert!(self.fill.iter().all(|x| *x == 1));
-        assert_eq!(self.padding, CorrelatePad::Valid);
+        assert!(self.padding.iter().all(|(a, b)| *a == 0 && *b == 0));
     }
 
     #[must_use]
-    pub fn for_image_transpose(&self) -> Self {
+    pub fn for_image_transpose(&self, _ker: &[usize]) -> Self {
         self.assert_can_transpose();
-        Self::default()
+        Self {
+            stride: [1; N],
+            dilation: [1; N],
+            fill: [1; N],
+            padding: [(0, 0); N],
+        }
     }
 
     #[must_use]
-    pub fn for_kernel_transpose(&self) -> Self {
+    pub fn for_kernel_transpose(&self, ker: &[usize]) -> Self {
         self.assert_can_transpose();
-        Self::default().pad_full()
+        Self {
+            stride: [1; N],
+            dilation: [1; N],
+            fill: [1; N],
+            padding: std::array::from_fn(|i| (ker[i] - 1, ker[i] - 1)),
+        }
     }
 
     /// Given an output tensor index, return an iterator over image and kernel
@@ -142,61 +146,6 @@ impl<const N: usize> CorrelateOpts<N> {
     ) -> CorrelateIndexIterator<N> {
         CorrelateIndexIterator::new(self, im, ker, out)
     }
-
-    /// Returns these options with the given stride on all axes
-    #[must_use]
-    pub fn with_stride(self, stride: usize) -> Self {
-        Self {
-            stride: [stride; N],
-            dilation: self.dilation,
-            fill: self.fill,
-            padding: self.padding,
-        }
-    }
-
-    /// Returns these options with the given dilation on all axes
-    #[must_use]
-    pub fn with_dilation(self, dilation: usize) -> Self {
-        Self {
-            stride: self.stride,
-            dilation: [dilation; N],
-            fill: self.fill,
-            padding: self.padding,
-        }
-    }
-
-    /// Returns these options with the given fill on all axes
-    #[must_use]
-    pub fn with_fill(self, fill: usize) -> Self {
-        Self {
-            stride: self.stride,
-            dilation: self.dilation,
-            fill: [fill; N],
-            padding: self.padding,
-        }
-    }
-
-    /// Returns these options with the padding behavior set to `Same`
-    #[must_use]
-    pub fn pad_same(self) -> Self {
-        Self {
-            stride: self.stride,
-            dilation: self.dilation,
-            fill: self.fill,
-            padding: CorrelatePad::Same,
-        }
-    }
-
-    /// Returns these options with the padding behavior set to `Full`
-    #[must_use]
-    pub fn pad_full(self) -> Self {
-        Self {
-            stride: self.stride,
-            dilation: self.dilation,
-            fill: self.fill,
-            padding: CorrelatePad::Full,
-        }
-    }
 }
 
 impl<const N: usize> Default for CorrelateOpts<N> {
@@ -205,48 +154,7 @@ impl<const N: usize> Default for CorrelateOpts<N> {
             stride: [1; N],
             dilation: [1; N],
             fill: [1; N],
-            padding: CorrelatePad::Valid,
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum CorrelatePad<const N: usize> {
-    /// No padding
-    Valid,
-
-    /// Padding is applied so that the input and output images have the same
-    /// shape, and kernels are "centered" on each element of the input. For N*N
-    /// kernel where N is odd, this is simply floor(N/2), e.g. for a 5x5 kernel
-    /// this is a padding of (2, 2) on each axis. When N is even, the
-    /// "remainder" padding is arbitrarily chosen to go at the *end* of each
-    /// axis, e.g. for a 2x2 kernel, this will be a padding of (0, 1) on each
-    /// axis. If this is undesirable, the `Pad` variant can be used instead.
-    Same,
-
-    /// Padding is applied so that the convolution uses all kernel positions
-    /// with at least one non-padding input. For example, for a 5x5 kernel, this
-    /// applies a padding of (4, 4) on each axis.
-    Full,
-
-    /// Specify an explicit padding. The output shape will depend on this, the
-    /// image shape, and the kernel shape.
-    Pad([(usize, usize); N]),
-}
-
-impl<const N: usize> CorrelatePad<N> {
-    /// Returns the amount of actual padding to apply, given the kernel. Only
-    /// the last N dimensions are used, and returns a vec with N elements.
-    fn as_pad(&self, dilation: [usize; N], ker_shape: &[usize]) -> [(usize, usize); N] {
-        use std::array::from_fn;
-        let s = &ker_shape[ker_shape.len() - N..];
-        let s = move |i| (s[i] - 1) * dilation[i] + 1;
-
-        match self {
-            CorrelatePad::Valid => [(0, 0); N],
-            CorrelatePad::Same => from_fn(|i| ((s(i) - 1) / 2, s(i) / 2)),
-            CorrelatePad::Full => from_fn(|i| (s(i) - 1, s(i) - 1)),
-            CorrelatePad::Pad(x) => x.as_array().copied().unwrap(),
+            padding: [(0, 0); N],
         }
     }
 }
@@ -390,20 +298,15 @@ impl<const N: usize> CorrelateIndexIterator<N> {
 
         assert_eq!(out.len(), N + 2);
 
-        let im_start: Vec<isize> = {
-            opts.padding
-                .as_pad(opts.dilation, ker)
-                .into_iter()
-                .enumerate()
-                .map(|(i, (pad, _))| {
-                    let pad = pad.cast_signed();
-                    let fill = opts.fill[i].cast_signed();
-                    let out = out[i + 2].cast_signed();
-                    let stride = opts.stride[i].cast_signed();
-                    -pad * fill + out * stride
-                })
-                .collect()
-        };
+        let im_start: Vec<isize> = (0..N)
+            .map(|i| {
+                let pad = opts.padding[i].0.cast_signed();
+                let fill = opts.fill[i].cast_signed();
+                let out = out[i + 2].cast_signed();
+                let stride = opts.stride[i].cast_signed();
+                -pad * fill + out * stride
+            })
+            .collect();
 
         Self {
             batch: out[0],

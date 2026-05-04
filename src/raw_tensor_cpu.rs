@@ -2,11 +2,11 @@ use std::fmt::Debug;
 use std::ops::Add;
 use std::sync::Arc;
 
+use crate::conv::CorrelateOpts;
 use crate::num::{Bool, CastFrom, Elem, Float, Num};
 use crate::raw_tensor::{RawTensorOps, ToCpu};
 use crate::shape::Shape;
 use crate::shape_strider::{ShapeStrider, Stride, TensorIndexIterator};
-use crate::CorrelateOpts;
 
 /// Implementation of `RawTensor` for CPU.
 /// The "numpy" part of the tensor library.

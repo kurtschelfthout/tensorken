@@ -6,8 +6,9 @@ use crate::{
         UnaryDiffOp, UnaryOp,
     },
     ad_ops_forward::{CorrelateOp, CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
+    conv::CorrelateOpts,
     num::{Bool, CastFrom, Elem, Float, Num},
-    CorrelateOpts, DiffableOps, Shape, Tensor,
+    DiffableOps, Shape, Tensor,
 };
 
 /// Forward AD implementation.

@@ -8,11 +8,12 @@ use rand::Rng;
 use rand_distr::Distribution;
 
 use crate::{
+    conv::CorrelateOpts,
     num::{Bool, CastFrom, CastTo, Elem, Float, Num},
     raw_tensor::{RawTensorOps, ToCpu},
     raw_tensor_cpu::{CpuRawTensor, CpuRawTensorImpl},
     tensor_mut::TensorMut,
-    CorrelateOpts, DiffableOps, Forward, ForwardImpl, Reverse, ReverseImpl, Shape,
+    DiffableOps, Forward, ForwardImpl, Reverse, ReverseImpl, Shape,
 };
 
 /// Blanket implementation to translate from diffable tensor ops (`DiffableOps`) to low-level tensor ops (`RawTensorOps`).
@@ -106,6 +107,12 @@ impl<I: RawTensorOps> DiffableOps for I {
     ) -> Self::Repr<E> {
         I::correlate(im, ker, opts)
     }
+}
+
+#[derive(Copy, Clone)]
+pub struct ConvOpts<const N: usize> {
+    pub stride: [usize; N],
+    pub padding: [(usize, usize); N],
 }
 
 /// The "high-level" tensor type - the face of the library.
@@ -727,7 +734,7 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
     /// as having the wrong number of dimensions, mismatched dimensions, or
     /// if the kernel is bigger than the image.
     #[allow(clippy::doc_markdown)]
-    pub fn conv2d(&self, kernel: &Self) -> Self
+    pub fn conv2d(&self, kernel: &Self, opts: ConvOpts<2>) -> Self
     where
         E: Num,
     {
@@ -752,10 +759,14 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
             "conv2d kernel shape [...,{kh},{kw}] too big for image shape [...,{ih},{iw}]"
         );
 
-        Self(
-            I::correlate::<E, 2>(&self.0, &kernel.0, CorrelateOpts::default()),
-            PhantomData,
-        )
+        let opts = CorrelateOpts {
+            stride: opts.stride,
+            dilation: [1, 1],
+            fill: [1, 1],
+            padding: opts.padding,
+        };
+
+        Self(I::correlate::<E, 2>(&self.0, &kernel.0, opts), PhantomData)
     }
 
     // activation functions

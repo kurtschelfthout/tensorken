@@ -7,8 +7,9 @@ use crate::{
     },
     ad_ops_reverse::{CorrelateOp, CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
     ad_trace::{Trace, TracedOp},
+    conv::CorrelateOpts,
     num::{Bool, CastFrom, Elem, Float, Num},
-    CorrelateOpts, DiffableOps, Shape, Tensor,
+    DiffableOps, Shape, Tensor,
 };
 
 /// Reverse AD implementation.

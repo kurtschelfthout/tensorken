@@ -2,8 +2,9 @@ use std::marker::PhantomData;
 
 use crate::{
     ad_ops::{BinaryDiffOp, BinaryOp, UnaryDiffOp, UnaryOp},
+    conv::CorrelateOpts,
     num::{Bool, CastFrom, Elem, Num},
-    CorrelateOpts, DiffableOps,
+    DiffableOps,
 };
 
 pub(crate) struct SumOp<E, I>(Vec<usize>, PhantomData<(E, I)>);
@@ -212,21 +213,23 @@ impl<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>, const N: usize> BinaryDiffOp
 
     fn dfda(&self, d: &T) -> T {
         // wrt image. kernel is constant
+        let ker_shape = I::shape::<E>(&self.ker);
         I::correlate::<E, N>(
             d,
             &I::permute::<E>(&I::flip::<E>(&self.ker, &Self::flips()), &Self::permutes()),
-            self.opts.for_kernel_transpose(),
+            self.opts.for_kernel_transpose(ker_shape),
         )
     }
 
     fn dfdb(&self, d: &T) -> T {
         // wrt kernel. image is constant
         let permutes = Self::permutes();
+        let ker_shape = I::shape::<E>(&self.ker);
         I::permute::<E>(
             &I::correlate::<E, N>(
                 &I::permute::<E>(&self.im, &permutes),
                 &I::permute::<E>(d, &permutes),
-                self.opts.for_image_transpose(),
+                self.opts.for_image_transpose(ker_shape),
             ),
             &permutes,
         )
