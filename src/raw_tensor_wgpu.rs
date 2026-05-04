@@ -608,8 +608,8 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
             let mut buf = BufferBuilder::new();
 
             let pads = opts.padding;
-            let pad_start: Vec<_> = pads.into_iter().map(|(a, _)| a).collect();
-            let pad_end: Vec<_> = pads.into_iter().map(|(_, b)| b).collect();
+            let pad_start: Vec<_> = pads.into_iter().map(|(a, _)| a as i32).collect();
+            let pad_end: Vec<_> = pads.into_iter().map(|(_, b)| b as i32).collect();
 
             buf.push_vec4i(&cast_vec4i(im_shape));
             buf.push_vec4i(&self.strider.i32_strides());
@@ -621,8 +621,8 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
             buf.push_vec2i(&cast_vec2i(&opts.stride));
             buf.push_vec2i(&cast_vec2i(&opts.dilation));
             buf.push_vec2i(&cast_vec2i(&opts.fill));
-            buf.push_vec2i(&cast_vec2i(&pad_start));
-            buf.push_vec2i(&cast_vec2i(&pad_end));
+            buf.push_vec2i(&pad_start);
+            buf.push_vec2i(&pad_end);
 
             // the shader thinks chunk_size is a u32. just saves us a bitcast
             buf.push_i32(chunk_size as i32);

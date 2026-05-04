@@ -213,23 +213,25 @@ impl<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>, const N: usize> BinaryDiffOp
 
     fn dfda(&self, d: &T) -> T {
         // wrt image. kernel is constant
+        let im_shape = I::shape::<E>(&self.im);
         let ker_shape = I::shape::<E>(&self.ker);
         I::correlate::<E, N>(
             d,
             &I::permute::<E>(&I::flip::<E>(&self.ker, &Self::flips()), &Self::permutes()),
-            self.opts.for_kernel_transpose(ker_shape),
+            self.opts.for_kernel_transpose(im_shape, ker_shape),
         )
     }
 
     fn dfdb(&self, d: &T) -> T {
         // wrt kernel. image is constant
         let permutes = Self::permutes();
+        let im_shape = I::shape::<E>(&self.im);
         let ker_shape = I::shape::<E>(&self.ker);
         I::permute::<E>(
             &I::correlate::<E, N>(
                 &I::permute::<E>(&self.im, &permutes),
                 &I::permute::<E>(d, &permutes),
-                self.opts.for_image_transpose(ker_shape),
+                self.opts.for_image_transpose(im_shape, ker_shape),
             ),
             &permutes,
         )

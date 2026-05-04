@@ -8,7 +8,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("Tensor: conv2d");
 
     for ker_size in [3, 5] {
-        for im_size in [64, 128, 256, 512, 1024] {
+        for im_size in [64, 128, 256, 512, 1024, 2048] {
             let im_s = &[1, 1, im_size, im_size];
             let ker_s = &[1, 1, ker_size, ker_size];
 
@@ -28,11 +28,12 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                 padding: [(0, 0), (0, 0)],
             };
 
-            group.bench_with_input(
-                BenchmarkId::new(format!("cpu {ker_size}x{ker_size}"), im_size),
-                &im_size,
-                |b, _| b.iter(|| black_box(im_cpu.conv2d(&ker_cpu, opts).realize())),
-            );
+            // naive benchmark is rough lower bound on cpu time and is closer to gpu time for small sizes
+            // group.bench_with_input(
+            //     BenchmarkId::new(format!("cpu {ker_size}x{ker_size}"), im_size),
+            //     &im_size,
+            //     |b, _| b.iter(|| black_box(im_cpu.conv2d(&ker_cpu, opts).realize())),
+            // );
             group.bench_with_input(
                 BenchmarkId::new(format!("gpu {ker_size}x{ker_size}"), im_size),
                 &im_size,

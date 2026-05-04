@@ -763,7 +763,10 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
             stride: opts.stride,
             dilation: [1, 1],
             fill: [1, 1],
-            padding: opts.padding,
+            padding: std::array::from_fn(|i| {
+                let (pl, pr) = opts.padding[i];
+                (pl.cast_signed(), pr.cast_signed())
+            }),
         };
 
         Self(I::correlate::<E, 2>(&self.0, &kernel.0, opts), PhantomData)

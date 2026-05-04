@@ -34,7 +34,7 @@ pub struct CorrelateOpts<const N: usize> {
     /// The spacing of image elements. Has the effect of upsampling the image.
     pub fill: [usize; N],
     /// Padding added to the input (before fill)
-    pub padding: [(usize, usize); N],
+    pub padding: [(isize, isize); N],
 }
 
 impl<const N: usize> CorrelateOpts<N> {
@@ -75,6 +75,10 @@ impl<const N: usize> CorrelateOpts<N> {
             return Err(format!("image and kernel mismatch in iC: {im:?} {ker:?}"));
         }
 
+        if (0..N).any(|i| im[i + 2].cast_signed() < -self.padding[i].0 + -self.padding[i].1) {
+            return Err("negative padding is too large for image".to_string());
+        }
+
         let im0 = &im[2..];
         let ker0 = &ker[2..];
 
@@ -89,7 +93,7 @@ impl<const N: usize> CorrelateOpts<N> {
             let (pl, pr) = self.padding[i];
 
             // size of filled and padded image and dilated kernel
-            let is = (im0[i] - 1) * fill + 1 + pl + pr;
+            let is = (((im0[i] - 1) * fill + 1).cast_signed() + pl + pr).cast_unsigned();
             let ks = (ker0[i] - 1) * dilation + 1;
 
             // now we count the number of positive integers `x` that
@@ -104,35 +108,38 @@ impl<const N: usize> CorrelateOpts<N> {
         Ok(out)
     }
 
-    fn assert_can_transpose(&self) {
-        // While in principle we can compute the parameters for the transpose,
-        // the math is tricky and I haven't gotten around to figuring it out yet.
-        assert!(self.stride.iter().all(|x| *x == 1));
-        assert!(self.dilation.iter().all(|x| *x == 1));
-        assert!(self.fill.iter().all(|x| *x == 1));
-        assert!(self.padding.iter().all(|(a, b)| *a == 0 && *b == 0));
+    #[must_use]
+    pub fn for_image_transpose(&self, im: &[usize], ker: &[usize]) -> Self {
+        let res = Self {
+            stride: self.dilation,
+            dilation: self.stride,
+            fill: self.fill,
+            padding: std::array::from_fn(|i| {
+                let k = ker[i + 2].cast_signed();
+                let n = im[i + 2].cast_signed();
+                let s = self.stride[i].cast_signed();
+                let (pl, pr) = self.padding[i];
+                (pl, k + s * ((n - k + pl + pr) / s) - n - pl)
+            }),
+        };
+        res
     }
 
     #[must_use]
-    pub fn for_image_transpose(&self, _ker: &[usize]) -> Self {
-        self.assert_can_transpose();
-        Self {
-            stride: [1; N],
-            dilation: [1; N],
-            fill: [1; N],
-            padding: [(0, 0); N],
-        }
-    }
-
-    #[must_use]
-    pub fn for_kernel_transpose(&self, ker: &[usize]) -> Self {
-        self.assert_can_transpose();
-        Self {
-            stride: [1; N],
-            dilation: [1; N],
-            fill: [1; N],
-            padding: std::array::from_fn(|i| (ker[i] - 1, ker[i] - 1)),
-        }
+    pub fn for_kernel_transpose(&self, im: &[usize], ker: &[usize]) -> Self {
+        let res = Self {
+            stride: self.fill,
+            dilation: self.dilation,
+            fill: self.stride,
+            padding: std::array::from_fn(|i| {
+                let k = ker[i + 2].cast_signed();
+                let n = im[i + 2].cast_signed();
+                let s = self.stride[i].cast_signed();
+                let (pl, pr) = self.padding[i];
+                (k - pl - 1, n + pl - 1 - s * ((n - k + pl + pr) / s))
+            }),
+        };
+        res
     }
 
     /// Given an output tensor index, return an iterator over image and kernel
@@ -300,7 +307,7 @@ impl<const N: usize> CorrelateIndexIterator<N> {
 
         let im_start: Vec<isize> = (0..N)
             .map(|i| {
-                let pad = opts.padding[i].0.cast_signed();
+                let pad = opts.padding[i].0;
                 let fill = opts.fill[i].cast_signed();
                 let out = out[i + 2].cast_signed();
                 let stride = opts.stride[i].cast_signed();
