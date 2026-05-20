@@ -1,4 +1,5 @@
 use crate::{
+    conv::CorrelateOpts,
     num::{Bool, CastFrom, Elem, Float, Num},
     Shape,
 };
@@ -82,4 +83,12 @@ pub trait DiffableOps {
         let zeros = Self::zeros_like(t);
         Self::elementwise_sub(&zeros, t)
     }
+
+    // a special case
+
+    fn correlate<E: Num, const N: usize>(
+        im: &Self::Repr<E>,
+        ker: &Self::Repr<E>,
+        opts: CorrelateOpts<N>,
+    ) -> Self::Repr<E>;
 }

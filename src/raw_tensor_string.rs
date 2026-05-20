@@ -1,4 +1,5 @@
 use crate::{
+    conv::CorrelateOpts,
     num::{Bool, CastFrom, Float, Num},
     shape_strider::ShapeStrider,
     RawTensorOps, Shape,
@@ -114,6 +115,16 @@ impl RawTensorOps for StringImpl {
 
     fn shape<E: Clone>(t: &Self::Repr<E>) -> &[usize] {
         t.0.shape()
+    }
+
+    fn correlate<const N: usize, E: Num>(
+        (ims, imt): &Self::Repr<E>,
+        (ks, kt): &Self::Repr<E>,
+        opts: CorrelateOpts<N>,
+    ) -> Self::Repr<E> {
+        let s = opts.output_shape(ims.shape(), ks.shape()).unwrap();
+        let s = ShapeStrider::contiguous(&s);
+        (s, format!("{imt}.correlate({kt}, {opts:?})"))
     }
 
     fn fused_multiply_add<E: Num>(

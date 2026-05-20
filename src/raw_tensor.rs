@@ -1,4 +1,7 @@
-use crate::num::{Bool, CastFrom, Elem, Float, Num};
+use crate::{
+    conv::CorrelateOpts,
+    num::{Bool, CastFrom, Elem, Float, Num},
+};
 
 /// Counterpart for tinygrad's "low-level" operations (ops.py).
 /// Represents the operations that a tensor implementation, be it on CPU or GPU, must implement.
@@ -100,6 +103,43 @@ pub trait RawTensorOps {
 
     // fused operations
     // ----------------
+
+    /// Return the N-dimensional cross-correlation of `im` with the given kernel.
+    ///
+    /// - `im` should have shape `[B, iC, ..isize]`
+    /// - `ker` should have shape [oC, iC, ..ksize]
+    /// - Returns a tensor with shape `[..N, oC, ..osize]`
+    ///
+    /// Where:
+    ///
+    /// - `B` is the batch size
+    /// - `iC` is the number of input channels
+    /// - `oC` is the number of output channels
+    /// - `..isize` is an N-D shape representing the image dimensions
+    /// - `..ksize` is an N-D shape representing the kernel dimensions
+    /// - `..osize` is an N-D shape representing the output dimensions
+    ///
+    /// The output dimensions will depend on the the `opts` parameter, in
+    /// particular `padding`. The convolution is only calculated for valid
+    /// indices, i.e. indices where the input and kernel overlap completely. To
+    /// get the behavior of `same` and `full` modes, padding should be added
+    /// based on the kernel size.
+    ///
+    /// For example, a 2D convolution of 20 300x100 RGB images with a single 5x5
+    /// kernel would involve the following shapes:
+    ///
+    /// - `im` is `[20, 3, 100, 300]`
+    /// - `ker` is `[1, 3, 5, 5]`
+    /// - Returns `[20, 1, 100, 300]`
+    ///
+    /// This operation is in principle equivalent to some movement operations
+    /// and a fused multiply-add, but can be done more efficiently in a single
+    /// step for many backends.
+    fn correlate<const N: usize, E: Num>(
+        im: &Self::Repr<E>,
+        ker: &Self::Repr<E>,
+        opts: CorrelateOpts<N>,
+    ) -> Self::Repr<E>;
 
     /// Multiply self with other element-wise, and sum-reduce the given dimensions, in one fused
     /// operation.

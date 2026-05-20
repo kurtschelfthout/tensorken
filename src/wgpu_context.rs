@@ -24,6 +24,7 @@ impl WgpuContext {
     const ZIP_SHADER: &'static str = include_str!("shaders/zip.wgsl");
     const REDUCE_SHADER: &'static str = include_str!("shaders/reduce.wgsl");
     const PAD_SHADER: &'static str = include_str!("shaders/pad.wgsl");
+    const CORRELATE_2D_SHADER: &'static str = include_str!("shaders/correlate2d.wgsl");
     const FUSED_MUL_ADD_SHADER: &'static str = include_str!("shaders/fused_mul_add.wgsl");
 
     // low tech templating: these strings are replaced in shaders
@@ -47,6 +48,7 @@ impl WgpuContext {
     pub(crate) const ZIP_OPS: [&'static str; 6] = ["add", "sub", "mul", "div", "pow", "eq"];
     pub(crate) const RED_OPS: [&'static str; 2] = ["sum", "max"];
     pub(crate) const PAD_OP: &'static str = "pad";
+    pub(crate) const CORRELATE_2D_OP: &'static str = "correlate2d";
     pub(crate) const FUSED_MUL_ADD_OP: &'static str = "fused_mul_add";
 
     pub(crate) fn new() -> Self {
@@ -74,7 +76,9 @@ impl WgpuContext {
                 label: Some(operation),
                 layout: None,
                 module,
-                entry_point: ENTRY_POINT,
+                entry_point: Some(ENTRY_POINT),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                cache: None,
             },
         ));
         pipelines.insert(
@@ -106,6 +110,7 @@ impl WgpuContext {
     /// Retrieve or build and memoize a compute pipeline for the given operation and workgroup size.
     /// `element_in` and `element_out` are the input and output element types, respectively.
     /// This only matters for map.wgsl now. For all others, just passing element twice is fine.
+    #[allow(clippy::too_many_lines)]
     pub(crate) fn pipeline_for(
         &self,
         operation: &'static str,
@@ -126,6 +131,15 @@ impl WgpuContext {
             self.create_shader_module(
                 operation,
                 &Self::PAD_SHADER.replace(
+                    Self::REPLACE_ELEMENT_ALIAS,
+                    &format!("alias element = {element_in};"),
+                ),
+                workgroup_size,
+            )
+        } else if operation == Self::CORRELATE_2D_OP {
+            self.create_shader_module(
+                operation,
+                &Self::CORRELATE_2D_SHADER.replace(
                     Self::REPLACE_ELEMENT_ALIAS,
                     &format!("alias element = {element_in};"),
                 ),
@@ -241,14 +255,14 @@ impl WgpuContext {
         // `request_device` instantiates the feature specific connection to the GPU, defining some parameters,
         //  `features` being the available features.
         let r = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: None,
-                    required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits::downlevel_defaults(),
-                },
-                None, // Some(Path::new("./trace")),
-            )
+            .request_device(&wgpu::DeviceDescriptor {
+                label: None,
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::downlevel_defaults(),
+                experimental_features: wgpu::ExperimentalFeatures::default(),
+                memory_hints: wgpu::MemoryHints::default(),
+                trace: wgpu::Trace::Off,
+            })
             .await
             .unwrap();
         Some(r)

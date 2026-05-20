@@ -15,7 +15,8 @@ pub trait UnaryOp<T> {
 
 /// Same as `UnaryOp`, but for binary operations.
 pub trait BinaryOp<T> {
-    fn f(a: &T, b: &T) -> (T, Self);
+    type Args: ?Sized;
+    fn f(a: &T, b: &T, args: &Self::Args) -> (T, Self);
 }
 
 /// Propagate the derivative of a unary operation.
@@ -36,7 +37,8 @@ pub trait BinaryDiffOp<T> {
 pub(crate) struct AddOp<E, I>(PhantomData<(E, I)>);
 
 impl<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>> BinaryOp<T> for AddOp<E, I> {
-    fn f(a: &T, b: &T) -> (T, Self) {
+    type Args = ();
+    fn f(a: &T, b: &T, (): &()) -> (T, Self) {
         (I::elementwise_add::<E>(a, b), AddOp(PhantomData))
     }
 }
@@ -54,7 +56,8 @@ impl<T: Clone, E: Clone, I: DiffableOps<Repr<E> = T>> BinaryDiffOp<T> for AddOp<
 pub(crate) struct MulOp<T, E, I>(T, T, PhantomData<(E, I)>);
 
 impl<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>> BinaryOp<T> for MulOp<T, E, I> {
-    fn f(a: &T, b: &T) -> (T, Self) {
+    type Args = ();
+    fn f(a: &T, b: &T, (): &()) -> (T, Self) {
         (
             I::elementwise_mul::<E>(a, b),
             Self(a.clone(), b.clone(), PhantomData),
@@ -75,7 +78,8 @@ impl<T, E: Num, I: DiffableOps<Repr<E> = T>> BinaryDiffOp<T> for MulOp<T, E, I> 
 pub(crate) struct SubOp<E, I>(PhantomData<(E, I)>);
 
 impl<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>> BinaryOp<T> for SubOp<E, I> {
-    fn f(a: &T, b: &T) -> (T, Self) {
+    type Args = ();
+    fn f(a: &T, b: &T, (): &()) -> (T, Self) {
         (I::elementwise_sub::<E>(a, b), SubOp(PhantomData))
     }
 }
@@ -93,7 +97,8 @@ impl<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>> BinaryDiffOp<T> for SubOp<E,
 pub(crate) struct DivOp<T, E, I>(T, T, PhantomData<(E, I)>);
 
 impl<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>> BinaryOp<T> for DivOp<T, E, I> {
-    fn f(a: &T, b: &T) -> (T, Self) {
+    type Args = ();
+    fn f(a: &T, b: &T, (): &()) -> (T, Self) {
         (
             I::elementwise_div::<E>(a, b),
             Self(a.clone(), b.clone(), PhantomData),
@@ -117,7 +122,8 @@ impl<T: Clone, E: Num, I: DiffableOps<Repr<E> = T>> BinaryDiffOp<T> for DivOp<T,
 pub(crate) struct PowOp<T, E, I>(T, T, T, PhantomData<(E, I)>);
 
 impl<T: Clone, E: Float, I: DiffableOps<Repr<E> = T>> BinaryOp<T> for PowOp<T, E, I> {
-    fn f(a: &T, b: &T) -> (T, Self) {
+    type Args = ();
+    fn f(a: &T, b: &T, (): &()) -> (T, Self) {
         let r = I::elementwise_pow::<E>(a, b);
         (r.clone(), Self(a.clone(), b.clone(), r, PhantomData))
     }

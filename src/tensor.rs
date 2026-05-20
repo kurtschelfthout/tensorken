@@ -8,6 +8,7 @@ use rand::Rng;
 use rand_distr::Distribution;
 
 use crate::{
+    conv::CorrelateOpts,
     num::{Bool, CastFrom, CastTo, Elem, Float, Num},
     raw_tensor::{RawTensorOps, ToCpu},
     raw_tensor_cpu::{CpuRawTensor, CpuRawTensorImpl},
@@ -98,6 +99,20 @@ impl<I: RawTensorOps> DiffableOps for I {
     fn cast<EFro: Elem, ETo: CastFrom<EFro> + Elem>(t: &Self::Repr<EFro>) -> Self::Repr<ETo> {
         I::cast(t)
     }
+
+    fn correlate<E: Num, const N: usize>(
+        im: &Self::Repr<E>,
+        ker: &Self::Repr<E>,
+        opts: CorrelateOpts<N>,
+    ) -> Self::Repr<E> {
+        I::correlate(im, ker, opts)
+    }
+}
+
+#[derive(Copy, Clone)]
+pub struct ConvOpts<const N: usize> {
+    pub stride: [usize; N],
+    pub padding: [(usize, usize); N],
 }
 
 /// The "high-level" tensor type - the face of the library.
@@ -684,6 +699,77 @@ impl<T, E: Elem, I: DiffableOps<Repr<E> = T>> Tensor<T, E, I> {
         // after reshape:  [..., m, ..., o]
         let s = sum.shape();
         sum.reshape(&s[..s.ndims() - 1])
+    }
+
+    /// 2D cross-correlation of this tensor with the given kernel.
+    ///
+    /// Parameters:
+    /// - `self`: A tensor of shape `[B, iC, iH, iW]`
+    /// - `kernel`: A tensor of shape `[oC, iC, kH, kW]`
+    ///
+    /// Where:
+    /// - B is the batch dimension
+    /// - iC and oC are the input and output channel counts.
+    /// - iH and iW are the input image height and width.
+    /// - kH and kW are the kernel height and width.
+    ///
+    /// Returns a tensor of shape `[..., oC, oH, oW]` where oH and oW depend on
+    /// the size of the input image and kernel. For example, a 10x10 image and a
+    /// 3x3 kernel would result in an 8x8 output. This is the behavior of
+    /// `padding='valid'` in PyTorch and `mode='valid'` in SciPy. If padding is
+    /// needed, it should be handled separately.
+    ///
+    /// This function performs no broadcasting, and both inputs must have
+    /// exactly 4 dimensions.
+    ///
+    /// # Terminology note
+    ///
+    /// This is called `conv2d` for consistency with PyTorch, but is
+    /// actually cross-correlation. The distinction is that for a proper
+    /// convolution we would flip the kernel then do cross-correlation.
+    ///
+    /// # Panics
+    ///
+    /// This operation can panic on various misconfigured input shapes, such
+    /// as having the wrong number of dimensions, mismatched dimensions, or
+    /// if the kernel is bigger than the image.
+    #[allow(clippy::doc_markdown)]
+    pub fn conv2d(&self, kernel: &Self, opts: ConvOpts<2>) -> Self
+    where
+        E: Num,
+    {
+        let (im_s, ker_s) = (self.shape(), kernel.shape());
+        let (im_nd, ker_nd) = (im_s.ndims(), ker_s.ndims());
+
+        assert_eq!(im_nd, 4, "conv2d image has wrong dimension");
+        assert_eq!(ker_nd, 4, "conv2d kernel has wrong dimension");
+
+        let ic = im_s[1];
+        let ih = im_s[2];
+        let iw = im_s[3];
+        let kh = ker_s[2];
+        let kw = ker_s[3];
+
+        assert_eq!(
+            ker_s[1], ic,
+            "conv2d kernel channels does not match image channels",
+        );
+        assert!(
+            kh <= ih && kw <= iw,
+            "conv2d kernel shape [...,{kh},{kw}] too big for image shape [...,{ih},{iw}]"
+        );
+
+        let opts = CorrelateOpts {
+            stride: opts.stride,
+            dilation: [1, 1],
+            fill: [1, 1],
+            padding: std::array::from_fn(|i| {
+                let (pl, pr) = opts.padding[i];
+                (pl.cast_signed(), pr.cast_signed())
+            }),
+        };
+
+        Self(I::correlate::<E, 2>(&self.0, &kernel.0, opts), PhantomData)
     }
 
     // activation functions

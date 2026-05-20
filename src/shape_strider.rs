@@ -5,7 +5,7 @@ impl Shape for ShapeStrider {
         &self.shape
     }
 }
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Stride {
     Pos(usize),
     Neg(usize),
@@ -95,6 +95,28 @@ impl ShapeStrider {
         self.offset
     }
 
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_possible_wrap)]
+    #[allow(clippy::cast_lossless)]
+    pub(crate) fn i32_strides(&self) -> Vec<i32> {
+        let zero_offset = self.i32_offset();
+        (0..self.shape.len())
+            .map(|i| {
+                let index: Vec<_> = (0..self.shape.len()).map(|j| (i == j) as usize).collect();
+                let dim_offset = self.buffer_index(&index) as i32;
+                dim_offset - zero_offset
+            })
+            .collect()
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_possible_wrap)]
+    #[allow(clippy::cast_lossless)]
+    pub(crate) fn i32_offset(&self) -> i32 {
+        let zeros = vec![0; self.shape.len()];
+        self.buffer_index(&zeros) as i32
+    }
+
     pub(crate) fn buffer_index(&self, index: &[usize]) -> usize {
         self.offset
             + index
@@ -148,7 +170,7 @@ impl ShapeStrider {
         for (&dim, stride) in self.shape.iter().zip(self.strides.iter()) {
             if dim != 1 {
                 shape.push(dim);
-                strides.push(stride.clone());
+                strides.push(*stride);
             }
         }
         Self {
@@ -241,7 +263,7 @@ impl ShapeStrider {
             }
 
             // now calculate new strides - going back to front as usual.
-            new_strides[nj - 1] = old_strides[oj - 1].clone();
+            new_strides[nj - 1] = old_strides[oj - 1];
             for nk in (ni + 1..nj).rev() {
                 new_strides[nk - 1] = new_strides[nk].mul(new_shape[nk]);
             }
@@ -253,12 +275,12 @@ impl ShapeStrider {
         }
 
         let last_stride = if ni >= 1 {
-            new_strides[ni - 1].clone()
+            new_strides[ni - 1]
         } else {
             Stride::ONE
         };
         for new_stride in new_strides.iter_mut().take(newnd).skip(ni) {
-            *new_stride = last_stride.clone();
+            *new_stride = last_stride;
         }
 
         Ok(Self {
@@ -277,7 +299,7 @@ impl ShapeStrider {
         if permutation.iter().any(|x| *x >= self.shape.ndims()) {
             return Err("Invalid permutation: at least one target axis is greater than number of dimensions.".to_string());
         }
-        if permutation.len() * (permutation.len() - 1) / 2 != permutation.iter().sum() {
+        if permutation.len() * (permutation.len() - 1) / 2 != permutation.iter().sum::<usize>() {
             return Err(
                 "Invalid permutation: all axes must be specified exactly once.".to_string(),
             );
@@ -291,7 +313,7 @@ impl ShapeStrider {
         let mut strides = Vec::with_capacity(self.shape.ndims());
         for &i in permutation {
             shape.push(self.shape[i]);
-            strides.push(self.strides[i].clone());
+            strides.push(self.strides[i]);
         }
         Self {
             shape,
@@ -319,7 +341,7 @@ impl ShapeStrider {
         for (fro_dim, to_dim) in (0..self.shape.ndims()).rev().zip((0..shape.ndims()).rev()) {
             if self.shape[fro_dim] == shape[to_dim] {
                 new_shape.push(self.shape[fro_dim]);
-                new_strides.push(self.strides[fro_dim].clone());
+                new_strides.push(self.strides[fro_dim]);
             } else if self.shape[fro_dim] == 1 {
                 new_shape.push(shape[to_dim]);
                 new_strides.push(Stride::ZERO);
@@ -409,7 +431,7 @@ impl ShapeStrider {
                 if f {
                     self.strides[i].flip()
                 } else {
-                    self.strides[i].clone()
+                    self.strides[i]
                 }
             })
             .collect();

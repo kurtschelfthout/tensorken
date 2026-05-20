@@ -2,6 +2,7 @@ use std::fmt::Debug;
 use std::ops::Add;
 use std::sync::Arc;
 
+use crate::conv::CorrelateOpts;
 use crate::num::{Bool, CastFrom, Elem, Float, Num};
 use crate::raw_tensor::{RawTensorOps, ToCpu};
 use crate::shape::Shape;
@@ -169,6 +170,33 @@ impl<E: Clone> CpuRawTensor<E> {
     }
 }
 
+impl<E: Num> CpuRawTensor<E> {
+    fn correlate<const N: usize>(&self, ker: &Self, opts: CorrelateOpts<N>) -> Self {
+        let im_shape = self.strider.shape();
+        let ker_shape = ker.strider.shape();
+
+        let out_shape = opts.output_shape(im_shape, ker_shape).unwrap();
+
+        let out_strider = ShapeStrider::contiguous(&out_shape[..]);
+        let mut out_buffer = vec![E::ZERO; out_strider.size()];
+
+        for out_index in out_strider.iter_tensor_index() {
+            for (im_index, ker_index) in opts.iter_tensor_index(im_shape, ker_shape, &out_index) {
+                let out_offs = out_strider.buffer_index(&out_index);
+                let im_offs = self.strider.buffer_index(&im_index);
+                let ker_offs = ker.strider.buffer_index(&ker_index);
+                out_buffer[out_offs] = out_buffer[out_offs].clone()
+                    + self.buffer.data[im_offs].clone() * ker.buffer.data[ker_offs].clone();
+            }
+        }
+
+        Self {
+            strider: out_strider,
+            buffer: Arc::new(Buffer { data: out_buffer }),
+        }
+    }
+}
+
 pub struct CpuRawTensorIterator<'a, E> {
     tensor: &'a CpuRawTensor<E>,
     index_iter: TensorIndexIterator<'a>,
@@ -324,6 +352,14 @@ impl RawTensorOps for CpuRawTensorImpl {
 
     fn shape<E: Clone>(t: &Self::Repr<E>) -> &[usize] {
         t.strider.shape()
+    }
+
+    fn correlate<const N: usize, E: Num>(
+        im: &Self::Repr<E>,
+        ker: &Self::Repr<E>,
+        opts: CorrelateOpts<N>,
+    ) -> Self::Repr<E> {
+        im.correlate(ker, opts)
     }
 
     fn fused_multiply_add<E: Num>(
@@ -535,13 +571,13 @@ mod tests {
     fn test_reduce_ops_empty() {
         let t: CpuRawTensor<f32> = CpuRawTensor::new_into(&[], vec![]);
         let s = I::sum(&t, &[]);
-        assert_eq!(I::shape(&s), &[]);
-        assert_eq!(s.buffer.data, vec![]);
+        assert_eq!(I::shape(&s), &[] as &[usize]);
+        assert_eq!(s.buffer.data, vec![] as Vec<f32>);
 
         let t: CpuRawTensor<f32> = CpuRawTensor::new_into(&[], vec![]);
         let s = I::max(&t, &[]);
-        assert_eq!(I::shape(&s), &[]);
-        assert_eq!(s.buffer.data, vec![]);
+        assert_eq!(I::shape(&s), &[] as &[usize]);
+        assert_eq!(s.buffer.data, vec![] as Vec<f32>);
     }
 
     #[test]

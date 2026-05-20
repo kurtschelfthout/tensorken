@@ -6,6 +6,7 @@ mod ad_ops_forward;
 mod ad_ops_reverse;
 mod ad_reverse;
 mod ad_trace;
+mod conv;
 mod diffable;
 mod indexing;
 mod math_macros;
@@ -39,7 +40,7 @@ pub use raw_tensor_string::StringImpl;
 pub use raw_tensor_wgpu::{WgpuRawTensor, WgpuRawTensorImpl};
 pub use shape::Shape;
 pub use shape_strider::ShapeStrider;
-pub use tensor::{Axes, Tensor};
+pub use tensor::{Axes, ConvOpts, Tensor};
 pub use type_magic::{
     Cpu, Cpu32, CpuBool, CpuI32, Diff, Sym, TensorBase, TensorFwd, TensorRev, Wgpu, Wgpu32,
     WgpuBool, WgpuI32,

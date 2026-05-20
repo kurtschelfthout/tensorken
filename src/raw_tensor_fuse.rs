@@ -84,7 +84,7 @@ impl<I: RawTensorOps> RawTensorOps for FuseImpl<I> {
     }
 
     fn realize<E: Clone>(t: &Self::Repr<E>) -> Self::Repr<E> {
-        Fuse::new(t.run())
+        Fuse::new(I::realize(&t.run()))
     }
 
     fn add<E: Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {
@@ -170,6 +170,14 @@ impl<I: RawTensorOps> RawTensorOps for FuseImpl<I> {
             Fuse::Mul(lhs, _, _) => I::shape(lhs),
             Fuse::Val(t) => I::shape(t),
         }
+    }
+
+    fn correlate<const N: usize, E: Num>(
+        im: &Self::Repr<E>,
+        ker: &Self::Repr<E>,
+        opts: crate::conv::CorrelateOpts<N>,
+    ) -> Self::Repr<E> {
+        binary_no_fuse(im, ker, move |im, ker| I::correlate(im, ker, opts))
     }
 
     fn fused_multiply_add<E: Num>(
