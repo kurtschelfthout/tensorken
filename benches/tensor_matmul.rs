@@ -1,5 +1,6 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use rand::{rngs::StdRng, SeedableRng};
+use std::hint::black_box;
 use tensorken::{Cpu32, Wgpu32};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
