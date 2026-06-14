@@ -1,7 +1,7 @@
 use crate::{
+    RawTensorOps, Shape,
     num::{Bool, CastFrom, Float, Num},
     shape_strider::ShapeStrider,
-    RawTensorOps, Shape,
 };
 
 #[derive(Clone, Debug)]

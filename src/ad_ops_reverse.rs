@@ -1,9 +1,9 @@
 use std::marker::PhantomData;
 
 use crate::{
+    DiffableOps,
     ad_ops::{UnaryDiffOp, UnaryOp},
     num::{Bool, CastFrom, Elem, Num},
-    DiffableOps,
 };
 
 pub(crate) struct SumOp<E, I>(Vec<usize>, PhantomData<(E, I)>);

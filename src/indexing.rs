@@ -5,8 +5,8 @@ use std::{
 };
 
 use crate::{
-    num::{Bool, CastFrom, Num},
     Axes, DiffableOps, Shape, Tensor, ToCpu,
+    num::{Bool, CastFrom, Num},
 };
 
 /// A variation of `Index` and `IndexMut`, that returns the output
@@ -446,12 +446,12 @@ impl<I: DiffableOps + Clone> IndexSpecBuilder<&Tensor<I::Repr<bool>, bool, I>>
 }
 
 impl<
-        T,
-        E: Num + CastFrom<bool>,
-        I: DiffableOps<Repr<E> = T>
-            + ToCpu<Repr<E> = T>
-            + ToCpu<Repr<bool> = <I as DiffableOps>::Repr<bool>>,
-    > AdvancedIndex<IndexSpec<I, AdvancedIndexingWitness>> for Tensor<T, E, I>
+    T,
+    E: Num + CastFrom<bool>,
+    I: DiffableOps<Repr<E> = T>
+        + ToCpu<Repr<E> = T>
+        + ToCpu<Repr<bool> = <I as DiffableOps>::Repr<bool>>,
+> AdvancedIndex<IndexSpec<I, AdvancedIndexingWitness>> for Tensor<T, E, I>
 {
     fn oix(&self, index: IndexSpec<I, AdvancedIndexingWitness>) -> Self {
         // first do the basic indexing - no copy.
@@ -655,12 +655,12 @@ impl<E: Bool, I: DiffableOps> Tensor<I::Repr<E>, E, I> {
 }
 
 impl<
-        T,
-        E: Num + CastFrom<bool>,
-        I: DiffableOps<Repr<E> = T>
-            + ToCpu<Repr<E> = T>
-            + ToCpu<Repr<bool> = <I as DiffableOps>::Repr<bool>>,
-    > Tensor<T, E, I>
+    T,
+    E: Num + CastFrom<bool>,
+    I: DiffableOps<Repr<E> = T>
+        + ToCpu<Repr<E> = T>
+        + ToCpu<Repr<bool> = <I as DiffableOps>::Repr<bool>>,
+> Tensor<T, E, I>
 {
     /// Shorthand for outer indexing along the first axis.
     pub fn oix1<T1>(&self, index: T1) -> Self

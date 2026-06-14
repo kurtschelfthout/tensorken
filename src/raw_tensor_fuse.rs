@@ -1,9 +1,9 @@
 use std::marker::PhantomData;
 
 use crate::{
+    RawTensorOps,
     num::{Bool, CastFrom, Elem, Float, Num},
     raw_tensor::ToCpu,
-    RawTensorOps,
 };
 
 /// Fuse is now easy to understand.

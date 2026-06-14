@@ -1,8 +1,8 @@
 use std::marker::PhantomData;
 
 use crate::{
-    num::{Bool, Float, Num},
     DiffableOps,
+    num::{Bool, Float, Num},
 };
 
 /// A trait that represents the operation on the primal value, and

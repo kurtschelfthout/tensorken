@@ -11,7 +11,7 @@ use std::{
 };
 
 use prettytable::{Cell, Row, Table};
-use rand::{distr::weighted::WeightedIndex, prelude::Distribution, rngs::StdRng, SeedableRng};
+use rand::{SeedableRng, distr::weighted::WeightedIndex, prelude::Distribution, rngs::StdRng};
 use tensorken::{Cpu32, Tensor};
 
 // This example shows the first half of the first of Karpathy's from zero-to-hero tutorials on makemomre.

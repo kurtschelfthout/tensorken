@@ -1,8 +1,7 @@
 use tensorken::{
-    jacrev,
+    Cpu32, Diff, Shape, Tensor, TensorBase, TensorRev, ToCpu, Wgpu32, jacrev,
     num::{Bool, CastFrom, Elem, Float, Num},
-    value_and_grad1, value_and_grad2, vjpn, Cpu32, Diff, Shape, Tensor, TensorBase, TensorRev,
-    ToCpu, Wgpu32,
+    value_and_grad1, value_and_grad2, vjpn,
 };
 
 use std::{

@@ -37,7 +37,12 @@ impl<E> CpuRawTensor<E> {
     /// Panics if the shape and data are not compatible.
     /// Assumes the data is laid out contiguously, in row-major order.
     pub(crate) fn new_into(shape: &[usize], data: Vec<E>) -> Self {
-        assert!(shape.size() == data.len(), "Shape size {} and data len {} must match - either too few or too many elements in data.", shape.size(), data.len());
+        assert!(
+            shape.size() == data.len(),
+            "Shape size {} and data len {} must match - either too few or too many elements in data.",
+            shape.size(),
+            data.len()
+        );
 
         let strider = ShapeStrider::contiguous(shape);
 

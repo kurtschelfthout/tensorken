@@ -1,4 +1,4 @@
-use tensorken::{hd, tl, Axes, CpuBool, CpuI32, Ellipsis, NewAxis};
+use tensorken::{Axes, CpuBool, CpuI32, Ellipsis, NewAxis, hd, tl};
 
 /// A macro to print the result of an expression and the expression itself.
 macro_rules! with_shapes {
@@ -52,9 +52,10 @@ fn main() {
     do_example!(t.ix3(0, 1, 2).to_scalar());
     with_shapes!(t, t.ix1(1));
 
-    do_example!(t
-        .ix3(t.shape()[0] - 1, t.shape()[1] - 1, t.shape()[2] - 1)
-        .to_scalar());
+    do_example!(
+        t.ix3(t.shape()[0] - 1, t.shape()[1] - 1, t.shape()[2] - 1)
+            .to_scalar()
+    );
     do_example!(t.ix3(tl(0), tl(0), tl(0)).to_scalar());
 
     with_shapes!(t, t.ix3(1, .., ..));

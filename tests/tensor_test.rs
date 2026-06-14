@@ -1,7 +1,7 @@
-use rand::{rngs::StdRng, SeedableRng};
+use rand::{SeedableRng, rngs::StdRng};
 use tensorken::{
-    num::Float, Axes, Cpu32, CpuBool, CpuI32, CpuRawTensor, CpuRawTensorImpl, DiffableOps, Tensor,
-    ToCpu, Wgpu32, WgpuRawTensor, WgpuRawTensorImpl,
+    Axes, Cpu32, CpuBool, CpuI32, CpuRawTensor, CpuRawTensorImpl, DiffableOps, Tensor, ToCpu,
+    Wgpu32, WgpuRawTensor, WgpuRawTensorImpl, num::Float,
 };
 
 fn assert_tensor_eq<T1, I1: ToCpu<Repr<f32> = T1>, T2, I2: ToCpu<Repr<f32> = T2>>(
@@ -494,7 +494,9 @@ fn test_randn() {
     assert_eq!(t1.shape(), &[2, 3]);
     assert_eq!(
         t1.ravel(),
-        [0.712813, 0.85833144, -2.4362438, 0.16334426, -1.2750102, 1.287171]
+        [
+            0.712813, 0.85833144, -2.4362438, 0.16334426, -1.2750102, 1.287171
+        ]
     );
 }
 
@@ -512,7 +514,9 @@ fn test_concatenate() {
     assert_eq!(r.shape(), &[3, 5]);
     assert_eq!(
         r.ravel(),
-        [1.0, 4.0, 1.0, 4.0, 7.0, 2.0, 5.0, 2.0, 5.0, 8.0, 3.0, 6.0, 3.0, 6.0, 9.0]
+        [
+            1.0, 4.0, 1.0, 4.0, 7.0, 2.0, 5.0, 2.0, 5.0, 8.0, 3.0, 6.0, 3.0, 6.0, 9.0
+        ]
     );
 }
 

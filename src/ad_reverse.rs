@@ -1,6 +1,7 @@
 use std::{fmt::Debug, marker::PhantomData, ops::Index, rc::Rc};
 
 use crate::{
+    DiffableOps, Shape, Tensor,
     ad_ops::{
         AddOp, BinaryDiffOp, BinaryOp, DivOp, ExpOp, FlipOp, LogOp, MulOp, PowOp, SubOp,
         UnaryDiffOp, UnaryOp,
@@ -8,7 +9,6 @@ use crate::{
     ad_ops_reverse::{CropOp, ExpandOp, MaxOp, PadOp, PermuteOp, ReshapeOp, SumOp},
     ad_trace::{Trace, TracedOp},
     num::{Bool, CastFrom, Elem, Float, Num},
-    DiffableOps, Shape, Tensor,
 };
 
 /// Reverse AD implementation.
@@ -88,7 +88,10 @@ impl<T> Reverse<T> {
                 Self::push_op(trace, primal, op)
             }
             (Self::Reverse(left_trace, _, left), Self::Reverse(right_trace, _, right)) => {
-                assert!(Rc::ptr_eq(left_trace, right_trace), "traces must be the same - likely perturbation confusion. Are lifts in the right place?");
+                assert!(
+                    Rc::ptr_eq(left_trace, right_trace),
+                    "traces must be the same - likely perturbation confusion. Are lifts in the right place?"
+                );
                 let op = TracedOp::Binary(Box::new(op), *left, *right);
                 Self::push_op(left_trace, primal, op)
             }

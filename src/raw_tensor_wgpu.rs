@@ -8,12 +8,12 @@ use std::{
 use wgpu::util::DeviceExt;
 
 use crate::{
+    CpuRawTensor,
     num::{Bool, CastFrom, Elem, Float, Num},
     raw_tensor::{RawTensorOps, ToCpu},
     shape::Shape,
     shape_strider::{ShapeStrider, Stride},
-    wgpu_context::{get_wgpu_device, WgpuContext, WorkgroupSize},
-    CpuRawTensor,
+    wgpu_context::{WgpuContext, WorkgroupSize, get_wgpu_device},
 };
 
 // Misc WGSL notes/tips:
@@ -183,14 +183,12 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
             .map(|x| u32::try_from(*x).unwrap())
             .collect();
 
-        let buffer = self
-            .device()
+        self.device()
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 usage: wgpu::BufferUsages::STORAGE,
                 label: Some("shapes and strides buffer"),
                 contents: bytemuck::cast_slice(&contents_u32),
-            });
-        buffer
+            })
     }
 
     /// Make a new output buffer, to store the result of an operation,

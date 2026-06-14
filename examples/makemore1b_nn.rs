@@ -8,8 +8,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use rand::{distr::weighted::WeightedIndex, prelude::Distribution, rngs::StdRng, SeedableRng};
-use tensorken::{num::Float, value_and_grad1, Axes, DiffableOps, Tensor, Wgpu};
+use rand::{SeedableRng, distr::weighted::WeightedIndex, prelude::Distribution, rngs::StdRng};
+use tensorken::{Axes, DiffableOps, Tensor, Wgpu, num::Float, value_and_grad1};
 
 // This example shows the first half of the first of Karpathy's from zero-to-hero tutorials on makemomre.
 // It builds a bigram, character-level language model from a set of names.

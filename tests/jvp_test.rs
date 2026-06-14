@@ -1,6 +1,6 @@
 use tensorken::{
-    jacfwd, jvpn, num::Num, value_and_diff1, value_and_diff2, Cpu32, Diff, Forward, ForwardImpl,
-    Shape, Tensor, TensorBase, TensorFwd, ToCpu, Wgpu32,
+    Cpu32, Diff, Forward, ForwardImpl, Shape, Tensor, TensorBase, TensorFwd, ToCpu, Wgpu32, jacfwd,
+    jvpn, num::Num, value_and_diff1, value_and_diff2,
 };
 
 use std::{

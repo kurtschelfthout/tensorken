@@ -1,5 +1,5 @@
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use rand::{rngs::StdRng, SeedableRng};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use rand::{SeedableRng, rngs::StdRng};
 use std::hint::black_box;
 use tensorken::{Cpu32, Wgpu32};
 

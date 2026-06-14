@@ -1,4 +1,4 @@
-use tensorken::{hd, tl, Cpu32, CpuBool, CpuI32, Ellipsis, NewAxis, Sym};
+use tensorken::{Cpu32, CpuBool, CpuI32, Ellipsis, NewAxis, Sym, hd, tl};
 
 /// A macro to print the result of an expression and the expression itself.
 macro_rules! do_example {

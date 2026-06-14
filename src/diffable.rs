@@ -1,6 +1,6 @@
 use crate::{
-    num::{Bool, CastFrom, Elem, Float, Num},
     Shape,
+    num::{Bool, CastFrom, Elem, Float, Num},
 };
 
 /// Contains "mid level" operations (this is tinygrad terminology) that are differentiable.

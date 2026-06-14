@@ -9,11 +9,11 @@ use rand::RngExt;
 use rand_distr::Distribution;
 
 use crate::{
+    DiffableOps, Forward, ForwardImpl, Reverse, ReverseImpl, Shape,
     num::{Bool, CastFrom, CastTo, Elem, Float, Num},
     raw_tensor::{RawTensorOps, ToCpu},
     raw_tensor_cpu::{CpuRawTensor, CpuRawTensorImpl},
     tensor_mut::TensorMut,
-    DiffableOps, Forward, ForwardImpl, Reverse, ReverseImpl, Shape,
 };
 
 /// Blanket implementation to translate from diffable tensor ops (`DiffableOps`) to low-level tensor ops (`RawTensorOps`).

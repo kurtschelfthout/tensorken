@@ -1,8 +1,8 @@
-use rand::{rngs::StdRng, SeedableRng};
+use rand::{SeedableRng, rngs::StdRng};
 
 use tensorken::{
-    diff1, grad1, grad2, jacfwd, jacrev, jvpn, num::Float, value_and_grad2, vjpn, Cpu32,
-    DiffableOps, Tensor,
+    Cpu32, DiffableOps, Tensor, diff1, grad1, grad2, jacfwd, jacrev, jvpn, num::Float,
+    value_and_grad2, vjpn,
 };
 
 type Tr = Cpu32;

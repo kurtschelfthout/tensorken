@@ -23,15 +23,15 @@ mod tensor_mut;
 mod type_magic;
 mod wgpu_context;
 pub use ad_forward::{
-    diff1, diff2, jacfwd, jvpn, value_and_diff1, value_and_diff2, value_and_diffn, Forward,
-    ForwardImpl,
+    Forward, ForwardImpl, diff1, diff2, jacfwd, jvpn, value_and_diff1, value_and_diff2,
+    value_and_diffn,
 };
 pub use ad_reverse::{
-    grad1, grad2, jacrev, value_and_grad1, value_and_grad2, value_and_gradn, vjpn, PullBack,
-    Reverse, ReverseImpl,
+    PullBack, Reverse, ReverseImpl, grad1, grad2, jacrev, value_and_grad1, value_and_grad2,
+    value_and_gradn, vjpn,
 };
 pub use diffable::DiffableOps;
-pub use indexing::{hd, tl, BasicIndex, Ellipsis, IndexSpec, IndexSpecBuilder, NewAxis};
+pub use indexing::{BasicIndex, Ellipsis, IndexSpec, IndexSpecBuilder, NewAxis, hd, tl};
 pub use raw_tensor::{RawTensorOps, ToCpu};
 pub use raw_tensor_cpu::{CpuRawTensor, CpuRawTensorImpl};
 pub use raw_tensor_fuse::{Fuse, FuseImpl};

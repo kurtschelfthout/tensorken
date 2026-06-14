@@ -3,9 +3,9 @@ use std::{
     sync::LazyLock,
 };
 
-use prettytable::{format, Cell, Table};
+use prettytable::{Cell, Table, format};
 
-use crate::{num::Bool, raw_tensor_cpu::CpuRawTensorImpl, CpuRawTensor, Tensor, ToCpu};
+use crate::{CpuRawTensor, Tensor, ToCpu, num::Bool, raw_tensor_cpu::CpuRawTensorImpl};
 
 static FORMAT_TENSOR: LazyLock<format::TableFormat> = LazyLock::new(|| {
     format::FormatBuilder::new()
