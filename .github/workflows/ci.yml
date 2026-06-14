@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint with clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Build
+        run: cargo build --all-targets --all-features
+
+      - name: Run tests
+        run: cargo test --all-targets --all-features
+
+      - name: Run examples
+        run: |
+          cargo run --example eye
+          cargo run --example fancy_indexing
+          cargo run --example jax_autodiff_cookbook
+          cargo run --example makemore1a_bigrams
+          cargo run --example makemore1b_nn
+          cargo run --example matmul
+          cargo run --example parallel_reduce_example
+          cargo run --example tour
