@@ -8,7 +8,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use rand::{distributions::WeightedIndex, prelude::Distribution, rngs::StdRng, SeedableRng};
+use rand::{distr::weighted::WeightedIndex, prelude::Distribution, rngs::StdRng, SeedableRng};
 use tensorken::{num::Float, value_and_grad1, Axes, DiffableOps, Tensor, Wgpu};
 
 // This example shows the first half of the first of Karpathy's from zero-to-hero tutorials on makemomre.

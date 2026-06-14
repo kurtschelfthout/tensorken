@@ -11,8 +11,8 @@ futures-intrusive = "0.5.0"
 pollster = "0.3.0"
 wgpu = {version="0.19.0", features=["trace"] }
 prettytable-rs = "0.10.0"
-rand = "0.8.0"
-rand_distr = "0.4.0"
+rand = "0.10.0"
+rand_distr = "0.6.0"
 
 [dev-dependencies]
 criterion = "0.8.0"

@@ -5,6 +5,7 @@ use std::{
 };
 
 use rand::Rng;
+use rand::RngExt;
 use rand_distr::Distribution;
 
 use crate::{
