@@ -6,7 +6,7 @@ edition = "2024"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bytemuck = "1.14.0"
+bytemuck = "1.25.0"
 futures-intrusive = "0.5.0"
 pollster = "0.4.0"
 wgpu = "29.0.0"
