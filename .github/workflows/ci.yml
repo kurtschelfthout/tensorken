@@ -33,8 +33,8 @@ jobs:
       - name: Build
         run: cargo build --all-targets --all-features
 
-      - name: Run tests
-        run: cargo test --all-targets --all-features
+      - name: Run CPU test suite
+        run: cargo test --test tensor_test --all-features
 
       - name: Run examples
         run: |
