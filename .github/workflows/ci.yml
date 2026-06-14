@@ -42,7 +42,6 @@ jobs:
           cargo run --example fancy_indexing
           cargo run --example jax_autodiff_cookbook
           cargo run --example makemore1a_bigrams
-          cargo run --example makemore1b_nn
           cargo run --example matmul
           cargo run --example parallel_reduce_example
           cargo run --example tour
