@@ -241,18 +241,16 @@ impl WgpuContext {
             info.device_type, info.name, info.backend
         );
 
-        // `request_device` instantiates the feature specific connection to the GPU, defining some parameters,
-        //  `features` being the available features.
+        // `request_device` instantiates the feature specific connection to the GPU, defining some parameters.
         let r = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: None,
-                    required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits::downlevel_defaults(),
-                    memory_hints: wgpu::MemoryHints::default(),
-                },
-                None, // Some(Path::new("./trace")),
-            )
+            .request_device(&wgpu::DeviceDescriptor {
+                label: None,
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::downlevel_defaults(),
+                memory_hints: wgpu::MemoryHints::default(),
+                trace: wgpu::Trace::default(),
+                experimental_features: wgpu::ExperimentalFeatures::default(),
+            })
             .await
             .unwrap();
         Some(r)

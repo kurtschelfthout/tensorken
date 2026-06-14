@@ -299,7 +299,11 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
         // See https://github.com/gfx-rs/wgpu/issues/3806
         let index = self.queue().submit(Some(encoder.finish()));
         self.device()
-            .poll(wgpu::Maintain::WaitForSubmissionIndex(index));
+            .poll(wgpu::PollType::Wait {
+                submission_index: Some(index),
+                timeout: None,
+            })
+            .expect("wgpu poll failed");
     }
 
     fn pipeline_for(
@@ -644,7 +648,11 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
 
         // Poll the device in a blocking manner so that our future resolves.
         self.device()
-            .poll(wgpu::Maintain::WaitForSubmissionIndex(index));
+            .poll(wgpu::PollType::Wait {
+                submission_index: Some(index),
+                timeout: None,
+            })
+            .expect("wgpu poll failed");
         let poll_result = pollster::block_on(receiver.receive());
 
         if let Some(Ok(())) = poll_result {
