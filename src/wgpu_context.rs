@@ -68,13 +68,16 @@ impl WgpuContext {
         pipelines: &mut std::sync::RwLockWriteGuard<HashMap<MemoKey, Arc<wgpu::ComputePipeline>>>,
         workgroup_size: WorkgroupSize,
     ) {
-        const ENTRY_POINT: &str = "call";
         let compute_pipeline = Arc::new(self.device.create_compute_pipeline(
             &wgpu::ComputePipelineDescriptor {
                 label: Some(operation),
                 layout: None,
                 module,
-                entry_point: ENTRY_POINT,
+                entry_point: None, //since wgpu23, entry point is optional if there is only one in the shader.
+                cache: None,
+                compilation_options: wgpu::PipelineCompilationOptions {
+                    ..Default::default()
+                },
             },
         ));
         pipelines.insert(
@@ -246,6 +249,7 @@ impl WgpuContext {
                     label: None,
                     required_features: wgpu::Features::empty(),
                     required_limits: wgpu::Limits::downlevel_defaults(),
+                    memory_hints: wgpu::MemoryHints::default(),
                 },
                 None, // Some(Path::new("./trace")),
             )

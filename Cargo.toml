@@ -9,7 +9,7 @@ edition = "2021"
 bytemuck = "1.14.0"
 futures-intrusive = "0.5.0"
 pollster = "0.4.0"
-wgpu = {version="0.19.0", features=["trace"] }
+wgpu = {version="24.0.0" }
 prettytable-rs = "0.10.0"
 rand = "0.10.0"
 rand_distr = "0.6.0"
