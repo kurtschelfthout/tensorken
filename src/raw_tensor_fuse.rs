@@ -84,7 +84,8 @@ impl<I: RawTensorOps> RawTensorOps for FuseImpl<I> {
     }
 
     fn realize<E: Clone>(t: &Self::Repr<E>) -> Self::Repr<E> {
-        Fuse::new(t.run())
+        let r = unary_no_fuse(t, I::realize);
+        Fuse::new(r.run())
     }
 
     fn add<E: Num>(lhs: &Self::Repr<E>, rhs: &Self::Repr<E>) -> Self::Repr<E> {

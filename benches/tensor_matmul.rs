@@ -16,7 +16,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         let t1_cpu = Cpu32::from(&t1_gpu);
         let t2_cpu = Cpu32::from(&t2_gpu);
 
-        if size <= 256 {
+        if size <= 128 {
             // cpu too slow - already takes 3 mins at 256.
             group.bench_with_input(BenchmarkId::new("cpu", size), &size, |b, _| {
                 b.iter(|| black_box(t1_cpu.matmul(&t2_cpu).realize()))

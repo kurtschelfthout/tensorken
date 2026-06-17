@@ -43,6 +43,7 @@ pub struct WgpuRawTensor<'a, E> {
     buffer: Arc<wgpu::Buffer>,
     strider: ShapeStrider,
     context: &'a WgpuContext,
+    submission_index: Option<wgpu::SubmissionIndex>,
     element: std::marker::PhantomData<E>,
 }
 
@@ -62,6 +63,7 @@ impl<E> WgpuRawTensor<'_, E> {
             buffer: Arc::clone(&self.buffer),
             strider,
             context: self.context,
+            submission_index: self.submission_index.clone(),
             element: std::marker::PhantomData,
         }
     }
@@ -77,6 +79,17 @@ impl<E> WgpuRawTensor<'_, E> {
     #[allow(dead_code)]
     fn strides(&self) -> &[Stride] {
         self.strider.strides()
+    }
+
+    fn poll(&self) {
+        if self.submission_index.is_some() {
+            self.device()
+                .poll(wgpu::PollType::Wait {
+                    submission_index: self.submission_index.clone(),
+                    timeout: None,
+                })
+                .expect("poll failed");
+        }
     }
 }
 
@@ -112,6 +125,7 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
                     buffer: Arc::new(buffer),
                     strider,
                     context: device,
+                    submission_index: None,
                     element: std::marker::PhantomData,
                 }
             }
@@ -128,6 +142,7 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
                     buffer: Arc::new(buffer),
                     strider,
                     context: device,
+                    submission_index: None,
                     element: std::marker::PhantomData,
                 }
             }
@@ -270,7 +285,7 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
         compute_pipeline: &wgpu::ComputePipeline,
         bind_group: &wgpu::BindGroup,
         workgroup_count: usize,
-    ) {
+    ) -> wgpu::SubmissionIndex {
         let mut encoder = self
             .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
@@ -295,13 +310,15 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
         // can cause resource (sometimes memory) exhaustion, and the GPU device crashes. Without this,
         // benchmarks like matmul fail at higher sizes.
         // See https://github.com/gfx-rs/wgpu/issues/3806
-        let index = self.queue().submit(Some(encoder.finish()));
-        self.device()
-            .poll(wgpu::PollType::Wait {
-                submission_index: Some(index),
-                timeout: None,
-            })
-            .expect("wgpu poll failed");
+
+        self.queue().submit(Some(encoder.finish()))
+        //let index = self.queue().submit(Some(encoder.finish()));
+        // self.device()
+        //     .poll(wgpu::PollType::Wait {
+        //         submission_index: Some(index),
+        //         timeout: None,
+        //     })
+        //     .expect("wgpu poll failed");
     }
 
     fn pipeline_for(
@@ -314,11 +331,17 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
             .pipeline_for(operation, E::WGPU_ELEMENT_NAME, element_out, workgroup_size)
     }
     /// Create a new tensor with given buffer and strider, passing self's context along.
-    fn with_buffer_strider(&self, buffer: wgpu::Buffer, strider: ShapeStrider) -> Self {
+    fn with_buffer_strider(
+        &self,
+        buffer: wgpu::Buffer,
+        strider: ShapeStrider,
+        submission_index: wgpu::SubmissionIndex,
+    ) -> Self {
         WgpuRawTensor {
             buffer: Arc::new(buffer),
             strider,
             context: self.context,
+            submission_index: Some(submission_index),
             element: self.element,
         }
     }
@@ -428,9 +451,9 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
             &output_buffer,
             &strides_and_shapes,
         );
-        self.encode_and_submit(compute_pipeline.as_ref(), &bind_group, workgroup_count);
+        let index = self.encode_and_submit(compute_pipeline.as_ref(), &bind_group, workgroup_count);
 
-        self.with_buffer_strider(output_buffer, output_strider)
+        self.with_buffer_strider(output_buffer, output_strider, index)
     }
 
     /// Return a new tensor with the same shape as self, cast to the desired element type `TTo`.
@@ -455,12 +478,13 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
             &output_buffer,
             &strides_and_shapes,
         );
-        self.encode_and_submit(compute_pipeline.as_ref(), &bind_group, workgroup_count);
+        let index = self.encode_and_submit(compute_pipeline.as_ref(), &bind_group, workgroup_count);
 
         WgpuRawTensor {
             buffer: Arc::new(output_buffer),
             strider: output_strider,
             context: self.context,
+            submission_index: Some(index),
             element: std::marker::PhantomData,
         }
     }
@@ -489,12 +513,13 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
             &output_buffer,
             &strides_and_shapes,
         );
-        self.encode_and_submit(compute_pipeline.as_ref(), &bind_group, workgroup_count);
+        let index = self.encode_and_submit(compute_pipeline.as_ref(), &bind_group, workgroup_count);
 
         WgpuRawTensor {
             buffer: Arc::new(output_buffer),
             strider: output_strider,
             context: self.context,
+            submission_index: Some(index),
             element: PhantomData,
         }
     }
@@ -533,9 +558,9 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
             &output_buffer,
             &strides_and_shapes,
         );
-        self.encode_and_submit(compute_pipeline.as_ref(), &bind_group, workgroup_count);
+        let index = self.encode_and_submit(compute_pipeline.as_ref(), &bind_group, workgroup_count);
 
-        self.with_buffer_strider(output_buffer, output_strider)
+        self.with_buffer_strider(output_buffer, output_strider, index)
     }
 
     /// Pad the tensor with the given padding.
@@ -561,9 +586,9 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
             &output_buffer,
             &strides_and_shapes,
         );
-        self.encode_and_submit(compute_pipeline.as_ref(), &bind_group, workgroup_count);
+        let index = self.encode_and_submit(compute_pipeline.as_ref(), &bind_group, workgroup_count);
 
-        self.with_buffer_strider(output_buffer, output_strider)
+        self.with_buffer_strider(output_buffer, output_strider, index)
     }
 
     /// Elementwise multiply of self with other, followed by summing along the given axes, in
@@ -604,9 +629,9 @@ impl<'a, E: Elem> WgpuRawTensor<'a, E> {
             &output_buffer,
             &strides_and_shapes,
         );
-        self.encode_and_submit(compute_pipeline.as_ref(), &bind_group, workgroup_count);
+        let index = self.encode_and_submit(compute_pipeline.as_ref(), &bind_group, workgroup_count);
 
-        self.with_buffer_strider(output_buffer, output_strider)
+        self.with_buffer_strider(output_buffer, output_strider, index)
     }
 
     /// Returns a contiguous copy of the tensor.
@@ -687,6 +712,7 @@ impl RawTensorOps for WgpuRawTensorImpl {
     }
 
     fn realize<E: Clone>(t: &Self::Repr<E>) -> Self::Repr<E> {
+        t.poll();
         t.clone()
     }
 
