@@ -11,9 +11,8 @@ use std::{
 use rand::{SeedableRng, distr::weighted::WeightedIndex, prelude::Distribution, rngs::StdRng};
 use tensorken::{Axes, DiffableOps, Tensor, Wgpu, num::Float, value_and_grad1};
 
-// This example shows the first half of the first of Karpathy's from zero-to-hero tutorials on makemomre.
-// It builds a bigram, character-level language model from a set of names.
-// The second part needs neural networks, so Tensorken does not support it yet.
+// This example shows the second half of the first of Karpathy's from zero-to-hero tutorials on makemomre.
+// It builds a mlp, character-level language model from a set of names.
 // I more or less follow this notebook: https://github.com/karpathy/nn-zero-to-hero/blob/master/lectures/makemore/makemore_part1_bigrams.ipynb
 
 // Get the path to this source file, using the file! macro
