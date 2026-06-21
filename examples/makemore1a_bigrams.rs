@@ -112,26 +112,20 @@ fn bigram_to_json(
     write!(file, "[")?;
     for row in 0..tensor.shape()[0] {
         for col in 0..tensor.shape()[1] {
-            if (row, col) == (tensor.shape()[0] - 1, tensor.shape()[1] - 1) {
-                continue;
-            };
             write!(
                 file,
-                "{{ \"from\":\"{}\", \"to\":\"{}\", \"v\":{:.prec$} }},",
+                "{{ \"from\":\"{}\", \"to\":\"{}\", \"v\":{:.prec$} }}{}",
                 itos[&row],
                 itos[&col],
-                tensor.ix2(row, col).to_scalar()
+                tensor.ix2(row, col).to_scalar(),
+                if row == tensor.shape()[0] - 1 && col == tensor.shape()[1] - 1 {
+                    ""
+                } else {
+                    ","
+                }
             )?;
         }
     }
-    let (row, col) = (tensor.shape()[0] - 1, tensor.shape()[1] - 1);
-    write!(
-        file,
-        "{{ \"from\":\"{}\", \"to\":\"{}\", \"v\":{:.prec$} }}",
-        itos[&row],
-        itos[&col],
-        tensor.ix2(row, col).to_scalar()
-    )?;
     write!(file, "]")?;
     Ok(())
 }

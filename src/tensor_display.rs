@@ -23,7 +23,7 @@ static FORMAT_TENSOR: LazyLock<format::TableFormat> = LazyLock::new(|| {
         .build()
 });
 
-/// Returns a reference to the global wgpu context, creating it if necessary.
+/// Returns a reference to the prettytable format for displaying tensors.
 fn get_pretty_format() -> &'static format::TableFormat {
     &FORMAT_TENSOR
 }

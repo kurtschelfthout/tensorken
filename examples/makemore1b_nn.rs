@@ -42,7 +42,7 @@ type Tr = Wgpu<f32>;
 type TrI32 = Wgpu<i32>;
 
 fn main() {
-    // read and show some stats on names
+    // read the names
     let names = read_names();
     println!("names: {:?}", &names[..10]);
 
@@ -104,7 +104,7 @@ fn main() {
             },
             &W,
         );
-        println!("iter={k} loss={l}");
+        println!("iter={k} loss={}", l.to_scalar());
         // update
         W = &W - &g * Tr::scalar(50.0);
         W = W.realize();
