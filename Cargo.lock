@@ -1429,6 +1429,8 @@ dependencies = [
  "prettytable-rs",
  "rand",
  "rand_distr",
+ "serde",
+ "serde_json",
  "wgpu",
 ]
 

@@ -20,6 +20,7 @@ mod shape_strider;
 mod tensor;
 mod tensor_display;
 mod tensor_mut;
+mod tensor_serde;
 mod type_magic;
 mod wgpu_context;
 pub use ad_forward::{
@@ -40,6 +41,7 @@ pub use raw_tensor_wgpu::{WgpuRawTensor, WgpuRawTensorImpl};
 pub use shape::Shape;
 pub use shape_strider::ShapeStrider;
 pub use tensor::{Axes, Tensor};
+pub use tensor_serde::{tensor_from_json_file, tensor_to_json_file};
 pub use type_magic::{
     Cpu, Cpu32, CpuBool, CpuI32, Diff, Sym, TensorBase, TensorFwd, TensorRev, Wgpu, Wgpu32,
     WgpuBool, WgpuI32,

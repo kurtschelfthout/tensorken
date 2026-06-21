@@ -540,13 +540,13 @@ mod tests {
     fn test_reduce_ops_empty() {
         let t: CpuRawTensor<f32> = CpuRawTensor::new_into(&[], vec![]);
         let s = I::sum(&t, &[]);
-        assert_eq!(I::shape(&s), &[]);
-        assert_eq!(s.buffer.data, vec![]);
+        assert_eq!(I::shape(&s), &[] as &[usize]);
+        assert_eq!(s.buffer.data, Vec::<f32>::new());
 
         let t: CpuRawTensor<f32> = CpuRawTensor::new_into(&[], vec![]);
         let s = I::max(&t, &[]);
-        assert_eq!(I::shape(&s), &[]);
-        assert_eq!(s.buffer.data, vec![]);
+        assert_eq!(I::shape(&s), &[] as &[usize]);
+        assert_eq!(s.buffer.data, Vec::<f32>::new());
     }
 
     #[test]
